@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --page: #f7f6f2;
+  --card: #ffffff;
+  --ink: #0e1420;
+  --muted: #5c6570;
+  --brand: #1b3a4b;
+  --brand-soft: #2a4f63;
+  --border: #e6e2d8;
+  --accent: #b8a07a;
+  --ok: #15803d;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --channel-whatsapp: #128c7e;
+  --radius: 14px;
+  --background: var(--page);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  --color-background: var(--page);
+  --color-foreground: var(--ink);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-border: var(--border);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-fraunces);
+  --radius-lg: var(--radius);
+}
+
+html,
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  min-height: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.font-display {
+  font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+}

@@ -1,0 +1,283 @@
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { prisma } from "@/lib/db/prisma";
+import { AppError, failClosed, notFound, unprocessable } from "@/lib/api/errors";
+import { atendimentoService } from "@/lib/services/atendimento-service";
+import { providerFor } from "@/lib/channels/resolve-provider";
+import { rememberEvolutionQr } from "@/lib/channels/evolution-qr-cache";
+import { rateLimit } from "@/lib/api/rate-limit";
+
+const connectionCreate = z.object({
+  type: z.enum(["evolution_baileys", "evolution_cloud", "dev_mock"]),
+  label: z.string().min(2).max(80),
+  metadataJson: z.record(z.string(), z.unknown()).optional(),
+});
+
+type ChannelStatus = "close" | "connecting" | "open";
+
+function mapLiveToDbStatus(live: string): ChannelStatus | null {
+  const s = live.toLowerCase();
+  if (s === "open" || s === "connected") return "open";
+  if (s === "connecting" || s === "qr" || s === "qrcode") return "connecting";
+  if (s === "close" || s === "closed" || s === "disconnected" || s === "logout") return "close";
+  return null;
+}
+
+function publicConnection<T extends { metadataJson: unknown }>(row: T) {
+  return {
+    ...row,
+    secretStatus: "cadastrado" as const,
+  };
+}
+
+async function syncConnectionStatus(id: string, liveStatus: string) {
+  const mapped = mapLiveToDbStatus(liveStatus);
+  if (!mapped) return null;
+  return prisma.channelConnection.update({
+    where: { id },
+    data: { status: mapped },
+  });
+}
+
+export const whatsappService = {
+  async list() {
+    const items = await prisma.channelConnection.findMany({ orderBy: { createdAt: "asc" } });
+    const enriched = [];
+    for (const row of items) {
+      const base = publicConnection(row);
+      if (row.type !== "evolution_baileys") {
+        const provider = providerFor(row.type);
+        enriched.push({
+          ...base,
+          configured: provider.isConfigured(),
+          liveStatus: row.status,
+          detail: provider.label(),
+        });
+        continue;
+      }
+
+      const provider = providerFor(row.type);
+      const configured = provider.isConfigured();
+      if (!configured) {
+        enriched.push({
+          ...base,
+          configured: false,
+          liveStatus: "close",
+          detail: "Evolution Baileys não configurada (URL/APIKEY ausentes)",
+        });
+        continue;
+      }
+
+      try {
+        const live = await provider.getStatus();
+        const synced = await syncConnectionStatus(row.id, live.status);
+        enriched.push({
+          ...publicConnection(synced ?? row),
+          configured: true,
+          liveStatus: live.status,
+          detail: live.detail,
+        });
+      } catch {
+        enriched.push({
+          ...base,
+          configured: true,
+          liveStatus: row.status,
+          detail: "status_unavailable",
+        });
+      }
+    }
+    return enriched;
+  },
+
+  async create(input: unknown) {
+    const data = connectionCreate.parse(input);
+    const row = await prisma.channelConnection.create({
+      data: {
+        type: data.type,
+        label: data.label,
+        metadataJson: (data.metadataJson ?? {}) as Prisma.InputJsonValue,
+        status: data.type === "dev_mock" ? "open" : "close",
+      },
+    });
+    const provider = providerFor(row.type);
+    return {
+      ...publicConnection(row),
+      configured: provider.isConfigured(),
+      liveStatus: row.status,
+      detail: provider.label(),
+    };
+  },
+
+  async patch(id: string, input: unknown) {
+    const existing = await prisma.channelConnection.findFirst({ where: { id } });
+    if (!existing) throw notFound("Conexão não encontrada");
+    const body = z
+      .object({
+        label: z.string().min(2).max(80).optional(),
+        status: z.enum(["close", "connecting", "open"]).optional(),
+      })
+      .parse(input);
+    const row = await prisma.channelConnection.update({
+      where: { id },
+      data: body,
+    });
+    const provider = providerFor(row.type);
+    return {
+      ...publicConnection(row),
+      configured: provider.isConfigured(),
+      liveStatus: row.status,
+      detail: provider.label(),
+    };
+  },
+
+  async status(id: string) {
+    const row = await prisma.channelConnection.findFirst({ where: { id } });
+    if (!row) throw notFound("Conexão não encontrada");
+    const provider = providerFor(row.type);
+    const configured = provider.isConfigured();
+    if (row.type === "evolution_baileys" && !configured) {
+      return {
+        id: row.id,
+        type: row.type,
+        configured: false,
+        status: "close" as const,
+        liveStatus: "close",
+        detail: "Evolution Baileys não configurada (URL/APIKEY ausentes)",
+      };
+    }
+    const live = await provider.getStatus();
+    const synced = row.type === "evolution_baileys" ? await syncConnectionStatus(row.id, live.status) : null;
+    return {
+      id: row.id,
+      type: row.type,
+      configured,
+      status: (synced?.status ?? row.status) as string,
+      liveStatus: live.status,
+      detail: live.detail,
+    };
+  },
+
+  async qr(id: string) {
+    const row = await prisma.channelConnection.findFirst({ where: { id } });
+    if (!row) throw notFound("Conexão não encontrada");
+    if (row.type !== "evolution_baileys") {
+      throw new AppError(409, "QR_NOT_APPLICABLE", "QR disponível apenas para WhatsApp Web (Baileys)");
+    }
+    const provider = providerFor(row.type);
+    if (!provider.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+    }
+    await provider.ensureInstance();
+    const qr = await provider.getQr();
+    if (qr.qr || qr.pairingCode) {
+      await syncConnectionStatus(row.id, "connecting");
+    }
+    return qr;
+  },
+
+  async disconnect(id: string) {
+    const row = await prisma.channelConnection.findFirst({ where: { id } });
+    if (!row) throw notFound("Conexão não encontrada");
+    if (row.type !== "evolution_baileys") {
+      throw new AppError(409, "DISCONNECT_NOT_APPLICABLE", "Desconectar disponível apenas para WhatsApp Web (Baileys)");
+    }
+    const provider = providerFor(row.type);
+    if (!provider.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+    }
+    const live = await provider.disconnect();
+    const synced = await syncConnectionStatus(row.id, live.status);
+    return {
+      id: row.id,
+      type: row.type,
+      configured: true,
+      status: (synced?.status ?? "close") as string,
+      liveStatus: live.status,
+      detail: live.detail,
+    };
+  },
+
+  assertWebhookSecret(headerSecret: string | null) {
+    const expected = process.env.EVOLUTION_WEBHOOK_SECRET;
+    if (!expected) {
+      throw failClosed("Webhook Evolution recusado: secret não cadastrado");
+    }
+    if (!headerSecret || headerSecret !== expected) {
+      throw failClosed("Webhook Evolution recusado");
+    }
+  },
+
+  async ingestEvolution(body: unknown) {
+    const limited = rateLimit("webhook:evolution", 120, 60_000);
+    if (!limited.ok) {
+      throw unprocessable("Webhook rate limited");
+    }
+    const parsed = z
+      .object({
+        event: z.string().optional(),
+        data: z
+          .object({
+            qrcode: z
+              .object({
+                base64: z.string().optional(),
+                code: z.string().optional(),
+                pairingCode: z.string().optional(),
+              })
+              .optional(),
+            base64: z.string().optional(),
+            pairingCode: z.string().optional(),
+            key: z
+              .object({
+                id: z.string().optional(),
+                remoteJid: z.string().optional(),
+                fromMe: z.boolean().optional(),
+              })
+              .optional(),
+            message: z
+              .object({
+                conversation: z.string().optional(),
+                extendedTextMessage: z.object({ text: z.string().optional() }).optional(),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .passthrough()
+      .parse(body);
+
+    const event = (parsed.event || "").toLowerCase();
+    if (event.includes("qrcode")) {
+      const qr =
+        parsed.data?.qrcode?.base64 ||
+        parsed.data?.base64 ||
+        (parsed.data?.qrcode?.code && parsed.data.qrcode.code.length > 40 ? parsed.data.qrcode.code : null);
+      rememberEvolutionQr({
+        qr,
+        pairingCode: parsed.data?.qrcode?.pairingCode || parsed.data?.pairingCode,
+      });
+      return { ignored: true as const, reason: "qrcode" };
+    }
+
+    const fromMe = parsed.data?.key?.fromMe;
+    if (fromMe) {
+      return { ignored: true as const, reason: "fromMe" };
+    }
+    const waMessageId = parsed.data?.key?.id;
+    const remote = parsed.data?.key?.remoteJid || "";
+    const text =
+      parsed.data?.message?.conversation ||
+      parsed.data?.message?.extendedTextMessage?.text ||
+      "";
+    const userPart = remote.split("@")[0] || "";
+    const digits = userPart.replace(/\D/g, "");
+    if (!waMessageId || !digits) {
+      return { ignored: true as const, reason: "incomplete" };
+    }
+    return atendimentoService.ingestInbound({
+      waMessageId,
+      fromPhone: `+${digits}`,
+      body: text || "(mídia ou mensagem sem texto)",
+      connectionType: "evolution_baileys",
+    });
+  },
+};

@@ -1,0 +1,56 @@
+services:
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - evolution-redis:/data
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD:-change-me-evolution-only}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution-pg:/var/lib/postgresql/data
+    # Sem porta no host de propósito: não misturar com o Postgres "PORTAL-JURIDICO" do app.
+
+  evolution-api:
+    # atendai/evolution-api is gated on Docker Hub; evoapicloud carries the same v2.2.3 tag.
+    image: evoapicloud/evolution-api:v2.2.3
+    restart: unless-stopped
+    depends_on:
+      - evolution-redis
+      - evolution-postgres
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_APIKEY:-change-me}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_POSTGRES_PASSWORD:-change-me-evolution-only}@evolution-postgres:5432/evolution?schema=public
+      # Global nesta imagem v2.2.3 NÃO envia WEBHOOK_GLOBAL_HEADERS → 401 + retry infinito.
+      # Inbound autenticado: só webhook da instância (ensureInstance / /webhook/set).
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      QRCODE_LIMIT: "30"
+      DEL_INSTANCE: "false"
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      # Imagem v2.2.3 traz .env interno 2.3000.1015901307 (desatualizado → socket em loop, QR {count:0}).
+      # Valor atual: Baileys Defaults baileys-version.json. Sem isso o dotenv interno prevalece.
+      CONFIG_SESSION_PHONE_VERSION: "2.3000.1043857760"
+      NODE_OPTIONS: "--require /evolution/patch-os-release.cjs"
+      CONFIG_SESSION_PHONE_CLIENT: "Windows"
+      CONFIG_SESSION_PHONE_NAME: Chrome
+    volumes:
+      - ./infra/evolution/patch-os-release.cjs:/evolution/patch-os-release.cjs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  evolution-redis:
+  evolution-pg:

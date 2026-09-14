@@ -1,0 +1,295 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  funcionario
+}
+
+enum ChannelType {
+  evolution_baileys
+  evolution_cloud
+  dev_mock
+}
+
+enum ConnectionStatus {
+  close
+  connecting
+  open
+}
+
+enum MessageDirection {
+  in
+  out
+}
+
+enum MessageVisibility {
+  publica
+  interna
+}
+
+enum SendStatus {
+  pending
+  sent
+  failed
+  draft
+}
+
+enum TriageStatus {
+  aberto
+  arquivado
+  promovido
+}
+
+enum TicketStatus {
+  aberto
+  em_andamento
+  aguardando
+  resolvido
+}
+
+enum TicketPriority {
+  baixa
+  media
+  alta
+  urgente
+}
+
+enum TicketCategory {
+  cobranca
+  assembleia
+  obras
+  vizinhanca
+  administrativo
+  outro
+}
+
+enum TicketOrigin {
+  whatsapp
+  manual
+}
+
+enum IngestStatus {
+  stored
+  pending_index
+  indexed
+  skipped
+}
+
+enum DeadlineKind {
+  atendimento
+  juridico
+}
+
+model User {
+  id                   String           @id @default(uuid()) @db.Uuid
+  email                String           @unique
+  passwordHash         String
+  role                 UserRole
+  ativo                Boolean          @default(true)
+  podeResponderCliente Boolean          @default(true)
+  apenasRascunho       Boolean          @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  sessions             SessionToken[]
+  assignedTickets      Ticket[]         @relation("TicketAssignee")
+  createdTickets       Ticket[]         @relation("TicketCreator")
+  uploadedDocuments    OfficeDocument[]
+}
+
+model SessionToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Condominium {
+  id            String           @id @default(uuid()) @db.Uuid
+  nome          String
+  deletedAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  contacts      Contact[]
+  conversations Conversation[]
+  tickets       Ticket[]
+  documents     OfficeDocument[]
+}
+
+model Contact {
+  id            String         @id @default(uuid()) @db.Uuid
+  nome          String
+  phoneE164     String         @unique
+  email         String?
+  cargo         String?
+  condominiumId String?        @db.Uuid
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  condominium   Condominium?   @relation(fields: [condominiumId], references: [id])
+  conversations Conversation[]
+  tickets       Ticket[]
+
+  @@index([phoneE164])
+  @@index([condominiumId])
+}
+
+model ChannelConnection {
+  id            String           @id @default(uuid()) @db.Uuid
+  type          ChannelType
+  status        ConnectionStatus @default(close)
+  label         String
+  metadataJson  Json             @default("{}")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  conversations Conversation[]
+}
+
+model Conversation {
+  id            String            @id @default(uuid()) @db.Uuid
+  contactId     String?           @db.Uuid
+  condominiumId String?           @db.Uuid
+  connectionId  String            @db.Uuid
+  unidentified  Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  contact       Contact?          @relation(fields: [contactId], references: [id])
+  condominium   Condominium?      @relation(fields: [condominiumId], references: [id])
+  connection    ChannelConnection @relation(fields: [connectionId], references: [id])
+  messages      Message[]
+  triageItem    TriageItem?
+  tickets       Ticket[]
+
+  @@index([updatedAt])
+  @@index([connectionId])
+  @@index([contactId])
+  @@index([unidentified])
+}
+
+model Message {
+  id             String              @id @default(uuid()) @db.Uuid
+  conversationId String              @db.Uuid
+  ticketId       String?             @db.Uuid
+  direction      MessageDirection
+  visibility     MessageVisibility
+  waMessageId    String?             @unique
+  sendStatus     SendStatus          @default(pending)
+  body           String
+  createdAt      DateTime            @default(now())
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket         Ticket?             @relation(fields: [ticketId], references: [id])
+  attachments    MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([ticketId])
+  @@index([waMessageId])
+  @@index([sendStatus])
+}
+
+model MessageAttachment {
+  id           String  @id @default(uuid()) @db.Uuid
+  messageId    String  @db.Uuid
+  storageKey   String
+  mime         String
+  sizeBytes    Int
+  originalName String
+  message      Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model TriageItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  conversationId String          @unique @db.Uuid
+  ticketId       String?         @unique @db.Uuid
+  status         TriageStatus    @default(aberto)
+  category       TicketCategory?
+  priority       TicketPriority?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket         Ticket?         @relation(fields: [ticketId], references: [id])
+
+  @@index([status])
+}
+
+model Ticket {
+  id             String           @id @default(uuid()) @db.Uuid
+  protocol       String           @unique
+  title          String
+  status         TicketStatus     @default(aberto)
+  priority       TicketPriority
+  category       TicketCategory
+  origin         TicketOrigin
+  condominiumId  String           @db.Uuid
+  contactId      String           @db.Uuid
+  conversationId String?          @db.Uuid
+  assignedToId   String           @db.Uuid
+  createdById    String           @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  condominium    Condominium      @relation(fields: [condominiumId], references: [id])
+  contact        Contact          @relation(fields: [contactId], references: [id])
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id])
+  assignedTo     User             @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  createdBy      User             @relation("TicketCreator", fields: [createdById], references: [id])
+  triageItem     TriageItem?
+  messages       Message[]
+  documents      OfficeDocument[]
+  deadlines      Deadline[]
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([condominiumId])
+  @@index([conversationId])
+}
+
+model OfficeDocument {
+  id            String       @id @default(uuid()) @db.Uuid
+  condominiumId String       @db.Uuid
+  ticketId      String?      @db.Uuid
+  uploadedById  String       @db.Uuid
+  storageKey    String       @unique
+  mime          String
+  sizeBytes     Int
+  originalName  String
+  sha256        String
+  ingestStatus  IngestStatus @default(stored)
+  indexedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  condominium   Condominium  @relation(fields: [condominiumId], references: [id])
+  ticket        Ticket?      @relation(fields: [ticketId], references: [id])
+  uploadedBy    User         @relation(fields: [uploadedById], references: [id])
+
+  @@index([condominiumId])
+  @@index([ticketId])
+  @@index([ingestStatus])
+}
+
+model Deadline {
+  id        String       @id @default(uuid()) @db.Uuid
+  ticketId  String       @db.Uuid
+  title     String
+  dueAt     DateTime
+  kind      DeadlineKind
+  doneAt    DateTime?
+  alertedAt DateTime?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([dueAt])
+  @@index([ticketId])
+}

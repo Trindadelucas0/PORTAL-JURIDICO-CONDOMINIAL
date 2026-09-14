@@ -1,0 +1,315 @@
+import { unprocessable } from "@/lib/api/errors";
+import { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } from "@/lib/channels/evolution-qr-cache";
+import { describeEvolutionError, whatsAppNumberFromE164 } from "@/lib/channels/evolution-send";
+import type {
+  ProviderSendInput,
+  ProviderSendMediaInput,
+  ProviderStatusResult,
+  QrResult,
+  WhatsAppProvider,
+} from "@/lib/channels/whatsapp-provider";
+
+function evoBase() {
+  return process.env.EVOLUTION_API_URL?.replace(/\/$/, "") || "";
+}
+
+function evoKey() {
+  return process.env.EVOLUTION_APIKEY || "";
+}
+
+function instance() {
+  return process.env.EVOLUTION_INSTANCE || "juricon";
+}
+
+function webhookUrl() {
+  return process.env.EVOLUTION_WEBHOOK_URL?.replace(/\/$/, "") || "";
+}
+
+function webhookSecret() {
+  return process.env.EVOLUTION_WEBHOOK_SECRET || "";
+}
+
+const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "QRCODE_UPDATED"] as const;
+
+function webhookConfigBody() {
+  return {
+    enabled: true,
+    url: webhookUrl(),
+    webhookByEvents: false,
+    webhookBase64: false,
+    headers: {
+      "x-evolution-secret": webhookSecret(),
+    },
+    events: [...WEBHOOK_EVENTS],
+  };
+}
+
+function headers(json = false): HeadersInit {
+  return {
+    apikey: evoKey(),
+    ...(json ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
+function parseQrPayload(json: {
+  code?: string;
+  pairingCode?: string;
+  base64?: string;
+  qrcode?: { base64?: string; code?: string; pairingCode?: string; count?: number };
+  count?: number;
+}): { qr: string | null; pairingCode: string | null } {
+  const nested = json.qrcode;
+  const rawQr = json.base64 || nested?.base64 || null;
+  const rawCode = json.code || nested?.code || null;
+  const qr =
+    (typeof rawQr === "string" && rawQr.length > 40 ? rawQr : null) ||
+    (typeof rawCode === "string" && rawCode.length > 40 ? rawCode : null);
+  const pairingCode = json.pairingCode || nested?.pairingCode || null;
+  const parsed = { qr, pairingCode };
+  rememberEvolutionQr(parsed);
+  return parsed;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function waitForQr(ms: number): Promise<{ qr: string | null; pairingCode: string | null } | null> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const cached = readEvolutionQr();
+    if (cached?.qr || cached?.pairingCode) {
+      return { qr: cached.qr, pairingCode: cached.pairingCode };
+    }
+    await sleep(500);
+  }
+  const cached = readEvolutionQr();
+  if (cached?.qr || cached?.pairingCode) {
+    return { qr: cached.qr, pairingCode: cached.pairingCode };
+  }
+  return null;
+}
+
+function hasQrPayload(parsed: { qr: string | null; pairingCode: string | null }) {
+  return Boolean(parsed.qr || parsed.pairingCode);
+}
+
+async function instanceExists(): Promise<boolean> {
+  const name = instance();
+  const res = await fetch(`${evoBase()}/instance/connectionState/${encodeURIComponent(name)}`, {
+    headers: headers(),
+  });
+  if (res.ok) return true;
+  if (res.status === 404) return false;
+  const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; status?: number };
+  const msg = `${body.error || ""} ${body.message || ""}`.toLowerCase();
+  if (res.status === 400 || msg.includes("not found") || msg.includes("does not exist")) {
+    return false;
+  }
+  return false;
+}
+
+async function createInstance(): Promise<{ qr: string | null; pairingCode: string | null }> {
+  const res = await fetch(`${evoBase()}/instance/create`, {
+    method: "POST",
+    headers: headers(true),
+    body: JSON.stringify({
+      instanceName: instance(),
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      webhook: webhookSecret() && webhookUrl() ? webhookConfigBody() : undefined,
+    }),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    message?: string;
+    error?: string;
+    code?: string;
+    pairingCode?: string;
+    base64?: string;
+    qrcode?: { base64?: string; code?: string; pairingCode?: string };
+  };
+  if (res.ok) return parseQrPayload(body);
+
+  const msg = `${body.message || ""} ${body.error || ""}`.toLowerCase();
+  if (res.status === 403 || msg.includes("already") || msg.includes("exist")) {
+    return { qr: null, pairingCode: null };
+  }
+  throw unprocessable("Falha ao criar instância Evolution", {
+    status: res.status,
+    message: body.message || body.error,
+  });
+}
+
+export class EvolutionBaileysProvider implements WhatsAppProvider {
+  kind = "evolution_baileys" as const;
+
+  label() {
+    return "WhatsApp Web (não oficial)";
+  }
+
+  isConfigured() {
+    return Boolean(evoBase() && evoKey());
+  }
+
+  async ensureInstance(): Promise<void> {
+    if (!this.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+    }
+    if (!(await instanceExists())) {
+      await createInstance();
+    }
+    await this.syncWebhook();
+  }
+
+  /** Evolution global webhook não envia secret por padrão; o app recusa com 401. */
+  async syncWebhook(): Promise<void> {
+    if (!this.isConfigured() || !webhookSecret() || !webhookUrl()) return;
+    const name = encodeURIComponent(instance());
+    const payloads = [webhookConfigBody(), { webhook: webhookConfigBody() }];
+    const urls = [`${evoBase()}/webhook/set/${name}`, `${evoBase()}/webhook/${name}`];
+    for (const url of urls) {
+      for (const payload of payloads) {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+        if (res?.ok) return;
+      }
+    }
+  }
+
+  async send(input: ProviderSendInput) {
+    if (!this.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+    }
+    const number = whatsAppNumberFromE164(input.toE164);
+    const res = await fetch(`${evoBase()}/message/sendText/${encodeURIComponent(instance())}`, {
+      method: "POST",
+      headers: headers(true),
+      body: JSON.stringify({ number, text: input.body }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { key?: { id?: string } };
+    if (!res.ok) {
+      throw unprocessable(describeEvolutionError(res.status, json, "text"), { status: res.status });
+    }
+    return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
+  }
+
+  async sendMedia(input: ProviderSendMediaInput) {
+    if (!this.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+    }
+    const mediaType = input.mime.startsWith("image/")
+      ? "image"
+      : input.mime.startsWith("audio/")
+        ? "audio"
+        : "document";
+    const res = await fetch(`${evoBase()}/message/sendMedia/${encodeURIComponent(instance())}`, {
+      method: "POST",
+      headers: headers(true),
+      body: JSON.stringify({
+        number: whatsAppNumberFromE164(input.toE164),
+        mediatype: mediaType,
+        mimetype: input.mime,
+        caption: input.body || "",
+        fileName: input.fileName,
+        media: input.buffer.toString("base64"),
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { key?: { id?: string } };
+    if (!res.ok) {
+      throw unprocessable(describeEvolutionError(res.status, json, "media"), { status: res.status });
+    }
+    return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
+  }
+
+  async getQr(): Promise<QrResult> {
+    if (!this.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada");
+    }
+    const hit = readEvolutionQr();
+    if (hit?.qr || hit?.pairingCode) {
+      return { qr: hit.qr, pairingCode: hit.pairingCode, status: "connecting" };
+    }
+
+    if (!(await instanceExists())) {
+      const created = await createInstance();
+      if (hasQrPayload(created)) {
+        return { ...created, status: "connecting" };
+      }
+    }
+
+    const live = await this.getStatus();
+    if (live.status === "open") {
+      return { qr: null, pairingCode: null, status: "open" };
+    }
+
+    const deadline = Date.now() + 25_000;
+    while (Date.now() < deadline) {
+      const connect = await this.fetchConnectPayload().catch(() => ({ qr: null, pairingCode: null }));
+      if (hasQrPayload(connect)) {
+        return { ...connect, status: "connecting" };
+      }
+      const cached = await waitForQr(1_000);
+      if (cached && hasQrPayload(cached)) {
+        return { ...cached, status: "connecting" };
+      }
+    }
+
+    throw unprocessable(
+      "QR ainda não gerado pela Evolution. Espere 10s e clique em Obter QR de novo (não precisa de telefone).",
+    );
+  }
+
+  private async fetchConnectPayload(): Promise<{ qr: string | null; pairingCode: string | null }> {
+    const res = await fetch(`${evoBase()}/instance/connect/${encodeURIComponent(instance())}`, {
+      headers: headers(),
+    });
+    if (!res.ok) {
+      throw unprocessable("Não foi possível obter QR", { status: res.status });
+    }
+    const json = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      pairingCode?: string;
+      base64?: string;
+      count?: number;
+      qrcode?: { base64?: string; code?: string; pairingCode?: string; count?: number };
+    };
+    return parseQrPayload(json);
+  }
+
+  async getStatus(): Promise<ProviderStatusResult> {
+    if (!this.isConfigured()) {
+      return { status: "close", detail: "não configurado" };
+    }
+    try {
+      const res = await fetch(`${evoBase()}/instance/connectionState/${encodeURIComponent(instance())}`, {
+        headers: headers(),
+      });
+      if (!res.ok) {
+        if (res.status === 404) return { status: "close", detail: "instance_missing" };
+        return { status: "close", detail: `http_${res.status}` };
+      }
+      const json = (await res.json().catch(() => ({}))) as { instance?: { state?: string } };
+      return { status: json.instance?.state || "unknown", detail: "evolution" };
+    } catch {
+      return { status: "close", detail: "unreachable" };
+    }
+  }
+
+  async disconnect(): Promise<ProviderStatusResult> {
+    if (!this.isConfigured()) {
+      throw unprocessable("Evolution Baileys não configurada");
+    }
+    const res = await fetch(`${evoBase()}/instance/logout/${encodeURIComponent(instance())}`, {
+      method: "DELETE",
+      headers: headers(),
+    });
+    if (!res.ok && res.status !== 404) {
+      throw unprocessable("Falha ao desconectar instância Evolution", { status: res.status });
+    }
+    clearEvolutionQr();
+    return { status: "close", detail: "logout" };
+  }
+}
