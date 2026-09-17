@@ -22,8 +22,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     assertCsrf(request);
-    await requireAdmin();
-    const row = await cadastroService.createCondominium(await request.json());
+    const user = await requireAdmin();
+    const row = await cadastroService.createCondominium(user.id, await request.json());
     return created(row);
   } catch (error) {
     return handleRouteError(error);

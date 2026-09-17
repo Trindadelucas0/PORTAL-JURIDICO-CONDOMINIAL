@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+uploads
+coverage
+*.log
+agent-transcripts
+.cursor
+docs
+tests
+infra/cloudflared
+infra/deploy/backup.sh

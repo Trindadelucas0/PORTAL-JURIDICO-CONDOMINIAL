@@ -87,21 +87,29 @@ enum DeadlineKind {
   juridico
 }
 
+enum ContactIdentityKind {
+  phone
+  lid
+}
+
 model User {
-  id                   String           @id @default(uuid()) @db.Uuid
-  email                String           @unique
+  id                   String             @id @default(uuid()) @db.Uuid
+  email                String             @unique
+  nome                 String             @default("")
   passwordHash         String
   role                 UserRole
-  ativo                Boolean          @default(true)
-  podeResponderCliente Boolean          @default(true)
-  apenasRascunho       Boolean          @default(false)
+  ativo                Boolean            @default(true)
+  podeResponderCliente Boolean            @default(true)
+  apenasRascunho       Boolean            @default(false)
   deletedAt            DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
   sessions             SessionToken[]
-  assignedTickets      Ticket[]         @relation("TicketAssignee")
-  createdTickets       Ticket[]         @relation("TicketCreator")
+  assignedTickets      Ticket[]           @relation("TicketAssignee")
+  createdTickets       Ticket[]           @relation("TicketCreator")
   uploadedDocuments    OfficeDocument[]
+  conversationReads    ConversationRead[]
+  auditEvents          AuditEvent[]
 }
 
 model SessionToken {
@@ -119,6 +127,10 @@ model SessionToken {
 model Condominium {
   id            String           @id @default(uuid()) @db.Uuid
   nome          String
+  cnpj          String?
+  endereco      String?
+  cidadeUf      String?
+  observacao    String?
   deletedAt     DateTime?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
@@ -141,9 +153,21 @@ model Contact {
   condominium   Condominium?   @relation(fields: [condominiumId], references: [id])
   conversations Conversation[]
   tickets       Ticket[]
+  identities    ContactIdentity[]
 
   @@index([phoneE164])
   @@index([condominiumId])
+}
+
+model ContactIdentity {
+  id        String               @id @default(uuid()) @db.Uuid
+  contactId String               @db.Uuid
+  kind      ContactIdentityKind
+  value     String               @unique
+  createdAt DateTime             @default(now())
+  contact   Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
 }
 
 model ChannelConnection {
@@ -158,30 +182,35 @@ model ChannelConnection {
 }
 
 model Conversation {
-  id            String            @id @default(uuid()) @db.Uuid
-  contactId     String?           @db.Uuid
-  condominiumId String?           @db.Uuid
-  connectionId  String            @db.Uuid
-  unidentified  Boolean           @default(false)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  contact       Contact?          @relation(fields: [contactId], references: [id])
-  condominium   Condominium?      @relation(fields: [condominiumId], references: [id])
-  connection    ChannelConnection @relation(fields: [connectionId], references: [id])
-  messages      Message[]
-  triageItem    TriageItem?
-  tickets       Ticket[]
+  id             String             @id @default(uuid()) @db.Uuid
+  contactId      String?            @db.Uuid
+  condominiumId  String?            @db.Uuid
+  connectionId   String             @db.Uuid
+  peerPhoneE164  String
+  unidentified   Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  contact        Contact?           @relation(fields: [contactId], references: [id])
+  condominium    Condominium?       @relation(fields: [condominiumId], references: [id])
+  connection     ChannelConnection  @relation(fields: [connectionId], references: [id])
+  messages       Message[]
+  triageItem     TriageItem?
+  tickets        Ticket[]
+  reads          ConversationRead[]
 
+  @@unique([connectionId, peerPhoneE164])
   @@index([updatedAt])
   @@index([connectionId])
   @@index([contactId])
   @@index([unidentified])
+  @@index([peerPhoneE164])
 }
 
 model Message {
   id             String              @id @default(uuid()) @db.Uuid
   conversationId String              @db.Uuid
   ticketId       String?             @db.Uuid
+  replyToId      String?             @db.Uuid
   direction      MessageDirection
   visibility     MessageVisibility
   waMessageId    String?             @unique
@@ -190,12 +219,15 @@ model Message {
   createdAt      DateTime            @default(now())
   conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   ticket         Ticket?             @relation(fields: [ticketId], references: [id])
+  replyTo        Message?            @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]           @relation("MessageReply")
   attachments    MessageAttachment[]
 
   @@index([conversationId, createdAt])
   @@index([ticketId])
   @@index([waMessageId])
   @@index([sendStatus])
+  @@index([replyToId])
 }
 
 model MessageAttachment {
@@ -236,14 +268,14 @@ model Ticket {
   condominiumId  String           @db.Uuid
   contactId      String           @db.Uuid
   conversationId String?          @db.Uuid
-  assignedToId   String           @db.Uuid
+  assignedToId   String?          @db.Uuid
   createdById    String           @db.Uuid
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   condominium    Condominium      @relation(fields: [condominiumId], references: [id])
   contact        Contact          @relation(fields: [contactId], references: [id])
   conversation   Conversation?    @relation(fields: [conversationId], references: [id])
-  assignedTo     User             @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedTo     User?            @relation("TicketAssignee", fields: [assignedToId], references: [id])
   createdBy      User             @relation("TicketCreator", fields: [createdById], references: [id])
   triageItem     TriageItem?
   messages       Message[]
@@ -292,4 +324,31 @@ model Deadline {
 
   @@index([dueAt])
   @@index([ticketId])
+}
+
+model ConversationRead {
+  userId         String       @db.Uuid
+  conversationId String       @db.Uuid
+  lastReadAt     DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, conversationId])
+  @@index([conversationId])
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entityType String
+  entityId   String
+  beforeJson Json?
+  afterJson  Json?
+  createdAt  DateTime @default(now())
+  actor      User     @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId])
 }

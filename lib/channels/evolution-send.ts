@@ -15,12 +15,57 @@ export function mapBaileysLiveToDb(status: string): "open" | "connecting" | "clo
   return null;
 }
 
-export function describeEvolutionError(status: number, json: unknown, kind: "text" | "media" = "text"): string {
+export function evolutionLogoutAlreadyOff(status: number): boolean {
+  return status === 400 || status === 404;
+}
+
+function flattenEvolutionField(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const joined = value
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .join("; ");
+    if (joined) return joined;
+  }
+  return undefined;
+}
+
+function evolutionErrorSnippet(json: unknown): string {
   const body = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
   const nested = body.response && typeof body.response === "object" ? (body.response as Record<string, unknown>) : {};
   const rawCandidates = [nested.message, body.message, body.error, nested.error];
-  const raw = rawCandidates.find((v) => typeof v === "string" && v.trim()) as string | undefined;
-  const snippet = (raw || "").replace(/\s+/g, " ").trim().slice(0, 180);
+  const raw = rawCandidates.map(flattenEvolutionField).find((v) => Boolean(v));
+  return (raw || "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+export function describeEvolutionError(status: number, json: unknown, kind: "text" | "media" = "text"): string {
+  const snippet = evolutionErrorSnippet(json);
   const prefix = kind === "media" ? "Evolution recusou mídia" : "Evolution recusou envio";
   return snippet ? `${prefix} (${status}): ${snippet}` : `${prefix} (${status})`;
 }
+
+function isGenericEvolutionError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /: bad request$/.test(lower) || /recusou (envio|mídia) \(\d+\)$/.test(lower);
+}
+
+export function pickRicherEvolutionError(
+  kind: "text" | "media",
+  attempts: { status: number; json: unknown }[],
+): string {
+  const described = attempts.map((attempt) => describeEvolutionError(attempt.status, attempt.json, kind));
+  return described.find((msg) => !isGenericEvolutionError(msg)) || described[described.length - 1] || described[0] || describeEvolutionError(400, {}, kind);
+}
+
+export function evolutionSendLooksLikeLegacySchema(json: unknown): boolean {
+  const text = evolutionErrorSnippet(json).toLowerCase();
+  if (!text) return false;
+  return (
+    text.includes("textmessage") ||
+    /\bproperty text\b/.test(text) ||
+    /\btext (must|should|is required)\b/.test(text) ||
+    /\bmust (be a string|have).*text\b/.test(text)
+  );
+}
+
+export { brazilWhatsAppNumberVariants } from "@/lib/phone/identity";

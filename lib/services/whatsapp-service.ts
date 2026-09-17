@@ -1,10 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
-import { AppError, failClosed, notFound, unprocessable } from "@/lib/api/errors";
+import { AppError, failClosed, notFound, tooMany, unprocessable } from "@/lib/api/errors";
 import { atendimentoService } from "@/lib/services/atendimento-service";
 import { providerFor } from "@/lib/channels/resolve-provider";
 import { rememberEvolutionQr } from "@/lib/channels/evolution-qr-cache";
+import { interpretEvolutionWebhook } from "@/lib/channels/evolution-webhook";
 import { rateLimit } from "@/lib/api/rate-limit";
 
 const connectionCreate = z.object({
@@ -208,76 +209,34 @@ export const whatsappService = {
   },
 
   async ingestEvolution(body: unknown) {
-    const limited = rateLimit("webhook:evolution", 120, 60_000);
-    if (!limited.ok) {
-      throw unprocessable("Webhook rate limited");
+    const parsed = interpretEvolutionWebhook(body);
+    if (parsed.kind === "malformed") {
+      return { ignored: true as const, reason: "malformed" };
     }
-    const parsed = z
-      .object({
-        event: z.string().optional(),
-        data: z
-          .object({
-            qrcode: z
-              .object({
-                base64: z.string().optional(),
-                code: z.string().optional(),
-                pairingCode: z.string().optional(),
-              })
-              .optional(),
-            base64: z.string().optional(),
-            pairingCode: z.string().optional(),
-            key: z
-              .object({
-                id: z.string().optional(),
-                remoteJid: z.string().optional(),
-                fromMe: z.boolean().optional(),
-              })
-              .optional(),
-            message: z
-              .object({
-                conversation: z.string().optional(),
-                extendedTextMessage: z.object({ text: z.string().optional() }).optional(),
-              })
-              .optional(),
-          })
-          .optional(),
-      })
-      .passthrough()
-      .parse(body);
-
-    const event = (parsed.event || "").toLowerCase();
-    if (event.includes("qrcode")) {
-      const qr =
-        parsed.data?.qrcode?.base64 ||
-        parsed.data?.base64 ||
-        (parsed.data?.qrcode?.code && parsed.data.qrcode.code.length > 40 ? parsed.data.qrcode.code : null);
-      rememberEvolutionQr({
-        qr,
-        pairingCode: parsed.data?.qrcode?.pairingCode || parsed.data?.pairingCode,
-      });
+    if (parsed.kind === "qrcode") {
+      rememberEvolutionQr({ qr: parsed.qr, pairingCode: parsed.pairingCode });
       return { ignored: true as const, reason: "qrcode" };
     }
+    if (parsed.kind === "ignored") {
+      return { ignored: true as const, reason: parsed.reason };
+    }
 
-    const fromMe = parsed.data?.key?.fromMe;
-    if (fromMe) {
-      return { ignored: true as const, reason: "fromMe" };
+    const ingested = [];
+    for (const item of parsed.items) {
+      const limited = rateLimit("webhook:evolution", 120, 60_000);
+      if (!limited.ok) {
+        throw tooMany("Webhook rate limited");
+      }
+      ingested.push(
+        await atendimentoService.ingestInbound({
+          waMessageId: item.waMessageId,
+          fromPhone: item.fromPhone,
+          waLid: item.waLid,
+          body: item.body,
+          connectionType: "evolution_baileys",
+        }),
+      );
     }
-    const waMessageId = parsed.data?.key?.id;
-    const remote = parsed.data?.key?.remoteJid || "";
-    const text =
-      parsed.data?.message?.conversation ||
-      parsed.data?.message?.extendedTextMessage?.text ||
-      "";
-    const userPart = remote.split("@")[0] || "";
-    const digits = userPart.replace(/\D/g, "");
-    if (!waMessageId || !digits) {
-      return { ignored: true as const, reason: "incomplete" };
-    }
-    return atendimentoService.ingestInbound({
-      waMessageId,
-      fromPhone: `+${digits}`,
-      body: text || "(mídia ou mensagem sem texto)",
-      connectionType: "evolution_baileys",
-    });
+    return ingested.length === 1 ? ingested[0] : { items: ingested };
   },
 };

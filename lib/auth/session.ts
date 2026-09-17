@@ -11,6 +11,7 @@ const SESSION_DAYS = 7;
 export type PublicUser = {
   id: string;
   email: string;
+  nome: string;
   role: UserRole;
   ativo: boolean;
   podeResponderCliente: boolean;
@@ -21,6 +22,7 @@ export function toPublicUser(user: User): PublicUser {
   return {
     id: user.id,
     email: user.email,
+    nome: user.nome,
     role: user.role,
     ativo: user.ativo,
     podeResponderCliente: user.podeResponderCliente,

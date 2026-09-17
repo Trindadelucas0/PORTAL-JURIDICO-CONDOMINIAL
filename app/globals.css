@@ -1,19 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --page: #f7f6f2;
+  --page: #f4f2ec;
   --card: #ffffff;
   --ink: #0e1420;
   --muted: #5c6570;
   --brand: #1b3a4b;
   --brand-soft: #2a4f63;
-  --border: #e6e2d8;
+  --border: #ddd8cc;
   --accent: #b8a07a;
   --ok: #15803d;
   --warn: #b45309;
   --danger: #b91c1c;
   --channel-whatsapp: #128c7e;
-  --radius: 14px;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(14, 20, 32, 0.06);
   --background: var(--page);
   --foreground: var(--ink);
 }
@@ -45,11 +46,60 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--brand) 18%, white);
+  color: var(--ink);
+}
+
 *:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-.font-display {
+.font-wordmark {
   font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+  letter-spacing: -0.03em;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+dialog::backdrop {
+  background: rgb(14 20 32 / 0.4);
+}
+
+dialog.ui-dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(14, 20, 32, 0.16);
+  max-width: min(32rem, calc(100vw - 2rem));
+  width: 100%;
+}
+
+dialog.ui-drawer {
+  margin: 0 0 0 auto;
+  height: 100%;
+  max-height: 100%;
+  width: min(28rem, 100vw);
+  max-width: 100%;
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(14, 20, 32, 0.12);
+}
+
+@media (max-width: 767px) {
+  dialog.ui-drawer {
+    margin: auto 0 0 0;
+    height: min(88vh, 100%);
+    width: 100%;
+    max-width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+  }
 }

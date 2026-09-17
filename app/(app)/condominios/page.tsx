@@ -1,139 +1,184 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Card, EmptyState, ErrorBanner, Skeleton } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { Drawer } from "@/components/ui/drawer";
+import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/client/api";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
-type Condo = { id: string; nome: string; _count?: { contacts: number } };
-type Contact = {
+type Condo = { id: string; nome: string; cidadeUf?: string | null; _count?: { contacts: number } };
+type Detail = {
   id: string;
   nome: string;
-  phoneE164: string;
-  cargo: string | null;
-  condominium: { nome: string } | null;
+  cidadeUf: string | null;
+  contacts: Array<{ id: string; nome: string; phoneE164: string; cargo: string | null }>;
 };
 
 export default function CondominiosPage() {
   const qc = useQueryClient();
-  const condos = useQuery({ queryKey: ["condominiums"], queryFn: () => api<Condo[]>("/api/condominiums") });
-  const contacts = useQuery({ queryKey: ["contacts"], queryFn: () => api<Contact[]>("/api/contacts") });
+  const toast = useToast();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [nome, setNome] = useState("");
   const [cNome, setCNome] = useState("");
   const [phone, setPhone] = useState("");
-  const [condoId, setCondoId] = useState("");
+  const condos = useQuery({ queryKey: ["condominiums"], queryFn: () => api<Condo[]>("/api/condominiums") });
+  const detail = useQuery({
+    queryKey: ["condominium", selected],
+    enabled: Boolean(selected),
+    queryFn: () => api<Detail>(`/api/condominiums/${selected}`),
+  });
   const createCondo = useMutation({
-    mutationFn: () => api("/api/condominiums", { method: "POST", body: JSON.stringify({ nome }) }),
-    onSuccess: () => {
+    mutationFn: () => api<Condo>("/api/condominiums", { method: "POST", body: JSON.stringify({ nome }) }),
+    onSuccess: (res) => {
       setNome("");
+      setCreateOpen(false);
+      toast("Condomínio salvo");
       qc.invalidateQueries({ queryKey: ["condominiums"] });
+      setSelected(res.data.id);
     },
   });
   const createContact = useMutation({
     mutationFn: () =>
       api("/api/contacts", {
         method: "POST",
-        body: JSON.stringify({ nome: cNome, phone, condominiumId: condoId || null }),
+        body: JSON.stringify({ nome: cNome, phone, condominiumId: selected }),
       }),
     onSuccess: () => {
       setCNome("");
       setPhone("");
-      qc.invalidateQueries({ queryKey: ["contacts"] });
+      setContactOpen(false);
+      toast("Contato salvo");
+      qc.invalidateQueries({ queryKey: ["condominium", selected] });
+      qc.invalidateQueries({ queryKey: ["condominiums"] });
     },
   });
+  const items = useMemo(() => {
+    const list = condos.data?.data ?? [];
+    const s = q.trim().toLowerCase();
+    if (!s) return list;
+    return list.filter((c) => c.nome.toLowerCase().includes(s));
+  }, [condos.data, q]);
+  const current = detail.data?.data;
 
   return (
-    <div className="space-y-6">
-      <h1 className="font-display text-3xl">Condomínios e contatos</h1>
+    <div>
+      <PageHeader
+        title="Condomínios"
+        action={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            Novo condomínio
+          </Button>
+        }
+      />
       {condos.isError ? <ErrorBanner message="Falha ao carregar condomínios." onRetry={() => condos.refetch()} /> : null}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <h2 className="font-medium">Condomínios</h2>
+      <div className="grid min-h-[60vh] overflow-hidden rounded-[12px] border border-[var(--border)] bg-[var(--card)] lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <aside className="border-b border-[var(--border)] p-3 lg:border-b-0 lg:border-r">
+          <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar condomínio" />
           {condos.isLoading ? (
             <Skeleton className="mt-3 h-24" />
-          ) : (condos.data?.data ?? []).length === 0 ? (
-            <div className="mt-3">
-              <EmptyState title="Nenhum condomínio" hint="Cadastre o primeiro para vincular contatos." />
-            </div>
+          ) : items.length === 0 ? (
+            <EmptyState title="Nenhum condomínio" />
           ) : (
-            <ul className="mt-3 grid gap-2">
-              {(condos.data?.data ?? []).map((c) => (
-                <li key={c.id} className="rounded-[12px] bg-[var(--page)] px-3 py-2 text-sm">
-                  {c.nome}
-                  <span className="ml-2 text-[var(--muted)]">{c._count?.contacts ?? 0} contatos</span>
+            <ul className="mt-3 space-y-0.5">
+              {items.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className={cn("w-full rounded-[8px] px-3 py-2 text-left text-sm", selected === c.id ? "bg-[var(--page)]" : "hover:bg-[var(--page)]/70")}
+                    onClick={() => setSelected(c.id)}
+                  >
+                    <span className="font-medium">{c.nome}</span>
+                    <span className="mt-0.5 block text-xs text-[var(--muted)]">{c._count?.contacts ?? 0} contatos</span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
-          <form
-            className="mt-4 flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              createCondo.mutate();
-            }}
-          >
-            <Label htmlFor="condo" className="sr-only">
-              Nome do condomínio
-            </Label>
-            <Input id="condo" placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
-            <Button type="submit" disabled={createCondo.isPending || !nome.trim()}>
-              Salvar
-            </Button>
-          </form>
-          {createCondo.isError ? <p className="mt-2 text-sm text-[var(--danger)]">{(createCondo.error as Error).message}</p> : null}
-        </Card>
-        <Card>
-          <h2 className="font-medium">Contatos</h2>
-          {contacts.isLoading ? (
-            <Skeleton className="mt-3 h-24" />
-          ) : (contacts.data?.data ?? []).length === 0 ? (
-            <div className="mt-3">
-              <EmptyState title="Nenhum contato" hint="Telefone único em E.164." />
-            </div>
+        </aside>
+        <section className="p-5">
+          {!selected ? (
+            <p className="text-sm text-[var(--muted)]">Selecione um condomínio</p>
+          ) : detail.isLoading || !current ? (
+            <Skeleton className="h-32" />
           ) : (
-            <ul className="mt-3 grid gap-2">
-              {(contacts.data?.data ?? []).map((c) => (
-                <li key={c.id} className="rounded-[12px] bg-[var(--page)] px-3 py-2 text-sm">
-                  {c.nome} · {c.phoneE164}
-                  <div className="text-[var(--muted)]">{c.condominium?.nome || "sem condomínio"}</div>
-                </li>
-              ))}
-            </ul>
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold">{current.nome}</h2>
+                  <p className="text-sm text-[var(--muted)]">{current.cidadeUf || "—"}</p>
+                </div>
+                <Link href={`/condominios/${current.id}`} className="text-sm text-[var(--brand)]">
+                  Editar cadastro
+                </Link>
+              </div>
+              <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Contatos</h3>
+              {current.contacts.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--muted)]">Nenhum contato.</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-[var(--border)]">
+                  {current.contacts.map((ct) => (
+                    <li key={ct.id} className="flex justify-between gap-2 py-2 text-sm">
+                      <span>
+                        {ct.nome}
+                        {ct.cargo ? <span className="text-[var(--muted)]"> · {ct.cargo}</span> : null}
+                      </span>
+                      <span className="text-[var(--muted)]">{ct.phoneE164}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button className="mt-4" type="button" variant="secondary" onClick={() => setContactOpen(true)}>
+                Adicionar contato
+              </Button>
+            </div>
           )}
-          <form
-            className="mt-4 grid gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              createContact.mutate();
-            }}
-          >
-            <Input placeholder="Nome" value={cNome} onChange={(e) => setCNome(e.target.value)} aria-label="Nome do contato" />
-            <Input placeholder="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="Telefone" />
-            <select
-              className="rounded-[12px] border border-[var(--border)] px-3 py-2.5 text-sm"
-              value={condoId}
-              onChange={(e) => setCondoId(e.target.value)}
-              aria-label="Condomínio"
-            >
-              <option value="">Sem condomínio</option>
-              {(condos.data?.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" disabled={createContact.isPending || !cNome.trim() || !phone.trim()}>
-              Salvar contato
-            </Button>
-          </form>
-          {createContact.isError ? (
-            <p className="mt-2 text-sm text-[var(--danger)]">{(createContact.error as Error).message}</p>
-          ) : null}
-          {createContact.isSuccess ? <p className="mt-2 text-sm text-[var(--ok)]">Contato salvo.</p> : null}
-        </Card>
+        </section>
       </div>
+      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Novo condomínio">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createCondo.mutate();
+          }}
+        >
+          <Label htmlFor="nome">Nome</Label>
+          <Input id="nome" required value={nome} onChange={(e) => setNome(e.target.value)} />
+          {createCondo.isError ? <p className="text-sm text-[var(--danger)]">{(createCondo.error as Error).message}</p> : null}
+          <Button type="submit" disabled={createCondo.isPending}>
+            Salvar
+          </Button>
+        </form>
+      </Drawer>
+      <Drawer open={contactOpen} onClose={() => setContactOpen(false)} title="Novo contato">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createContact.mutate();
+          }}
+        >
+          <Label htmlFor="cn">Nome</Label>
+          <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
+          <Label htmlFor="ph">Telefone</Label>
+          <Input id="ph" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+          {createContact.isError ? <p className="text-sm text-[var(--danger)]">{(createContact.error as Error).message}</p> : null}
+          <Button type="submit" disabled={createContact.isPending || !selected}>
+            Salvar contato
+          </Button>
+        </form>
+      </Drawer>
     </div>
   );
 }

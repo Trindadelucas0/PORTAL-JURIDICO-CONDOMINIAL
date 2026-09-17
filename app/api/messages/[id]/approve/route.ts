@@ -1,12 +1,12 @@
 import { ok } from "@/lib/api/envelope";
 import { assertCsrf, handleRouteError } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/auth/guards";
+import { requireSession } from "@/lib/auth/guards";
 import { approvalService } from "@/lib/services/approval-service";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     assertCsrf(request);
-    const user = await requireAdmin();
+    const user = await requireSession();
     const { id } = await ctx.params;
     const message = await approvalService.approve(user, id);
     return ok(message);

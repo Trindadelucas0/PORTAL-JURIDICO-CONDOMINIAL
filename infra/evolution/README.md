@@ -1,8 +1,11 @@
 # Evolution API (WhatsApp Web / Baileys) — isolada do Juricon
 
-Este compose sobe **somente** Redis + Postgres interno da Evolution + Evolution API.
+Este compose (arquivo base) sobe **somente** Redis + Postgres interno da Evolution + Evolution API.
 
-Não use o database PostgreSQL `"PORTAL-JURIDICO"` aqui. O Next.js continua no host (`pnpm dev`).
+Não use o database PostgreSQL `"PORTAL-JURIDICO"` aqui.
+
+- **Notebook:** Next no host (`pnpm dev --port 3010`); `docker compose up -d` publica Evolution em `localhost:8080`.
+- **VPS:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Next e Postgres Juricon no Compose; Evolution **sem** porta no host. Guia: [`docs/deploy-vps.md`](../../docs/deploy-vps.md).
 
 Imagem: `evoapicloud/evolution-api:v2.2.3` (o namespace antigo `atendai/evolution-api` está gated no Docker Hub).
 

@@ -7,6 +7,7 @@ import { isAdmin } from "@/lib/auth/guards";
 import { requireTicketAccess } from "@/lib/auth/ticket-access";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
+import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 
 export function createDocumentService(db: PrismaClient = defaultPrisma) {
   return {
@@ -72,17 +73,66 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       return doc;
     },
 
+    async queueWhatsAppDraft(user: User, documentId: string) {
+      const doc = await db.officeDocument.findFirst({
+        where: { id: documentId },
+        include: { ticket: { include: { conversation: { include: { contact: true } } } } },
+      });
+      if (!doc) throw notFound("Documento não encontrado");
+      if (!doc.ticketId) throw unprocessable("Vincule o documento a um chamado para enviar");
+      await requireTicketAccess(user, doc.ticketId, db);
+      const conversationId = doc.ticket?.conversationId;
+      if (!conversationId) throw unprocessable("Chamado sem conversa para enviar no WhatsApp");
+      if (!doc.ticket?.conversation?.contact?.phoneE164) {
+        throw unprocessable("Identifique o contato antes de enviar");
+      }
+      const message = await db.message.create({
+        data: {
+          conversationId,
+          ticketId: doc.ticketId,
+          direction: "out",
+          visibility: "publica",
+          sendStatus: "pending",
+          body: doc.originalName,
+          attachments: {
+            create: {
+              storageKey: doc.storageKey,
+              mime: doc.mime,
+              sizeBytes: doc.sizeBytes,
+              originalName: doc.originalName,
+            },
+          },
+        },
+        include: { attachments: true },
+      });
+      const sent = await dispatchToWhatsApp(db, user, message.id);
+      return { message: sent, sentToWhatsApp: sent.sendStatus === "sent" };
+    },
+
     async authorizeRead(user: User, storageKey: string) {
       const doc = await db.officeDocument.findFirst({
         where: { storageKey },
         include: { ticket: { select: { assignedToId: true } } },
       });
-      if (!doc) throw notFound("Arquivo não encontrado");
-      if (isAdmin(user)) return doc;
-      if (!doc.ticket || doc.ticket.assignedToId !== user.id) {
-        throw forbidden("Sem permissão para este arquivo");
+      if (doc) {
+        if (isAdmin(user)) return doc;
+        if (!doc.ticket || doc.ticket.assignedToId !== user.id) {
+          throw forbidden("Sem permissão para este arquivo");
+        }
+        return doc;
       }
-      return doc;
+      const att = await db.messageAttachment.findFirst({
+        where: { storageKey },
+        include: {
+          message: { include: { conversation: { include: { tickets: { select: { assignedToId: true } } } } } },
+        },
+      });
+      if (!att) throw notFound("Arquivo não encontrado");
+      if (!isAdmin(user)) {
+        const mine = att.message.conversation.tickets.some((t) => t.assignedToId === user.id);
+        if (!mine) throw forbidden("Sem permissão para este arquivo");
+      }
+      return { storageKey: att.storageKey, mime: att.mime, originalName: att.originalName };
     },
   };
 }

@@ -4,7 +4,6 @@ import { prisma } from "../lib/db/prisma";
 
 async function main() {
   const adminPass = process.env.SEED_ADMIN_PASSWORD;
-  const staffPass = process.env.SEED_FUNCIONARIO_PASSWORD || adminPass;
   if (!adminPass) {
     throw new Error("SEED_ADMIN_PASSWORD is required");
   }
@@ -15,10 +14,12 @@ async function main() {
       passwordHash: await hashPassword(adminPass),
       role: "admin",
       ativo: true,
+      nome: "Administradora",
       deletedAt: null,
     },
     create: {
       email: "admin@juricon.local",
+      nome: "Administradora",
       passwordHash: await hashPassword(adminPass),
       role: "admin",
       ativo: true,
@@ -26,38 +27,6 @@ async function main() {
       apenasRascunho: false,
     },
   });
-
-  await prisma.user.upsert({
-    where: { email: "funcionario@juricon.local" },
-    update: {
-      passwordHash: await hashPassword(staffPass!),
-      role: "funcionario",
-      ativo: true,
-      deletedAt: null,
-      podeResponderCliente: false,
-      apenasRascunho: true,
-    },
-    create: {
-      email: "funcionario@juricon.local",
-      passwordHash: await hashPassword(staffPass!),
-      role: "funcionario",
-      ativo: true,
-      podeResponderCliente: false,
-      apenasRascunho: true,
-    },
-  });
-
-  const mock = await prisma.channelConnection.findFirst({ where: { type: ChannelType.dev_mock } });
-  if (!mock) {
-    await prisma.channelConnection.create({
-      data: {
-        type: ChannelType.dev_mock,
-        status: "open",
-        label: "Dev / mock",
-        metadataJson: { env: "development" },
-      },
-    });
-  }
 
   const baileys = await prisma.channelConnection.findFirst({
     where: { type: ChannelType.evolution_baileys },
@@ -73,21 +42,7 @@ async function main() {
     });
   }
 
-  const cloud = await prisma.channelConnection.findFirst({
-    where: { type: ChannelType.evolution_cloud },
-  });
-  if (!cloud) {
-    await prisma.channelConnection.create({
-      data: {
-        type: ChannelType.evolution_cloud,
-        status: "close",
-        label: "WhatsApp Cloud",
-        metadataJson: { official: true, configured: false },
-      },
-    });
-  }
-
-  console.log("Seed ok:", admin.email, "funcionario@juricon.local");
+  console.log("Seed ok:", admin.email, "(sem funcionário demo, sem DevMock/Cloud)");
 }
 
 main()

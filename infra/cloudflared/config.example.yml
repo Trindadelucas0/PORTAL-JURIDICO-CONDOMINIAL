@@ -1,0 +1,14 @@
+# Cloudflare Tunnel — exemplo. Não commitar o JSON de credenciais.
+#
+# No dashboard: Zero Trust → Networks → Tunnels → criar túnel → instalar cloudflared na VPS.
+# Ingress: SOMENTE o hostname do painel Juricon. Não publique Evolution (:8080) nem Postgres.
+#
+# cloudflared no host (systemd), não no compose, para o túnel sobreviver a `compose restart`.
+
+tunnel: SEU_TUNNEL_ID
+credentials-file: /etc/cloudflared/SEU_TUNNEL_ID.json
+
+ingress:
+  - hostname: juricon.exemplo.com
+    service: http://127.0.0.1:3010
+  - service: http_status:404

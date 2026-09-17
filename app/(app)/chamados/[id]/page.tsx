@@ -3,11 +3,22 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import { Badge, Card, ErrorBanner, Skeleton } from "@/components/ui/card";
+import { useMemo, useRef, useState } from "react";
+import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Accordion } from "@/components/ui/accordion";
+import { Dialog } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { Timeline } from "@/components/ui/timeline";
+import { FileItem } from "@/components/ui/file-item";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/client/api";
+import { CATEGORIES, CATEGORY_LABEL, PRIORITIES, PRIORITY_LABEL, TICKET_STATUSES, STATUS_LABEL, formatBytes, formatWhen } from "@/lib/ui-labels";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 type Ticket = {
   id: string;
@@ -16,8 +27,9 @@ type Ticket = {
   status: string;
   priority: string;
   category: string;
+  createdAt?: string;
   conversationId: string | null;
-  assignedTo: { id: string; email: string };
+  assignedTo: { id: string; email: string; nome?: string } | null;
   condominium: { id: string; nome: string };
   contact: { nome: string; phoneE164: string };
   conversation: { connection: { status: string; label: string; type: string } } | null;
@@ -39,6 +51,7 @@ export default function ChamadoFichaPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const qc = useQueryClient();
+  const toast = useToast();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: () =>
@@ -55,33 +68,67 @@ export default function ChamadoFichaPage() {
   });
 
   const [body, setBody] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"publica" | "interna">("publica");
   const [status, setStatus] = useState("");
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState("");
+  const [category, setCategory] = useState("");
+  const [assignedToId, setAssignedToId] = useState("");
   const [deadlineTitle, setDeadlineTitle] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [openDocModal, setOpenDocModal] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [openPrazoModal, setOpenPrazoModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const team = useQuery({
+    queryKey: ["team"],
+    queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
+    enabled: Boolean(me.data?.data.user.role === "admin"),
+  });
+  const audit = useQuery({
+    queryKey: ["audit", "ticket", id],
+    enabled: Boolean(me.data?.data.user.role === "admin"),
+    queryFn: () =>
+      api<Array<{ id: string; action: string; createdAt: string; actor: { email: string } }>>(
+        `/api/audit?entityType=ticket&entityId=${id}`,
+      ),
+  });
 
   const send = useMutation({
-    mutationFn: () =>
-      api(`/api/tickets/${id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ body, visibility: mode }),
-      }),
+    mutationFn: () => {
+      const form = new FormData();
+      form.append("body", body);
+      form.append("visibility", mode);
+      if (file) form.append("file", file);
+      return api(`/api/tickets/${id}/messages`, { method: "POST", body: form });
+    },
     onSuccess: () => {
       setBody("");
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-      qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
-    },
-  });
-  const approve = useMutation({
-    mutationFn: (messageId: string) => api(`/api/messages/${messageId}/approve`, { method: "POST" }),
-    onSuccess: () => {
+      setFile(null);
+      toast(mode === "interna" ? "Nota salva" : "Mensagem enviada");
       qc.invalidateQueries({ queryKey: ["ticket", id] });
       qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
     },
   });
   const patch = useMutation({
-    mutationFn: () => api(`/api/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ticket", id] }),
+    mutationFn: () => {
+      const current = ticket.data?.data;
+      return api(`/api/tickets/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: status || current?.status,
+          title: title || current?.title,
+          priority: priority || current?.priority,
+          category: category || current?.category,
+          assignedToId: assignedToId || current?.assignedTo?.id || null,
+        }),
+      });
+    },
+    onSuccess: () => {
+      toast("Chamado atualizado");
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+    },
   });
   const addDeadline = useMutation({
     mutationFn: () =>
@@ -95,259 +142,389 @@ export default function ChamadoFichaPage() {
         }),
       }),
     onSuccess: () => {
+      toast("Prazo adicionado");
       setDeadlineTitle("");
       setDueAt("");
+      setOpenPrazoModal(false);
       qc.invalidateQueries({ queryKey: ["ticket", id] });
     },
   });
   const upload = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (docFile: File) => {
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", docFile);
       form.append("ticketId", id);
       return api("/api/documents", { method: "POST", body: form });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ticket", id] }),
+    onSuccess: () => {
+      toast("Arquivo enviado");
+      setPendingFile(null);
+      setOpenDocModal(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+    },
   });
+
+  const closeDocModal = () => {
+    setOpenDocModal(false);
+    setPendingFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    upload.reset();
+  };
+
+  const closePrazoModal = () => {
+    setOpenPrazoModal(false);
+    setDeadlineTitle("");
+    setDueAt("");
+    addDeadline.reset();
+  };
+  const sendDoc = useMutation({
+    mutationFn: (docId: string) => api(`/api/documents/${docId}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
+    onSuccess: () => {
+      toast("Documento enviado no WhatsApp");
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
+    },
+  });
+
+  const timeline = useMemo(() => {
+    const msgs = (messages.data?.data ?? []).map((m) => {
+      const interna = m.visibility === "interna";
+      const incoming = m.direction === "in";
+      return {
+        id: m.id,
+        kind: "message" as const,
+        body: m.body,
+        at: m.createdAt,
+        label: interna ? "Nota interna" : incoming ? "WhatsApp · cliente" : "WhatsApp · saída",
+        tone: (interna ? "interna" : incoming ? "in" : "out") as "interna" | "in" | "out",
+      };
+    });
+    const audits = (audit.data?.data ?? []).map((a) => ({
+      id: a.id,
+      kind: "system" as const,
+      body: `${a.actor.email} · ${a.action}`,
+      at: a.createdAt,
+    }));
+    return [...msgs, ...audits].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 20);
+  }, [messages.data, audit.data]);
 
   if (ticket.isError) {
     const statusCode = (ticket.error as Error & { status?: number }).status;
-    if (statusCode === 403) {
-      return (
-        <div>
-          <h1 className="font-display text-3xl">Chamado</h1>
-          <p className="mt-4 text-[var(--muted)]">Sem permissão para este chamado.</p>
-        </div>
-      );
-    }
-    if (statusCode === 404) {
-      return (
-        <div>
-          <h1 className="font-display text-3xl">Chamado</h1>
-          <p className="mt-4 text-[var(--muted)]">Chamado não encontrado.</p>
-        </div>
-      );
-    }
+    if (statusCode === 403) return <ForbiddenState message="Sem permissão para este chamado." />;
+    if (statusCode === 404) return <p className="text-[var(--muted)]">Chamado não encontrado.</p>;
     return <ErrorBanner message="Falha ao carregar chamado." onRetry={() => ticket.refetch()} />;
   }
 
   const t = ticket.data?.data;
   const admin = me.data?.data.user.role === "admin";
-  const draftOnly = Boolean(me.data?.data.user.apenasRascunho);
-  const connOpen = t?.conversation?.connection.status === "open";
+  const steps = ["aberto", "em_andamento", "aguardando", "resolvido"];
 
   return (
-    <div className="space-y-4">
-      <Link href="/chamados" className="text-sm text-[var(--brand)]">
-        ← Chamados
-      </Link>
+    <div>
+      <PageHeader
+        back={
+          <Link href="/chamados" className="text-sm text-[var(--brand)]">
+            ← Chamados
+          </Link>
+        }
+        title={t ? `#${t.protocol}` : "Chamado"}
+        description={t ? `${t.title} · ${t.condominium.nome}` : undefined}
+      />
       {ticket.isLoading || !t ? (
         <Skeleton className="h-48" />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">
-            <div>
-              <h1 className="font-display text-3xl">#{t.protocol}</h1>
-              <p className="text-[var(--muted)]">{t.title}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Badge>{t.status}</Badge>
-                <Badge tone="warn">{t.priority}</Badge>
-                <Badge tone="muted">{t.category}</Badge>
+        <>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-8">
+            <ol className="flex flex-wrap gap-2 text-sm">
+              {steps.map((s, i) => {
+                const idx = steps.indexOf(t.status);
+                const done = i <= idx;
+                return (
+                  <li key={s} className={cn("flex items-center gap-2", done ? "text-[var(--ink)]" : "text-[var(--muted)]")}>
+                    <span className={cn("h-2 w-2 rounded-full", done ? "bg-[var(--brand)]" : "border border-[var(--border)]")} />
+                    {STATUS_LABEL[s]}
+                    {i < steps.length - 1 ? <span className="text-[var(--border)]">—</span> : null}
+                  </li>
+                );
+              })}
+            </ol>
+            <section>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Atividade</h2>
+              <div className="mt-3">
+                {messages.isLoading ? <Skeleton className="h-24" /> : <Timeline items={timeline} />}
               </div>
-            </div>
-            <Card className="flex flex-col gap-3">
-              <h2 className="font-medium">Andamento</h2>
-              {messages.isLoading ? <Skeleton className="h-24" /> : null}
-              {(messages.data?.data ?? []).length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">Sem mensagens nesta ficha.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {(messages.data?.data ?? []).map((m) => (
-                    <li
-                      key={m.id}
-                      className={
-                        m.visibility === "interna"
-                          ? "rounded-[12px] bg-amber-50 px-3 py-2 text-sm"
-                          : "rounded-[12px] bg-[var(--page)] px-3 py-2 text-sm"
-                      }
-                    >
-                      {m.visibility === "interna" ? <span className="mr-1 text-[10px] uppercase">nota</span> : null}
-                      {m.body}
-                      {m.sendStatus === "draft" && m.visibility === "publica" ? (
-                        <Badge tone="warn">rascunho</Badge>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex gap-2">
-                <Button variant={mode === "publica" ? "primary" : "secondary"} type="button" onClick={() => setMode("publica")}>
-                  {draftOnly ? "Rascunho WA" : "Resposta"}
+            </section>
+            <section>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Notas / mensagens</h2>
+              <div className="mt-3 flex gap-2">
+                <Button variant={mode === "publica" ? "primary" : "secondary"} size="sm" type="button" onClick={() => setMode("publica")}>
+                  WhatsApp
                 </Button>
-                <Button variant={mode === "interna" ? "primary" : "secondary"} type="button" onClick={() => setMode("interna")}>
+                <Button variant={mode === "interna" ? "primary" : "secondary"} size="sm" type="button" onClick={() => setMode("interna")}>
                   Nota interna
                 </Button>
               </div>
-              {mode === "publica" && !connOpen ? (
-                <p className="text-xs text-[var(--muted)]">Conexão não está aberta — envio público indisponível.</p>
+              {mode === "publica" ? (
+                <p className="mt-2 text-xs text-[var(--muted)]">A mensagem pública sai no WhatsApp na hora, se a sessão estiver conectada.</p>
               ) : null}
               {send.isError ? <ErrorBanner message={(send.error as Error).message} /> : null}
               <form
-                className="flex gap-2"
+                className="mt-3 space-y-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!body.trim()) return;
+                  if (!body.trim() && !file) return;
                   send.mutate();
                 }}
               >
                 <Input
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  placeholder={mode === "interna" ? "Nota interna (nunca vai ao WhatsApp)" : "Mensagem"}
+                  placeholder={mode === "interna" ? "Escreva uma nota…" : "Mensagem para o WhatsApp"}
                   aria-label="Mensagem do chamado"
                 />
-                <Button
-                  type="submit"
-                  disabled={
-                    send.isPending ||
-                    !body.trim() ||
-                    (mode === "publica" && !draftOnly && !connOpen)
-                  }
-                >
-                  {draftOnly && mode === "publica" ? "Salvar rascunho" : "Enviar"}
+                {mode === "publica" ? (
+                  <input
+                    type="file"
+                    className="w-full text-sm"
+                    accept="image/jpeg,image/png,application/pdf,audio/ogg,audio/mpeg,audio/mp4,audio/webm"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                ) : null}
+                <Button type="submit" disabled={send.isPending || (!body.trim() && !file)}>
+                  {mode === "publica" ? "Enviar" : "Salvar nota"}
                 </Button>
               </form>
-              {admin && t.messages.length > 0 ? (
-                <div className="space-y-2 border-t border-[var(--border)] pt-3">
-                  <p className="text-sm font-medium">Aprovar rascunhos</p>
-                  {t.messages.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="truncate">{m.body}</span>
-                      <Button
-                        type="button"
-                        disabled={approve.isPending || !connOpen}
-                        onClick={() => approve.mutate(m.id)}
-                      >
-                        Aprovar
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </Card>
-          </div>
-          <div className="space-y-4">
-            <Card>
-              <h2 className="font-medium">Condomínio / contato</h2>
-              <p className="mt-2 text-sm">{t.condominium.nome}</p>
-              <p className="text-sm text-[var(--muted)]">
-                {t.contact.nome} · {t.contact.phoneE164}
-              </p>
-              <p className="mt-2 text-sm">Responsável: {t.assignedTo.email}</p>
-              {t.conversation ? (
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {t.conversation.connection.label} · {t.conversation.connection.status}
-                  {t.conversation.connection.type === "evolution_baileys" ? " · WhatsApp Web (não oficial)" : ""}
+            </section>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Documentos</h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {t.documents.length === 0 ? "Nenhum documento ainda" : `${t.documents.length} arquivo${t.documents.length === 1 ? "" : "s"}`}
                 </p>
-              ) : null}
-              <form
-                className="mt-3 flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (status) patch.mutate();
-                }}
-              >
-                <Label htmlFor="st" className="sr-only">
-                  Status
-                </Label>
-                <select
-                  id="st"
-                  className="w-full rounded-[12px] border border-[var(--border)] px-2 py-2 text-sm"
-                  value={status || t.status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="aberto">aberto</option>
-                  <option value="em_andamento">em_andamento</option>
-                  <option value="aguardando">aguardando</option>
-                  <option value="resolvido">resolvido</option>
-                </select>
-                <Button type="submit" variant="secondary" disabled={patch.isPending}>
-                  Salvar
+                {t.documents.length > 0 ? (
+                  <ul className="mt-2">
+                    {t.documents.map((d) => (
+                      <li key={d.id}>
+                        <FileItem
+                          name={d.originalName}
+                          sizeBytes={d.sizeBytes}
+                          actions={
+                            <>
+                              <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
+                                Baixar
+                              </a>
+                              <button type="button" className="text-[var(--brand)]" disabled={sendDoc.isPending} onClick={() => sendDoc.mutate(d.id)}>
+                                Enviar WhatsApp
+                              </button>
+                            </>
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <Button className="mt-3" type="button" variant="secondary" onClick={() => setOpenDocModal(true)}>
+                  Enviar arquivo
                 </Button>
-              </form>
-            </Card>
-            <Card>
-              <h2 className="font-medium">Documentos</h2>
-              {t.documents.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">Nenhum arquivo.</p>
-              ) : (
-                <ul className="mt-2 space-y-2 text-sm">
-                  {t.documents.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between gap-2">
-                      <span>
-                        {d.originalName} · {Math.round(d.sizeBytes / 1024)} kb · {d.ingestStatus}
-                      </span>
-                      <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
-                        Baixar
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Label htmlFor="up" className="mt-3">
-                Upload (jpeg/png/pdf/áudio)
-              </Label>
+              </section>
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Prazos</h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {t.deadlines.length === 0 ? "Nenhum prazo ainda" : `${t.deadlines.length} prazo(s)`}
+                </p>
+                {t.deadlines.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {t.deadlines.map((d) => (
+                      <li key={d.id}>
+                        {d.title} · {formatWhen(d.dueAt)}
+                        {d.doneAt ? (
+                          <Badge className="ml-2" tone="ok">
+                            concluído
+                          </Badge>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <Button className="mt-3" type="button" variant="secondary" onClick={() => setOpenPrazoModal(true)}>
+                  Adicionar prazo
+                </Button>
+              </section>
+            </div>
+          </div>
+          <aside className="space-y-4 lg:border-l lg:border-[var(--border)] lg:pl-6">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Informações</h2>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-[var(--muted)]">Condomínio</dt>
+                <dd>{t.condominium.nome}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--muted)]">Responsável</dt>
+                <dd>{t.assignedTo?.nome || t.assignedTo?.email || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--muted)]">Prioridade</dt>
+                <dd>{PRIORITY_LABEL[t.priority] || t.priority}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--muted)]">Categoria</dt>
+                <dd>{CATEGORY_LABEL[t.category] || t.category}</dd>
+              </div>
+            </dl>
+            <Accordion title="Mais informações">
+              <dl className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-[var(--muted)]">Contato</dt>
+                  <dd>
+                    {t.contact.nome} · {t.contact.phoneE164}
+                  </dd>
+                </div>
+                {t.conversation ? (
+                  <div>
+                    <dt className="text-[var(--muted)]">Origem</dt>
+                    <dd>{t.conversation.connection.label}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </Accordion>
+            <form
+              className="space-y-2 border-t border-[var(--border)] pt-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                patch.mutate();
+              }}
+            >
+              <Input value={title || t.title} onChange={(e) => setTitle(e.target.value)} aria-label="Título" />
+              <Select value={priority || t.priority} onChange={(e) => setPriority(e.target.value)} aria-label="Prioridade">
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_LABEL[p]}
+                  </option>
+                ))}
+              </Select>
+              <Select value={category || t.category} onChange={(e) => setCategory(e.target.value)} aria-label="Categoria">
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORY_LABEL[c]}
+                  </option>
+                ))}
+              </Select>
+              {admin ? (
+                <Select value={assignedToId || t.assignedTo?.id || ""} onChange={(e) => setAssignedToId(e.target.value)} aria-label="Responsável">
+                  <option value="">Sem responsável</option>
+                  {(team.data?.data ?? [])
+                    .filter((m) => m.ativo)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nome || m.email}
+                      </option>
+                    ))}
+                </Select>
+              ) : null}
+              <Select value={status || t.status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+                {TICKET_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </Select>
+              <Button type="submit" variant="secondary" disabled={patch.isPending}>
+                Salvar
+              </Button>
+              {patch.isError ? <p className="text-sm text-[var(--danger)]">{(patch.error as Error).message}</p> : null}
+            </form>
+            {admin ? (
+              <Accordion title="Histórico técnico">
+                {(audit.data?.data ?? []).length === 0 ? (
+                  <p className="text-sm text-[var(--muted)]">Sem eventos.</p>
+                ) : (
+                  <ul className="space-y-2 text-xs">
+                    {(audit.data?.data ?? []).map((a) => (
+                      <li key={a.id}>
+                        {formatWhen(a.createdAt)} · {a.actor.email} · {a.action}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Accordion>
+            ) : null}
+          </aside>
+        </div>
+        <Dialog open={openDocModal} onClose={closeDocModal} title="Enviar arquivo">
+          <p className="text-sm text-[var(--muted)]">JPEG, PNG, PDF ou áudio · até 8 MB</p>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!pendingFile) return;
+              upload.mutate(pendingFile);
+            }}
+          >
+            <div>
+              <Label htmlFor="ticket-doc-file">Arquivo</Label>
               <input
-                id="up"
+                id="ticket-doc-file"
+                ref={fileInputRef}
                 type="file"
                 className="mt-1 w-full text-sm"
                 accept="image/jpeg,image/png,application/pdf,audio/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) upload.mutate(f);
-                }}
+                onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
               />
-            </Card>
-            <Card>
-              <h2 className="font-medium">Prazos da ficha</h2>
-              {t.deadlines.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">Nenhum prazo.</p>
-              ) : (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {t.deadlines.map((d) => (
-                    <li key={d.id}>
-                      {d.title} · {new Date(d.dueAt).toLocaleString("pt-BR")}
-                      {d.doneAt ? " · concluído" : ""}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <form
-                className="mt-3 space-y-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  addDeadline.mutate();
-                }}
-              >
-                <Input
-                  placeholder="Título do prazo"
-                  value={deadlineTitle}
-                  onChange={(e) => setDeadlineTitle(e.target.value)}
-                  aria-label="Título do prazo"
-                />
-                <Input
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                  aria-label="Vencimento"
-                />
-                <Button type="submit" variant="secondary" disabled={!deadlineTitle || !dueAt || addDeadline.isPending}>
-                  Adicionar prazo
-                </Button>
-              </form>
-            </Card>
-          </div>
-        </div>
+              {pendingFile ? (
+                <p className="mt-2 text-sm">
+                  {pendingFile.name} · {formatBytes(pendingFile.size)}
+                </p>
+              ) : null}
+            </div>
+            {upload.isError ? <ErrorBanner message={(upload.error as Error).message} /> : null}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={closeDocModal}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={!pendingFile || upload.isPending}>
+                {upload.isPending ? "Enviando…" : "Enviar"}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+        <Dialog open={openPrazoModal} onClose={closePrazoModal} title="Adicionar prazo">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!deadlineTitle.trim() || !dueAt) return;
+              addDeadline.mutate();
+            }}
+          >
+            <div>
+              <Label htmlFor="ticket-deadline-title">Título</Label>
+              <Input
+                id="ticket-deadline-title"
+                value={deadlineTitle}
+                onChange={(e) => setDeadlineTitle(e.target.value)}
+                placeholder="Título do prazo"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="ticket-deadline-due">Vencimento</Label>
+              <Input id="ticket-deadline-due" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} required />
+            </div>
+            {addDeadline.isError ? <ErrorBanner message={(addDeadline.error as Error).message} /> : null}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={closePrazoModal}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={!deadlineTitle.trim() || !dueAt || addDeadline.isPending}>
+                {addDeadline.isPending ? "Salvando…" : "Adicionar"}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      </>
       )}
     </div>
   );

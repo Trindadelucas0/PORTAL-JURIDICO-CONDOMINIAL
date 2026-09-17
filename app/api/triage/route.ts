@@ -8,7 +8,9 @@ export async function GET(request: Request) {
   try {
     await requireAdmin();
     const { page, pageSize } = parsePage(request);
-    const result = await cadastroService.listTriage(page, pageSize);
+    const url = new URL(request.url);
+    const unidentified = url.searchParams.get("unidentified") === "1";
+    const result = await cadastroService.listTriage(page, pageSize, unidentified);
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,

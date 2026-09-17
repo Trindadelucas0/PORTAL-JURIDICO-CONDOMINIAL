@@ -8,13 +8,25 @@ import { ticketCategorySchema, ticketPrioritySchema, ticketService } from "@/lib
 const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("archive") }),
   z.object({ action: z.literal("identify"), contactId: z.string().uuid() }),
+  z.object({ action: z.literal("linkCondominium"), condominiumId: z.string().uuid() }),
   z.object({
     action: z.literal("promote"),
     category: ticketCategorySchema,
     priority: ticketPrioritySchema,
-    assignedToId: z.string().uuid(),
+    assignedToId: z.string().uuid().optional().nullable(),
   }),
 ]);
+
+export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    await requireAdmin();
+    const { id } = await ctx.params;
+    const row = await cadastroService.getTriage(id);
+    return ok(row);
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -26,7 +38,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       const ticket = await ticketService.promoteFromTriage(user, id, input);
       return ok(ticket);
     }
-    const row = await cadastroService.patchTriage(id, input);
+    const row = await cadastroService.patchTriage(user, id, input);
     return ok(row);
   } catch (error) {
     return handleRouteError(error);

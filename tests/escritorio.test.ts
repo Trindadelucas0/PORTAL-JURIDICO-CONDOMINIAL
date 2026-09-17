@@ -5,6 +5,7 @@ import { createAtendimentoService } from "@/lib/services/atendimento-service";
 import { createTicketService } from "@/lib/services/ticket-service";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
 import { hashPassword } from "@/lib/auth/session";
+import { assertNotOfficeDatabase } from "./assert-not-office-db";
 
 const db = new PrismaClient();
 const atendimento = createAtendimentoService(db);
@@ -13,6 +14,7 @@ const tickets = createTicketService(db);
 describe("escritorio operacional", () => {
   beforeAll(async () => {
     await db.$connect();
+    await assertNotOfficeDatabase(db);
   });
 
   afterAll(async () => {
@@ -138,45 +140,166 @@ describe("escritorio operacional", () => {
     expect(ok.id).toBe(mine.id);
   });
 
-  it("draft does not send via provider", async () => {
-    const suffix = `${Date.now()}-draft`;
+  it("public message sends immediately; blocked profile and internal notes do not", async () => {
+    const suffix = `${Date.now()}-strict`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-strict-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
     const staff = await db.user.create({
       data: {
-        email: `draft-${suffix}@juricon.local`,
+        email: `staff-strict-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+        apenasRascunho: false,
+        podeResponderCliente: true,
+      },
+    });
+    const blocked = await db.user.create({
+      data: {
+        email: `staff-block-${suffix}@juricon.local`,
         passwordHash: await hashPassword("x"),
         role: "funcionario",
         apenasRascunho: true,
         podeResponderCliente: true,
       },
     });
-    const admin =
-      (await db.user.findFirst({ where: { role: "admin", deletedAt: null } })) ||
-      (await db.user.create({
-        data: {
-          email: `admin-draft-${suffix}@juricon.local`,
-          passwordHash: await hashPassword("x"),
-          role: "admin",
-        },
-      }));
-    const condo = await db.condominium.create({ data: { nome: `Draft ${suffix}` } });
+    const condo = await db.condominium.create({ data: { nome: `Strict ${suffix}` } });
     const contact = await db.contact.create({
-      data: { nome: "Draft C", phoneE164: `+55117${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
+      data: { nome: "Strict C", phoneE164: `+55116${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
     });
-    const ticket = await tickets.createManual(admin!, {
-      title: "Draft ticket",
+    const ticket = await tickets.createManual(admin, {
+      title: "Strict ticket",
       category: "outro",
       priority: "media",
       condominiumId: condo.id,
       contactId: contact.id,
       assignedToId: staff.id,
     });
-    const result = await atendimento.postMessage(staff, ticket.conversationId!, {
-      body: "rascunho cliente",
+    let mock = await db.channelConnection.findFirst({ where: { type: "dev_mock" } });
+    if (!mock) {
+      mock = await db.channelConnection.create({
+        data: { type: "dev_mock", status: "open", label: "Dev / mock" },
+      });
+    }
+    await db.conversation.update({
+      where: { id: ticket.conversationId! },
+      data: { connectionId: mock.id, unidentified: false, contactId: contact.id },
+    });
+    await db.ticket.update({ where: { id: ticket.id }, data: { assignedToId: blocked.id } });
+    try {
+      await atendimento.postMessage(blocked, ticket.conversationId!, {
+        body: "nao pode",
+        visibility: "publica",
+      });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+    await db.ticket.update({ where: { id: ticket.id }, data: { assignedToId: staff.id } });
+    const adminSend = await atendimento.postMessage(admin, ticket.conversationId!, {
+      body: "admin direto",
       visibility: "publica",
     });
-    expect(result.sentToWhatsApp).toBe(false);
-    expect(result.message.sendStatus).toBe("draft");
-    expect(result.message.waMessageId).toBeNull();
+    expect(adminSend.sentToWhatsApp).toBe(true);
+    expect(adminSend.message.sendStatus).toBe("sent");
+    const staffSend = await atendimento.postMessage(staff, ticket.conversationId!, {
+      body: "staff direto",
+      visibility: "publica",
+    });
+    expect(staffSend.sentToWhatsApp).toBe(true);
+    expect(staffSend.message.sendStatus).toBe("sent");
+    const note = await atendimento.postMessage(staff, ticket.conversationId!, {
+      body: "nota interna",
+      visibility: "interna",
+    });
+    expect(note.sentToWhatsApp).toBe(false);
+    expect(note.message.sendStatus).toBe("draft");
+  });
+
+  it("promote without assignee; employee cannot see unassigned", async () => {
+    const suffix = `${Date.now()}-unassigned`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-u-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `staff-u-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `U ${suffix}` } });
+    const contact = await db.contact.create({
+      data: { nome: "U C", phoneE164: `+55115${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
+    });
+    const ticket = await tickets.createManual(admin, {
+      title: "Sem dono",
+      category: "outro",
+      priority: "baixa",
+      condominiumId: condo.id,
+      contactId: contact.id,
+      assignedToId: null,
+    });
+    expect(ticket.assignedToId).toBeNull();
+    try {
+      await tickets.get(staff, ticket.id);
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+    const listed = await tickets.list(admin, 1, 20, { unassigned: true });
+    expect(listed.items.some((row) => row.id === ticket.id)).toBe(true);
+  });
+
+  it("audit helper strips passwordHash", async () => {
+    const { writeAudit } = await import("@/lib/services/audit-service");
+    const suffix = `${Date.now()}-audit`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-aud-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("secret-hash"),
+        role: "admin",
+      },
+    });
+    await writeAudit(db, {
+      actorId: admin.id,
+      action: "user.patch",
+      entityType: "user",
+      entityId: admin.id,
+      after: { email: admin.email, passwordHash: "should-not-store", passwordOnce: "nope" },
+    });
+    const event = await db.auditEvent.findFirst({ where: { actorId: admin.id, action: "user.patch" }, orderBy: { createdAt: "desc" } });
+    expect(event).toBeTruthy();
+    const after = event!.afterJson as Record<string, unknown>;
+    expect(after.passwordHash).toBeUndefined();
+    expect(after.passwordOnce).toBeUndefined();
+    expect(after.email).toBe(admin.email);
+  });
+
+  it("funcionario cannot list audit", async () => {
+    const { createAuditService } = await import("@/lib/services/audit-service");
+    const suffix = `${Date.now()}-aud403`;
+    const staff = await db.user.create({
+      data: {
+        email: `staff-aud-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    try {
+      await createAuditService(db).list(staff, 1, 20);
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
   });
 });
 

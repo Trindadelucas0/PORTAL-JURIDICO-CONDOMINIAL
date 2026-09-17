@@ -16,9 +16,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     assertCsrf(request);
-    await requireAdmin();
-    const body = await request.json();
-    const result = await teamService.create(body);
+    const user = await requireAdmin();
+    const result = await teamService.create(user.id, await request.json());
     return created(result);
   } catch (error) {
     return handleRouteError(error);
@@ -28,9 +27,9 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     assertCsrf(request);
-    await requireAdmin();
+    const user = await requireAdmin();
     const body = await request.json();
-    const row = await teamService.patch(body);
+    const row = await teamService.patch(user.id, body);
     return ok(row);
   } catch (error) {
     return handleRouteError(error);

@@ -3,6 +3,7 @@ export type ConnectionKind = "evolution_baileys" | "evolution_cloud" | "dev_mock
 export type ProviderSendInput = {
   toE164: string;
   body: string;
+  quotedWaMessageId?: string;
 };
 
 export type ProviderSendMediaInput = {
@@ -11,6 +12,8 @@ export type ProviderSendMediaInput = {
   mime: string;
   fileName: string;
   buffer: Buffer;
+  quotedWaMessageId?: string;
+  ptt?: boolean;
 };
 
 export type ProviderSendResult = {

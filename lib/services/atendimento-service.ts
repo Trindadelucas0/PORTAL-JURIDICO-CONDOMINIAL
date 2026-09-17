@@ -1,16 +1,21 @@
-import type { ChannelType, Prisma, PrismaClient, User } from "@prisma/client";
+import type { ChannelType, Conversation, Prisma, PrismaClient, User } from "@prisma/client";
+import { Prisma as PrismaNs } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
-import { forbidden, notFound, unprocessable, AppError } from "@/lib/api/errors";
+import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { normalizeE164 } from "@/lib/phone/e164";
+import { e164LookupValues, isLidPeer, uniquePhones } from "@/lib/phone/identity";
 import { localDiskStorage } from "@/lib/storage/local-disk";
-import { providerFor } from "@/lib/channels/resolve-provider";
-import { isBaileysSessionOpen, mapBaileysLiveToDb } from "@/lib/channels/evolution-send";
 import { deadlineService } from "@/lib/services/deadline-service";
+import { writeAudit } from "@/lib/services/audit-service";
+import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
+import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
+import { mergeConversations } from "@/lib/services/conversation-merge";
 
 export type InboundPayload = {
   waMessageId: string;
   fromPhone: string;
+  waLid?: string | null;
   body: string;
   connectionId?: string;
   connectionType?: ChannelType;
@@ -45,6 +50,8 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
 
       const phone = normalizeE164(payload.fromPhone);
       if (!phone) throw unprocessable("Telefone inbound inválido");
+      const waLid = payload.waLid || (isLidPeer(phone) ? phone : null);
+      const lookupKeys = uniquePhones(phone, waLid, ...e164LookupValues(phone));
 
       const connection = payload.connectionId
         ? await db.channelConnection.findFirst({ where: { id: payload.connectionId } })
@@ -54,24 +61,56 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           });
       if (!connection) throw unprocessable("Nenhuma conexão disponível para ingestão");
 
-      const contact = await db.contact.findFirst({
-        where: { phoneE164: phone, deletedAt: null },
+      const contact = await findContactByPhones(db, lookupKeys);
+      const or: Prisma.ConversationWhereInput[] = [{ peerPhoneE164: { in: lookupKeys } }];
+      if (contact) or.push({ contactId: contact.id });
+      let matches = await db.conversation.findMany({
+        where: { connectionId: connection.id, OR: or },
+        orderBy: [{ unidentified: "asc" }, { createdAt: "asc" }],
       });
 
-      let conversation = await db.conversation.findFirst({
-        where: contact
-          ? { contactId: contact.id, connectionId: connection.id }
-          : { unidentified: true, connectionId: connection.id, contactId: null },
-        orderBy: { updatedAt: "desc" },
-      });
+      let conversation: Conversation | null = matches[0] ?? null;
+      for (const extra of matches.slice(1)) {
+        if (conversation && extra.id !== conversation.id) {
+          await mergeConversations(db, conversation.id, extra.id);
+        }
+      }
+      if (matches.length > 1 && conversation) {
+        conversation = await db.conversation.findFirst({ where: { id: conversation.id } });
+      }
 
+      const peerKey = conversation?.peerPhoneE164 || phone;
       if (!conversation) {
-        conversation = await db.conversation.create({
+        try {
+          conversation = await db.conversation.create({
+            data: {
+              connectionId: connection.id,
+              contactId: contact?.id ?? null,
+              condominiumId: contact?.condominiumId ?? null,
+              unidentified: !contact,
+              peerPhoneE164: peerKey,
+            },
+          });
+        } catch (error) {
+          if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
+            conversation = await db.conversation.findFirst({
+              where: { connectionId: connection.id, peerPhoneE164: peerKey },
+            });
+          } else {
+            throw error;
+          }
+        }
+      }
+      if (!conversation) throw unprocessable("Não foi possível abrir a conversa");
+
+      if (contact) {
+        await upsertContactIdentities(db, contact.id, uniquePhones(phone, waLid, contact.phoneE164));
+        conversation = await db.conversation.update({
+          where: { id: conversation.id },
           data: {
-            connectionId: connection.id,
-            contactId: contact?.id ?? null,
-            condominiumId: contact?.condominiumId ?? null,
-            unidentified: !contact,
+            contactId: contact.id,
+            condominiumId: contact.condominiumId ?? conversation.condominiumId,
+            unidentified: false,
           },
         });
       }
@@ -122,26 +161,38 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       };
     },
 
-    async listConversations(user: User, page: number, pageSize: number, q?: string) {
+    async listConversations(
+      user: User,
+      page: number,
+      pageSize: number,
+      q?: string,
+      filters?: { unread?: boolean; untreated?: boolean; unidentified?: boolean },
+    ) {
       const access: Prisma.ConversationWhereInput = isAdmin(user)
         ? {}
         : { tickets: { some: { assignedToId: user.id } } };
-      const search: Prisma.ConversationWhereInput = q
-        ? {
-            OR: [
-              { contact: { nome: { contains: q, mode: "insensitive" as const } } },
-              { condominium: { nome: { contains: q, mode: "insensitive" as const } } },
-            ],
-          }
-        : {};
-      const where: Prisma.ConversationWhereInput = q ? { AND: [access, search] } : access;
+      const extra: Prisma.ConversationWhereInput[] = [];
+      if (q) {
+        extra.push({
+          OR: [
+            { contact: { nome: { contains: q, mode: "insensitive" as const } } },
+            { condominium: { nome: { contains: q, mode: "insensitive" as const } } },
+            { peerPhoneE164: { contains: q, mode: "insensitive" as const } },
+          ],
+        });
+      }
+      if (filters?.untreated) extra.push({ triageItem: { is: { status: "aberto" } } });
+      if (filters?.unidentified) extra.push({ unidentified: true });
+      const where: Prisma.ConversationWhereInput = extra.length ? { AND: [access, ...extra] } : access;
+      const fetchSize = filters?.unread ? 200 : pageSize;
+      const fetchSkip = filters?.unread ? 0 : (page - 1) * pageSize;
       const [total, items] = await Promise.all([
         db.conversation.count({ where }),
         db.conversation.findMany({
           where,
           orderBy: { updatedAt: "desc" },
-          skip: (page - 1) * pageSize,
-          take: pageSize,
+          skip: fetchSkip,
+          take: fetchSize,
           include: {
             contact: true,
             condominium: true,
@@ -153,10 +204,33 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
               take: 5,
             },
             messages: { orderBy: { createdAt: "desc" }, take: 1 },
+            reads: { where: { userId: user.id }, take: 1 },
           },
         }),
       ]);
-      return { items, total, page, pageSize };
+      const mapped = items
+        .map((row) => {
+          const lastRead = row.reads[0]?.lastReadAt;
+          const unread = !lastRead || lastRead < row.updatedAt;
+          const { reads, ...rest } = row;
+          void reads;
+          return { ...rest, unread };
+        })
+        .filter((row) => (filters?.unread ? row.unread : true));
+      if (filters?.unread) {
+        const start = (page - 1) * pageSize;
+        return { items: mapped.slice(start, start + pageSize), total: mapped.length, page, pageSize };
+      }
+      return { items: mapped, total, page, pageSize };
+    },
+
+    async markRead(user: User, conversationId: string) {
+      await this.getConversationForUser(user, conversationId);
+      return db.conversationRead.upsert({
+        where: { userId_conversationId: { userId: user.id, conversationId } },
+        create: { userId: user.id, conversationId, lastReadAt: new Date() },
+        update: { lastReadAt: new Date() },
+      });
     },
 
     async getConversationForUser(user: User, id: string) {
@@ -187,7 +261,10 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           orderBy: { createdAt: "asc" },
           skip: (page - 1) * pageSize,
           take: pageSize,
-          include: { attachments: true },
+          include: {
+            attachments: true,
+            replyTo: { select: { id: true, body: true, direction: true } },
+          },
         }),
       ]);
       return { items, total, page, pageSize };
@@ -201,6 +278,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         visibility: "publica" | "interna";
         file?: { buffer: Buffer; name: string; mime: string };
         ticketId?: string;
+        replyToId?: string;
       },
     ) {
       const conversation = await this.getConversationForUser(user, conversationId);
@@ -224,52 +302,23 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         return { message, sentToWhatsApp: false };
       }
 
-      if (user.apenasRascunho) {
-        let attachmentData = undefined as
-          | { storageKey: string; mime: string; sizeBytes: number; originalName: string }
-          | undefined;
-        if (input.file) {
-          attachmentData = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
-        }
-        const message = await db.message.create({
-          data: {
-            conversationId,
-            ticketId,
-            direction: "out",
-            visibility: "publica",
-            sendStatus: "draft",
-            body: input.body.slice(0, 8000),
-            attachments: attachmentData ? { create: attachmentData } : undefined,
-          },
-          include: { attachments: true },
-        });
-        return { message, sentToWhatsApp: false, awaitingApproval: true };
-      }
-
-      if (!user.podeResponderCliente) {
+      if (!canSendPublicWhatsApp(user)) {
         throw forbidden("Este perfil não pode responder o cliente");
-      }
-      if (conversation.connection.type === "evolution_baileys") {
-        const provider = providerFor(conversation.connection.type);
-        const live = await provider.getStatus();
-        const mapped = mapBaileysLiveToDb(live.status);
-        if (mapped) {
-          await db.channelConnection.update({
-            where: { id: conversation.connection.id },
-            data: { status: mapped },
-          });
-        }
-        if (!isBaileysSessionOpen(live.status)) {
-          throw unprocessable(
-            "WhatsApp Web não está conectado. Abra Conexões, atualize o status e escaneie o QR se precisar.",
-            { liveStatus: live.status, detail: live.detail },
-          );
-        }
-      } else if (conversation.connection.status !== "open") {
-        throw unprocessable("Conexão não está aberta para envio");
       }
       if (conversation.unidentified || !conversation.contact?.phoneE164) {
         throw unprocessable("Identifique o contato antes de responder no WhatsApp");
+      }
+      if (!input.body.trim() && !input.file) {
+        throw unprocessable("Informe mensagem ou arquivo");
+      }
+
+      let replyToId: string | undefined;
+      if (input.replyToId) {
+        const quoted = await db.message.findFirst({
+          where: { id: input.replyToId, conversationId },
+        });
+        if (!quoted) throw unprocessable("Mensagem citada não pertence a esta conversa");
+        replyToId = quoted.id;
       }
 
       let attachmentData = undefined as
@@ -278,62 +327,48 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       if (input.file) {
         attachmentData = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
       }
-
-      const provider = providerFor(conversation.connection.type);
-      try {
-        let sent;
-        if (input.file && attachmentData) {
-          sent = await provider.sendMedia({
-            toE164: conversation.contact.phoneE164,
-            body: input.body,
-            mime: attachmentData.mime,
-            fileName: attachmentData.originalName,
-            buffer: input.file.buffer,
-          });
-        } else {
-          sent = await provider.send({
-            toE164: conversation.contact.phoneE164,
-            body: input.body,
-          });
-        }
-        const message = await db.message.create({
-          data: {
-            conversationId,
-            ticketId,
-            direction: "out",
-            visibility: "publica",
-            sendStatus: "sent",
-            waMessageId: sent.waMessageId,
-            body: input.body.slice(0, 8000),
-            attachments: attachmentData ? { create: attachmentData } : undefined,
-          },
-          include: { attachments: true },
-        });
-        await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-        return { message, sentToWhatsApp: true };
-      } catch (error) {
-        const message = await db.message.create({
-          data: {
-            conversationId,
-            ticketId,
-            direction: "out",
-            visibility: "publica",
-            sendStatus: "failed",
-            body: input.body.slice(0, 8000),
-            attachments: attachmentData ? { create: attachmentData } : undefined,
-          },
-          include: { attachments: true },
-        });
-        const cause = error instanceof Error ? error.message : "provider";
-        throw unprocessable(error instanceof AppError ? error.message : "Falha no envio ao canal", {
-          messageId: message.id,
-          cause,
-        });
-      }
+      const created = await db.message.create({
+        data: {
+          conversationId,
+          ticketId,
+          replyToId,
+          direction: "out",
+          visibility: "publica",
+          sendStatus: "pending",
+          body: (input.body || input.file?.name || "").slice(0, 8000),
+          attachments: attachmentData ? { create: attachmentData } : undefined,
+        },
+        include: { attachments: true },
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "message.send_queued",
+        entityType: "message",
+        entityId: created.id,
+        after: { conversationId, ticketId, visibility: "publica" },
+      });
+      const message = await dispatchToWhatsApp(db, user, created.id);
+      return { message, sentToWhatsApp: message.sendStatus === "sent", awaitingApproval: false };
     },
 
     async dashboardKpis(user: User) {
       const prazosVencidos = await deadlineService.countOverdue(user);
+      const prazosProximos = await deadlineService.countDueSoon(user);
+      const ticketWhere = isAdmin(user) ? {} : { assignedToId: user.id };
+      const [abertos, emAndamento, aguardando, semResponsavel, altaUrgente, rascunhos] = await Promise.all([
+        db.ticket.count({ where: { ...ticketWhere, status: "aberto" } }),
+        db.ticket.count({ where: { ...ticketWhere, status: "em_andamento" } }),
+        db.ticket.count({ where: { ...ticketWhere, status: "aguardando" } }),
+        isAdmin(user) ? db.ticket.count({ where: { assignedToId: null } }) : Promise.resolve(0),
+        db.ticket.count({ where: { ...ticketWhere, priority: { in: ["alta", "urgente"] }, status: { not: "resolvido" } } }),
+        db.message.count({
+          where: {
+            sendStatus: "draft",
+            visibility: "publica",
+            ...(isAdmin(user) ? {} : { ticket: { assignedToId: user.id } }),
+          },
+        }),
+      ]);
       if (!isAdmin(user)) {
         const meus = await db.ticket.count({
           where: { assignedToId: user.id, status: { not: "resolvido" } },
@@ -346,7 +381,14 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           recent: [] as unknown[],
           connections: [] as unknown[],
           prazosVencidos,
+          prazosProximos,
           meusChamados: meus,
+          abertos,
+          emAndamento,
+          aguardando,
+          semResponsavel: 0,
+          altaUrgente,
+          rascunhos,
         };
       }
       const [triagem, naoIdent, conexao, enviosFalhos, recent, connections] = await Promise.all([
@@ -364,7 +406,22 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         }),
         db.channelConnection.findMany({ orderBy: { createdAt: "asc" } }),
       ]);
-      return { triagem, naoIdent, conexao, enviosFalhos, recent, connections, prazosVencidos };
+      return {
+        triagem,
+        naoIdent,
+        conexao,
+        enviosFalhos,
+        recent,
+        connections,
+        prazosVencidos,
+        prazosProximos,
+        abertos,
+        emAndamento,
+        aguardando,
+        semResponsavel,
+        altaUrgente,
+        rascunhos,
+      };
     },
   };
 }

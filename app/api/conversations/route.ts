@@ -8,7 +8,15 @@ export async function GET(request: Request) {
   try {
     const user = await requireSession();
     const { page, pageSize, q } = parsePage(request);
-    const result = await atendimentoService.listConversations(user, page, pageSize, q);
+    const url = new URL(request.url);
+    const unread = url.searchParams.get("unread") === "1";
+    const untreated = url.searchParams.get("untreated") === "1";
+    const unidentified = url.searchParams.get("unidentified") === "1";
+    const result = await atendimentoService.listConversations(user, page, pageSize, q, {
+      unread,
+      untreated,
+      unidentified,
+    });
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,

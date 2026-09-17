@@ -10,7 +10,8 @@ export async function GET(request: Request) {
     const { page, pageSize } = parsePage(request);
     const url = new URL(request.url);
     const overdueOnly = url.searchParams.get("overdue") === "1";
-    const result = await deadlineService.list(user, page, pageSize, overdueOnly);
+    const dueSoon = url.searchParams.get("dueSoon") === "1";
+    const result = await deadlineService.list(user, page, pageSize, overdueOnly, dueSoon);
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,

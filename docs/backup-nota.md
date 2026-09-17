@@ -1,11 +1,15 @@
-# Backup — nota fase 0
+# Backup
 
-Backup **não está automatizado** neste app.
+Script na VPS: [`infra/deploy/backup.sh`](../infra/deploy/backup.sh).
 
-Recomendação operacional (fora do código):
+Gera, por execução:
 
-- Dump periódico do Postgres `"PORTAL-JURIDICO"` (`pg_dump`).
-- Pasta `uploads/` (anexos em disco local) deve entrar no mesmo ciclo de cópia.
-- Restaurar migrate + dump; não usar `db push` como mecanismo de produção.
+- `juricon.sql` — Postgres `PORTAL-JURIDICO` (user `juricon`)
+- `evolution.sql` — Postgres interno da Evolution
+- `uploads.tar.gz` — anexos do volume `juricon-uploads`
 
-Não versionar dumps nem `.env`.
+Notebook (Next no host): `pg_dump` do database `"PORTAL-JURIDICO"` + cópia da pasta `uploads/`.
+
+Restaurar: `migrate deploy` + `psql` do dump; não usar `db push`.
+
+Não versionar dumps nem `.env`. Pasta local `backups/` está no `.gitignore`.

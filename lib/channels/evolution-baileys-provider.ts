@@ -1,6 +1,13 @@
 import { unprocessable } from "@/lib/api/errors";
 import { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } from "@/lib/channels/evolution-qr-cache";
-import { describeEvolutionError, whatsAppNumberFromE164 } from "@/lib/channels/evolution-send";
+import {
+  brazilWhatsAppNumberVariants,
+  describeEvolutionError,
+  evolutionLogoutAlreadyOff,
+  evolutionSendLooksLikeLegacySchema,
+  pickRicherEvolutionError,
+  whatsAppNumberFromE164,
+} from "@/lib/channels/evolution-send";
 import type {
   ProviderSendInput,
   ProviderSendMediaInput,
@@ -27,6 +34,11 @@ function webhookUrl() {
 
 function webhookSecret() {
   return process.env.EVOLUTION_WEBHOOK_SECRET || "";
+}
+
+function quotedPayload(quotedWaMessageId?: string): { quoted?: { key: { id: string } } } {
+  if (!quotedWaMessageId) return {};
+  return { quoted: { key: { id: quotedWaMessageId } } };
 }
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "QRCODE_UPDATED"] as const;
@@ -183,17 +195,66 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
     if (!this.isConfigured()) {
       throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
     }
-    const number = whatsAppNumberFromE164(input.toE164);
-    const res = await fetch(`${evoBase()}/message/sendText/${encodeURIComponent(instance())}`, {
-      method: "POST",
-      headers: headers(true),
-      body: JSON.stringify({ number, text: input.body }),
-    });
-    const json = (await res.json().catch(() => ({}))) as { key?: { id?: string } };
-    if (!res.ok) {
-      throw unprocessable(describeEvolutionError(res.status, json, "text"), { status: res.status });
+    const url = `${evoBase()}/message/sendText/${encodeURIComponent(instance())}`;
+    const numbers = brazilWhatsAppNumberVariants(whatsAppNumberFromE164(input.toE164));
+    const attempts: { status: number; json: unknown }[] = [];
+    const quoted = quotedPayload(input.quotedWaMessageId);
+
+    for (const number of numbers) {
+      const withQuote = { number, text: input.body, ...quoted };
+      const first = await fetch(url, {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify(withQuote),
+      });
+      const firstJson = (await first.json().catch(() => ({}))) as { key?: { id?: string } };
+      if (first.ok) {
+        return { waMessageId: firstJson.key?.id ?? null, rawStatus: "sent" };
+      }
+      attempts.push({ status: first.status, json: firstJson });
+
+      if (quoted && first.status >= 400) {
+        const plain = await fetch(url, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ number, text: input.body }),
+        });
+        const plainJson = (await plain.json().catch(() => ({}))) as { key?: { id?: string } };
+        if (plain.ok) {
+          return { waMessageId: plainJson.key?.id ?? null, rawStatus: "sent" };
+        }
+        attempts.push({ status: plain.status, json: plainJson });
+      }
+
+      const lastJson = attempts[attempts.length - 1]?.json;
+      if (first.status === 400 && evolutionSendLooksLikeLegacySchema(lastJson ?? firstJson)) {
+        const retry = await fetch(url, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ number, textMessage: { text: input.body }, ...quoted }),
+        });
+        const retryJson = (await retry.json().catch(() => ({}))) as { key?: { id?: string } };
+        if (retry.ok) {
+          return { waMessageId: retryJson.key?.id ?? null, rawStatus: "sent" };
+        }
+        attempts.push({ status: retry.status, json: retryJson });
+        if (quoted) {
+          const retryPlain = await fetch(url, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ number, textMessage: { text: input.body } }),
+          });
+          const retryPlainJson = (await retryPlain.json().catch(() => ({}))) as { key?: { id?: string } };
+          if (retryPlain.ok) {
+            return { waMessageId: retryPlainJson.key?.id ?? null, rawStatus: "sent" };
+          }
+          attempts.push({ status: retryPlain.status, json: retryPlainJson });
+        }
+      }
     }
-    return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
+
+    const last = attempts[attempts.length - 1];
+    throw unprocessable(pickRicherEvolutionError("text", attempts), { status: last?.status ?? 400 });
   }
 
   async sendMedia(input: ProviderSendMediaInput) {
@@ -205,23 +266,42 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
       : input.mime.startsWith("audio/")
         ? "audio"
         : "document";
-    const res = await fetch(`${evoBase()}/message/sendMedia/${encodeURIComponent(instance())}`, {
+    const quoted = quotedPayload(input.quotedWaMessageId);
+    const base: Record<string, unknown> = {
+      number: whatsAppNumberFromE164(input.toE164),
+      mediatype: mediaType,
+      mimetype: input.mime,
+      caption: input.body || "",
+      fileName: input.fileName,
+      media: input.buffer.toString("base64"),
+      ...(input.ptt && mediaType === "audio" ? { ptt: true } : {}),
+      ...quoted,
+    };
+    const url = `${evoBase()}/message/sendMedia/${encodeURIComponent(instance())}`;
+    const first = await fetch(url, {
       method: "POST",
       headers: headers(true),
-      body: JSON.stringify({
-        number: whatsAppNumberFromE164(input.toE164),
-        mediatype: mediaType,
-        mimetype: input.mime,
-        caption: input.body || "",
-        fileName: input.fileName,
-        media: input.buffer.toString("base64"),
-      }),
+      body: JSON.stringify(base),
     });
-    const json = (await res.json().catch(() => ({}))) as { key?: { id?: string } };
-    if (!res.ok) {
-      throw unprocessable(describeEvolutionError(res.status, json, "media"), { status: res.status });
+    const json = (await first.json().catch(() => ({}))) as { key?: { id?: string } };
+    if (first.ok) {
+      return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
     }
-    return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
+    if (quoted) {
+      const { quoted: _q, ...plain } = base;
+      void _q;
+      const retry = await fetch(url, {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify(plain),
+      });
+      const retryJson = (await retry.json().catch(() => ({}))) as { key?: { id?: string } };
+      if (retry.ok) {
+        return { waMessageId: retryJson.key?.id ?? null, rawStatus: "sent" };
+      }
+      throw unprocessable(describeEvolutionError(retry.status, retryJson, "media"), { status: retry.status });
+    }
+    throw unprocessable(describeEvolutionError(first.status, json, "media"), { status: first.status });
   }
 
   async getQr(): Promise<QrResult> {
@@ -306,7 +386,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
       method: "DELETE",
       headers: headers(),
     });
-    if (!res.ok && res.status !== 404) {
+    if (!res.ok && !evolutionLogoutAlreadyOff(res.status)) {
       throw unprocessable("Falha ao desconectar instância Evolution", { status: res.status });
     }
     clearEvolutionQr();

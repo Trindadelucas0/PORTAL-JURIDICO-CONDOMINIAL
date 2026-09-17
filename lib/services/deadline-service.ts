@@ -20,14 +20,19 @@ export const deadlinePatchSchema = z.object({
 
 export function createDeadlineService(db: PrismaClient = defaultPrisma) {
   return {
-    async list(user: User, page: number, pageSize: number, overdueOnly = false) {
+    async list(user: User, page: number, pageSize: number, overdueOnly = false, dueSoon = false) {
       const ticketWhere = ticketListWhere(user);
+      const now = new Date();
+      const soon = new Date(now.getTime() + 72 * 60 * 60 * 1000);
       const where: Prisma.DeadlineWhereInput = {
         ticket: ticketWhere,
       };
       if (overdueOnly) {
         where.doneAt = null;
-        where.dueAt = { lt: new Date() };
+        where.dueAt = { lt: now };
+      } else if (dueSoon) {
+        where.doneAt = null;
+        where.dueAt = { gt: now, lte: soon };
       }
       const [total, items] = await Promise.all([
         db.deadline.count({ where }),
@@ -51,6 +56,18 @@ export function createDeadlineService(db: PrismaClient = defaultPrisma) {
         where: {
           doneAt: null,
           dueAt: { lt: new Date() },
+          ticket: ticketListWhere(user),
+        },
+      });
+    },
+
+    async countDueSoon(user: User) {
+      const now = new Date();
+      const soon = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+      return db.deadline.count({
+        where: {
+          doneAt: null,
+          dueAt: { gt: now, lte: soon },
           ticket: ticketListWhere(user),
         },
       });

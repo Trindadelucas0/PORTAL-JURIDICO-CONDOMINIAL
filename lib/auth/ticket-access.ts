@@ -6,7 +6,7 @@ import { isAdmin } from "@/lib/auth/guards";
 const ticketInclude = {
   condominium: true,
   contact: true,
-  assignedTo: { select: { id: true, email: true, role: true } },
+  assignedTo: { select: { id: true, email: true, nome: true, role: true } },
   createdBy: { select: { id: true, email: true, role: true } },
 } as const;
 

@@ -13,12 +13,32 @@ export function handleRouteError(error: unknown) {
   return fail(500, "INTERNAL", "Não foi possível concluir a operação.");
 }
 
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Origens aceitas: a do request + APP_PUBLIC_URL (túnel Cloudflare HTTPS). */
+export function csrfAllowedOrigins(request: Request): Set<string> {
+  const allowed = new Set<string>();
+  const fromRequest = originOf(request.url);
+  if (fromRequest) allowed.add(fromRequest);
+  const publicUrl = process.env.APP_PUBLIC_URL?.trim();
+  if (publicUrl) {
+    const fromPublic = originOf(publicUrl);
+    if (fromPublic) allowed.add(fromPublic);
+  }
+  return allowed;
+}
+
 export function assertCsrf(request: Request) {
   if (request.method === "GET" || request.method === "HEAD") return;
   const origin = request.headers.get("origin");
   if (!origin) return;
-  const expected = new URL(request.url).origin;
-  if (origin !== expected) {
+  if (!csrfAllowedOrigins(request).has(origin)) {
     throw new AppError(403, "CSRF", "Origem não permitida");
   }
 }

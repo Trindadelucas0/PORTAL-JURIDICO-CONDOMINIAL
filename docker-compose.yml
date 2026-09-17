@@ -1,3 +1,7 @@
+# Dev (notebook): docker compose up -d
+#   Evolution na porta 8080 do host; Next continua no host (pnpm dev --port 3010).
+# VPS: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   Next + Postgres Juricon; Evolution sem porta no host; webhook interno.
 services:
   evolution-redis:
     image: redis:7-alpine
