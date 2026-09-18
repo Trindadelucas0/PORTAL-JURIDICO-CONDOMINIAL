@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Accordion } from "@/components/ui/accordion";
+import { Frame, FrameHeader, FramePanel, FrameTitle } from "@/components/reui/frame";
+import { Drawer } from "@/components/ui/drawer";
 import { api } from "@/lib/client/api";
+import { useToast } from "@/components/ui/toast";
 
 type Condo = {
   id: string;
@@ -52,6 +55,7 @@ export default function CondominioFichaPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const qc = useQueryClient();
+  const toast = useToast();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/auth/me") });
   const admin = me.data?.data.user.role === "admin";
   const q = useQuery({ queryKey: ["condominium", id], queryFn: () => api<Condo>(`/api/condominiums/${id}`) });
@@ -61,6 +65,12 @@ export default function CondominioFichaPage() {
     queryFn: () => api<Audit[]>(`/api/audit?entityType=condominium&entityId=${id}`),
   });
   const [form, setForm] = useState<Partial<Condo> | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Condo["contacts"][number] | null>(null);
+  const [cNome, setCNome] = useState("");
+  const [phone, setPhone] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [email, setEmail] = useState("");
   const save = useMutation({
     mutationFn: () =>
       api(`/api/condominiums/${id}`, {
@@ -69,6 +79,40 @@ export default function CondominioFichaPage() {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["condominium", id] }),
   });
+  const saveContact = useMutation({
+    mutationFn: () => {
+      const body = { nome: cNome, phone, cargo: cargo || undefined, email: email || undefined, condominiumId: id };
+      if (editingContact) {
+        return api(`/api/contacts/${editingContact.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      }
+      return api("/api/contacts", { method: "POST", body: JSON.stringify(body) });
+    },
+    onSuccess: () => {
+      setContactOpen(false);
+      setEditingContact(null);
+      toast("Contato salvo");
+      qc.invalidateQueries({ queryKey: ["condominium", id] });
+      qc.invalidateQueries({ queryKey: ["condominiums"] });
+    },
+  });
+
+  function openNewContact() {
+    setEditingContact(null);
+    setCNome("");
+    setPhone("");
+    setCargo("");
+    setEmail("");
+    setContactOpen(true);
+  }
+
+  function openEditContact(ct: Condo["contacts"][number]) {
+    setEditingContact(ct);
+    setCNome(ct.nome);
+    setPhone(ct.phoneE164);
+    setCargo(ct.cargo || "");
+    setEmail(ct.email || "");
+    setContactOpen(true);
+  }
 
   if (q.isError) {
     const status = (q.error as Error & { status?: number }).status;
@@ -94,7 +138,8 @@ export default function CondominioFichaPage() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <section className="space-y-3">
+            <Frame>
+              <FramePanel className="space-y-3 p-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <Label htmlFor="nome">Nome</Label>
@@ -123,30 +168,43 @@ export default function CondominioFichaPage() {
                 </Button>
               ) : null}
               {save.isError ? <p className="text-sm text-[var(--danger)]">{(save.error as Error).message}</p> : null}
-            </section>
-            <section>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Chamados</h2>
+              </FramePanel>
+            </Frame>
+            <Frame>
+              <FramePanel>
+                <FrameHeader>
+                  <FrameTitle>Chamados</FrameTitle>
+                </FrameHeader>
+                <div className="px-4 pb-4">
               {c.tickets.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">Nenhum chamado visível.</p>
+                <p className="text-sm text-muted-foreground">Nenhum chamado visível.</p>
               ) : (
-                <ul className="mt-2 space-y-2 text-sm">
+                <ul className="space-y-2 text-sm">
                   {c.tickets.map((t) => (
-                    <li key={t.id}>
-                      <Link className="text-[var(--brand)]" href={`/chamados/${t.id}`}>
+                    <li key={t.id} className="flex flex-wrap items-center gap-2">
+                      <Link className="text-primary" href={`/chamados/${t.id}`}>
                         #{t.protocol}
-                      </Link>{" "}
-                      {t.title} <Badge>{t.status}</Badge> {t.assignedTo?.email || "sem responsável"}
+                      </Link>
+                      <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                      <StatusBadge status={t.status} />
+                      <span className="text-muted-foreground">{t.assignedTo?.email || "sem responsável"}</span>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
-            <section>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Comunicações</h2>
+                </div>
+              </FramePanel>
+            </Frame>
+            <Frame>
+              <FramePanel>
+                <FrameHeader>
+                  <FrameTitle>Comunicações</FrameTitle>
+                </FrameHeader>
+                <div className="px-4 pb-4">
               {c.conversations.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">Nenhuma conversa visível.</p>
+                <p className="text-sm text-muted-foreground">Nenhuma conversa visível.</p>
               ) : (
-                <ul className="mt-2 space-y-2 text-sm">
+                <ul className="space-y-2 text-sm">
                   {c.conversations.map((conv) => (
                     <li key={conv.id}>
                       {conv.contact?.nome || "contato"} · {conv.messages[0]?.body || "—"}
@@ -154,41 +212,66 @@ export default function CondominioFichaPage() {
                   ))}
                 </ul>
               )}
-            </section>
+                </div>
+              </FramePanel>
+            </Frame>
           </div>
-          <div className="space-y-6 lg:border-l lg:border-[var(--border)] lg:pl-6">
-            <section>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Contatos</h2>
+          <div className="space-y-4">
+            <Frame>
+              <FramePanel className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Contatos</h2>
+                {admin ? (
+                  <Button type="button" variant="secondary" size="sm" onClick={openNewContact}>
+                    Adicionar
+                  </Button>
+                ) : null}
+              </div>
               <ul className="mt-2 space-y-2 text-sm">
                 {c.contacts.map((ct) => (
-                  <li key={ct.id}>
-                    {ct.nome} · {ct.phoneE164}
-                    {ct.cargo ? ` · ${ct.cargo}` : ""}
+                  <li key={ct.id} className="flex items-start justify-between gap-2 rounded-[10px] bg-[var(--surface-2)] px-3 py-2">
+                    <span>
+                      {ct.nome} · {ct.phoneE164}
+                      {ct.cargo ? ` · ${ct.cargo}` : ""}
+                      {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
+                    </span>
+                    {admin ? (
+                      <button type="button" className="text-xs text-primary" onClick={() => openEditContact(ct)}>
+                        Editar
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
-            </section>
-            <section>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Documentos</h2>
+              </FramePanel>
+            </Frame>
+            <Frame>
+              <FramePanel>
+                <FrameHeader>
+                  <FrameTitle>Documentos</FrameTitle>
+                </FrameHeader>
+                <div className="px-4 pb-4">
               {c.documents.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">Nenhum arquivo visível.</p>
+                <p className="text-sm text-muted-foreground">Nenhum arquivo visível.</p>
               ) : (
-                <ul className="mt-2 space-y-2 text-sm">
+                <ul className="space-y-2 text-sm">
                   {c.documents.map((d) => (
                     <li key={d.id} className="flex justify-between gap-2">
                       <span>{d.originalName}</span>
-                      <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
+                      <a className="text-primary" href={`/api/files/${d.storageKey}`}>
                         Baixar
                       </a>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+                </div>
+              </FramePanel>
+            </Frame>
             {admin ? (
               <Accordion title="Histórico">
                 {(audit.data?.data ?? []).length === 0 ? (
-                  <p className="text-sm text-[var(--muted)]">Sem eventos.</p>
+                  <p className="text-sm text-muted-foreground">Sem eventos.</p>
                 ) : (
                   <ul className="space-y-2 text-xs">
                     {(audit.data?.data ?? []).map((a) => (
@@ -203,6 +286,28 @@ export default function CondominioFichaPage() {
           </div>
         </div>
       )}
+      <Drawer open={contactOpen} onClose={() => setContactOpen(false)} title={editingContact ? "Editar contato" : "Novo contato"}>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveContact.mutate();
+          }}
+        >
+          <Label htmlFor="cn">Nome</Label>
+          <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
+          <Label htmlFor="ph">Telefone</Label>
+          <Input id="ph" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Label htmlFor="cg">Cargo</Label>
+          <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
+          <Label htmlFor="em">E-mail</Label>
+          <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {saveContact.isError ? <p className="text-sm text-[var(--danger)]">{(saveContact.error as Error).message}</p> : null}
+          <Button type="submit" disabled={saveContact.isPending}>
+            Salvar contato
+          </Button>
+        </form>
+      </Drawer>
     </div>
   );
 }

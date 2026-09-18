@@ -13,6 +13,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Drawer } from "@/components/ui/drawer";
 import { PageHeader } from "@/components/ui/page-header";
+import { Toolbar } from "@/components/ui/toolbar";
 import { api } from "@/lib/client/api";
 import { CATEGORIES, CATEGORY_LABEL } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
@@ -105,6 +106,7 @@ function ChamadosInner() {
       <PageHeader
         title="Chamados"
         description={`${total} chamados`}
+        meta={items.filter((t) => !t.assignedTo).length > 0 ? `${items.filter((t) => !t.assignedTo).length} sem responsável` : undefined}
         action={
           admin ? (
             <Button type="button" onClick={() => setOpen(true)}>
@@ -113,7 +115,7 @@ function ChamadosInner() {
           ) : null
         }
       />
-      <div className="mt-4 flex flex-wrap gap-2">
+      <Toolbar>
         <Input className="max-w-xs" placeholder="Buscar protocolo, título…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar chamados" />
         <Select className="max-w-[12rem]" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Categoria">
           <option value="">Categoria</option>
@@ -149,14 +151,19 @@ function ChamadosInner() {
               ))}
           </Select>
         ) : null}
-      </div>
+      </Toolbar>
       {truncated ? (
-        <p className="mt-3 text-sm text-[var(--muted)]" role="status">
+        <p className="mb-3 text-sm text-muted-foreground" role="status">
           Exibindo {items.length} de {total} chamados (limite de 50). Refine a busca ou os filtros para ver os demais.
         </p>
       ) : null}
       {list.isLoading ? (
-        <Skeleton className="mt-4 h-40" />
+        <div className="grid gap-4 md:grid-cols-4">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
       ) : items.length === 0 ? (
         <EmptyState
           title="Nenhum chamado"

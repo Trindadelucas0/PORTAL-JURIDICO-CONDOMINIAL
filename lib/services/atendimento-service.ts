@@ -11,6 +11,12 @@ import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
 import { mergeConversations } from "@/lib/services/conversation-merge";
+import {
+  inFlowConversationWhere,
+  isInOperationalFlow,
+  outOfFlowConversationWhere,
+  sendableWhatsAppE164,
+} from "@/lib/services/operational-flow";
 
 export type InboundPayload = {
   waMessageId: string;
@@ -29,6 +35,33 @@ export type IngestResult = {
   triageId: string | null;
   ticketCreated: false;
 };
+
+async function promoteLidPeerToPhone(
+  db: PrismaClient,
+  conversation: Conversation,
+  phone: string,
+): Promise<Conversation> {
+  if (!isLidPeer(conversation.peerPhoneE164) || isLidPeer(phone)) return conversation;
+  try {
+    return await db.conversation.update({
+      where: { id: conversation.id },
+      data: { peerPhoneE164: phone },
+    });
+  } catch (error) {
+    if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
+      const other = await db.conversation.findFirst({
+        where: { connectionId: conversation.connectionId, peerPhoneE164: phone },
+      });
+      if (other && other.id !== conversation.id) {
+        await mergeConversations(db, other.id, conversation.id);
+        return (await db.conversation.findFirst({ where: { id: other.id } })) ?? other;
+      }
+    } else {
+      throw error;
+    }
+  }
+  return conversation;
+}
 
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
   return {
@@ -103,6 +136,11 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       }
       if (!conversation) throw unprocessable("Não foi possível abrir a conversa");
 
+      const realPhone = !isLidPeer(phone) ? phone : contact && !isLidPeer(contact.phoneE164) ? contact.phoneE164 : null;
+      if (realPhone) {
+        conversation = await promoteLidPeerToPhone(db, conversation, realPhone);
+      }
+
       if (contact) {
         await upsertContactIdentities(db, contact.id, uniquePhones(phone, waLid, contact.phoneE164));
         conversation = await db.conversation.update({
@@ -137,18 +175,22 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         data: { updatedAt: new Date() },
       });
 
-      let triage = await db.triageItem.findUnique({
-        where: { conversationId: conversation.id },
-      });
-      if (!triage) {
-        triage = await db.triageItem.create({
-          data: { conversationId: conversation.id, status: "aberto" },
+      let triageId: string | null = null;
+      if (isInOperationalFlow(contact)) {
+        let triage = await db.triageItem.findUnique({
+          where: { conversationId: conversation.id },
         });
-      } else if (triage.status === "arquivado") {
-        triage = await db.triageItem.update({
-          where: { id: triage.id },
-          data: { status: "aberto" },
-        });
+        if (!triage) {
+          triage = await db.triageItem.create({
+            data: { conversationId: conversation.id, status: "aberto" },
+          });
+        } else if (triage.status === "arquivado") {
+          triage = await db.triageItem.update({
+            where: { id: triage.id },
+            data: { status: "aberto" },
+          });
+        }
+        triageId = triage.id;
       }
 
       return {
@@ -156,7 +198,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         conversationId: conversation.id,
         messageId: message.id,
         unidentified: conversation.unidentified,
-        triageId: triage.id,
+        triageId,
         ticketCreated: false,
       };
     },
@@ -166,12 +208,16 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       page: number,
       pageSize: number,
       q?: string,
-      filters?: { unread?: boolean; untreated?: boolean; unidentified?: boolean },
+      filters?: { unread?: boolean; untreated?: boolean; unlinked?: boolean },
     ) {
+      if (filters?.unlinked && !isAdmin(user)) {
+        throw forbidden("Somente administradores veem números não vinculados");
+      }
       const access: Prisma.ConversationWhereInput = isAdmin(user)
         ? {}
         : { tickets: { some: { assignedToId: user.id } } };
       const extra: Prisma.ConversationWhereInput[] = [];
+      extra.push(filters?.unlinked ? outOfFlowConversationWhere : inFlowConversationWhere);
       if (q) {
         extra.push({
           OR: [
@@ -182,7 +228,6 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         });
       }
       if (filters?.untreated) extra.push({ triageItem: { is: { status: "aberto" } } });
-      if (filters?.unidentified) extra.push({ unidentified: true });
       const where: Prisma.ConversationWhereInput = extra.length ? { AND: [access, ...extra] } : access;
       const fetchSize = filters?.unread ? 200 : pageSize;
       const fetchSkip = filters?.unread ? 0 : (page - 1) * pageSize;
@@ -305,8 +350,18 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       if (!canSendPublicWhatsApp(user)) {
         throw forbidden("Este perfil não pode responder o cliente");
       }
-      if (conversation.unidentified || !conversation.contact?.phoneE164) {
-        throw unprocessable("Identifique o contato antes de responder no WhatsApp");
+      const outOfFlow = !conversation.contactId || !conversation.condominiumId;
+      if (outOfFlow && !isAdmin(user)) {
+        throw forbidden("Somente administradores respondem números fora do fluxo");
+      }
+      if (
+        !sendableWhatsAppE164({
+          contactPhoneE164: conversation.contact?.phoneE164,
+          peerPhoneE164: conversation.peerPhoneE164,
+        }) &&
+        !isLidPeer(conversation.peerPhoneE164)
+      ) {
+        throw unprocessable("Não foi possível enviar neste chat.");
       }
       if (!input.body.trim() && !input.file) {
         throw unprocessable("Informe mensagem ou arquivo");
@@ -376,6 +431,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         return {
           triagem: 0,
           naoIdent: 0,
+          naoVinculados: 0,
           conexao: null,
           enviosFalhos: 0,
           recent: [] as unknown[],
@@ -391,15 +447,18 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           rascunhos,
         };
       }
-      const [triagem, naoIdent, conexao, enviosFalhos, recent, connections] = await Promise.all([
-        db.triageItem.count({ where: { status: "aberto" } }),
-        db.conversation.count({ where: { unidentified: true } }),
+      const [triagem, naoVinculados, conexao, enviosFalhos, recent, connections] = await Promise.all([
+        db.triageItem.count({
+          where: { status: "aberto", conversation: inFlowConversationWhere },
+        }),
+        db.conversation.count({ where: outOfFlowConversationWhere }),
         db.channelConnection.findFirst({
           where: { type: { in: ["evolution_baileys", "dev_mock"] } },
           orderBy: { updatedAt: "desc" },
         }),
         db.message.count({ where: { sendStatus: "failed" } }),
         db.conversation.findMany({
+          where: inFlowConversationWhere,
           orderBy: { updatedAt: "desc" },
           take: 8,
           include: { contact: true, condominium: true },
@@ -408,7 +467,8 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       ]);
       return {
         triagem,
-        naoIdent,
+        naoIdent: naoVinculados,
+        naoVinculados,
         conexao,
         enviosFalhos,
         recent,

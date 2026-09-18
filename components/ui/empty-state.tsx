@@ -1,4 +1,7 @@
+import { Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { IconTile } from "@/components/reui/icon-tile";
 
 export function EmptyState({
   title,
@@ -10,14 +13,23 @@ export function EmptyState({
   action?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="px-4 py-12 text-center">
-      <p className="font-medium">{title}</p>
-      {hint ? <p className="mx-auto mt-1 max-w-sm text-sm text-[var(--muted)]">{hint}</p> : null}
+    <Empty className="border border-dashed border-border">
+      <EmptyHeader>
+        <EmptyMedia>
+          <IconTile variant="frame" size="lg">
+            <Inbox />
+          </IconTile>
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        {hint ? <EmptyDescription>{hint}</EmptyDescription> : null}
+      </EmptyHeader>
       {action ? (
-        <Button className="mt-4" type="button" onClick={action.onClick}>
-          {action.label}
-        </Button>
+        <EmptyContent>
+          <Button type="button" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        </EmptyContent>
       ) : null}
-    </div>
+    </Empty>
   );
 }

@@ -11,12 +11,17 @@ import {
   brazilWhatsAppNumberVariants,
   describeEvolutionError,
   evolutionLogoutAlreadyOff,
+  evolutionSendDestinations,
   evolutionSendLooksLikeLegacySchema,
   isBaileysSessionOpen,
   pickRicherEvolutionError,
   whatsAppNumberFromE164,
 } from "@/lib/channels/evolution-send";
-import { e164LookupValues } from "@/lib/phone/identity";
+import { e164LookupValues, sendableWhatsAppE164 } from "@/lib/phone/identity";
+import { conversationPhoneLabel, formatWhatsAppPeer, WHATSAPP_HIDDEN_NUMBER_LABEL } from "@/lib/phone/display";
+import { isInOperationalFlow } from "@/lib/services/operational-flow";
+import { contactNameMatchesPushName, lidJidsMatchingPlaceholder, pickUniqueLidPlaceholder } from "@/lib/channels/evolution-lid-map";
+import { phoneFromWhatsAppLid } from "@/lib/channels/evolution-webhook";
 
 describe("login primitives", () => {
   it("hashes and verifies password without storing plaintext", async () => {
@@ -156,6 +161,63 @@ describe("evolution send errors", () => {
     expect(brazilWhatsAppNumberVariants("551199990000")).toEqual(["551199990000", "5511999990000"]);
     expect(brazilWhatsAppNumberVariants("5511999990000")[0]).toBe("5511999990000");
     expect(e164LookupValues("+5511999990000")).toEqual(["+5511999990000", "+551199990000"]);
+  });
+
+  it("does not show LID placeholder as a phone number", () => {
+    expect(formatWhatsAppPeer("+999885504524400")).toBe(WHATSAPP_HIDDEN_NUMBER_LABEL);
+    expect(conversationPhoneLabel(null, "+999885504524400")).toBe(WHATSAPP_HIDDEN_NUMBER_LABEL);
+    expect(formatWhatsAppPeer("+5511988880000")).toBe("+55 (11) 98888-0000");
+    expect(formatWhatsAppPeer("+553898034252")).toBe("+55 (38) 99803-4252");
+    expect(conversationPhoneLabel("+5511999990000", "+999111")).toBe("+55 (11) 99999-0000");
+  });
+
+  it("maps a unique Evolution LID chat by contact first name", () => {
+    expect(contactNameMatchesPushName("ANDRE", "Andre Escritorio")).toBe(true);
+    expect(contactNameMatchesPushName("ANDRE SILVA", "Andre Escritorio")).toBe(false);
+    expect(contactNameMatchesPushName("ANA", "Ana Paula")).toBe(false);
+    const lid = phoneFromWhatsAppLid("142112045666497@lid");
+    expect(
+      pickUniqueLidPlaceholder(
+        [
+          { remoteJid: "142112045666497@lid", pushName: "Andre Escritorio" },
+          { remoteJid: "43035656245495@lid", pushName: "Ezequiel" },
+        ],
+        "ANDRE",
+      ),
+    ).toBe(lid);
+    expect(
+      pickUniqueLidPlaceholder(
+        [
+          { remoteJid: "142112045666497@lid", pushName: "Andre Escritorio" },
+          { remoteJid: "199999999999999@lid", pushName: "Andre Outro" },
+        ],
+        "ANDRE",
+      ),
+    ).toBeNull();
+  });
+
+  it("operational flow and sendable WhatsApp number", () => {
+    expect(isInOperationalFlow(null)).toBe(false);
+    expect(isInOperationalFlow({ condominiumId: null })).toBe(false);
+    expect(isInOperationalFlow({ condominiumId: "x" })).toBe(true);
+    expect(sendableWhatsAppE164({ peerPhoneE164: "+5511988880000" })).toBe("+5511988880000");
+    expect(sendableWhatsAppE164({ peerPhoneE164: "+999111" })).toBeNull();
+  });
+
+  it("sends WhatsApp to LID jid when the peer has no real phone", () => {
+    expect(evolutionSendDestinations("142112045666497@lid")).toEqual(["142112045666497@lid"]);
+    expect(evolutionSendDestinations("+999112045666497")).toEqual(["112045666497@lid"]);
+    expect(evolutionSendDestinations("+5511988880000")[0]).toBe("5511988880000");
+    const placeholder = phoneFromWhatsAppLid("142112045666497@lid");
+    expect(
+      lidJidsMatchingPlaceholder(
+        [
+          { remoteJid: "142112045666497@lid" },
+          { remoteJid: "556198980080@s.whatsapp.net" },
+        ],
+        placeholder!,
+      ),
+    ).toEqual(["142112045666497@lid"]);
   });
 
   it("treats Evolution logout 400/404 as already disconnected", () => {

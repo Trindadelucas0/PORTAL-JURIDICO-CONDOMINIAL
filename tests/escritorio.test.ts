@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { createAtendimentoService } from "@/lib/services/atendimento-service";
+import { cadastroService } from "@/lib/services/cadastro-service";
 import { createTicketService } from "@/lib/services/ticket-service";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
 import { hashPassword } from "@/lib/auth/session";
@@ -299,6 +300,65 @@ describe("escritorio operacional", () => {
       throw new Error("expected forbidden");
     } catch (e) {
       expect((e as AppError).status).toBe(403);
+    }
+  });
+
+  it("enrolls unknown number into flow; staff cannot list unlinked", async () => {
+    const suffix = `${Date.now()}-enroll`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-enr-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `staff-enr-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Enroll ${suffix}` } });
+    let connection = await db.channelConnection.findFirst({ where: { type: "dev_mock" } });
+    if (!connection) {
+      connection = await db.channelConnection.create({
+        data: { type: "dev_mock", status: "open", label: "Dev / mock" },
+      });
+    }
+    const phone = `+55113${String(Date.now()).slice(-8)}`;
+    const inbound = await atendimento.ingestInbound({
+      waMessageId: `enroll-${suffix}`,
+      fromPhone: phone,
+      body: "oi avulso",
+      connectionType: "dev_mock",
+    });
+    expect(inbound.triageId).toBeNull();
+    try {
+      await atendimento.listConversations(staff, 1, 20, undefined, { unlinked: true });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+    const enrolled = await cadastroService.enrollConversation(admin, inbound.conversationId, {
+      nome: "Sindico Novo",
+      condominiumId: condo.id,
+      phone,
+    });
+    expect(enrolled.triage.id).toBeTruthy();
+    const again = await atendimento.ingestInbound({
+      waMessageId: `enroll-2-${suffix}`,
+      fromPhone: phone,
+      body: "segunda",
+      connectionType: "dev_mock",
+    });
+    expect(again.unidentified).toBe(false);
+    expect(again.triageId).toBe(enrolled.triage.id);
+    try {
+      await cadastroService.patchTriage(admin, enrolled.triage.id, { action: "identify", contactId: enrolled.contact.id });
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect((e as AppError).status).toBe(422);
     }
   });
 });

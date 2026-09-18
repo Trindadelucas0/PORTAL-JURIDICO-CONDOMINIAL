@@ -1,12 +1,10 @@
 import { unprocessable } from "@/lib/api/errors";
 import { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } from "@/lib/channels/evolution-qr-cache";
 import {
-  brazilWhatsAppNumberVariants,
-  describeEvolutionError,
   evolutionLogoutAlreadyOff,
+  evolutionSendDestinations,
   evolutionSendLooksLikeLegacySchema,
   pickRicherEvolutionError,
-  whatsAppNumberFromE164,
 } from "@/lib/channels/evolution-send";
 import type {
   ProviderSendInput,
@@ -196,7 +194,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
       throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
     }
     const url = `${evoBase()}/message/sendText/${encodeURIComponent(instance())}`;
-    const numbers = brazilWhatsAppNumberVariants(whatsAppNumberFromE164(input.toE164));
+    const numbers = evolutionSendDestinations(input.toE164);
     const attempts: { status: number; json: unknown }[] = [];
     const quoted = quotedPayload(input.quotedWaMessageId);
 
@@ -267,41 +265,33 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
         ? "audio"
         : "document";
     const quoted = quotedPayload(input.quotedWaMessageId);
-    const base: Record<string, unknown> = {
-      number: whatsAppNumberFromE164(input.toE164),
-      mediatype: mediaType,
-      mimetype: input.mime,
-      caption: input.body || "",
-      fileName: input.fileName,
-      media: input.buffer.toString("base64"),
-      ...(input.ptt && mediaType === "audio" ? { ptt: true } : {}),
-      ...quoted,
-    };
+    const destinations = evolutionSendDestinations(input.toE164);
     const url = `${evoBase()}/message/sendMedia/${encodeURIComponent(instance())}`;
-    const first = await fetch(url, {
-      method: "POST",
-      headers: headers(true),
-      body: JSON.stringify(base),
-    });
-    const json = (await first.json().catch(() => ({}))) as { key?: { id?: string } };
-    if (first.ok) {
-      return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
-    }
-    if (quoted) {
-      const { quoted: _q, ...plain } = base;
-      void _q;
-      const retry = await fetch(url, {
+    const attempts: { status: number; json: unknown }[] = [];
+    for (const number of destinations) {
+      const base: Record<string, unknown> = {
+        number,
+        mediatype: mediaType,
+        mimetype: input.mime,
+        caption: input.body || "",
+        fileName: input.fileName,
+        media: input.buffer.toString("base64"),
+        ...(input.ptt && mediaType === "audio" ? { ptt: true } : {}),
+        ...quoted,
+      };
+      const first = await fetch(url, {
         method: "POST",
         headers: headers(true),
-        body: JSON.stringify(plain),
+        body: JSON.stringify(base),
       });
-      const retryJson = (await retry.json().catch(() => ({}))) as { key?: { id?: string } };
-      if (retry.ok) {
-        return { waMessageId: retryJson.key?.id ?? null, rawStatus: "sent" };
+      const json = (await first.json().catch(() => ({}))) as { key?: { id?: string } };
+      if (first.ok) {
+        return { waMessageId: json.key?.id ?? null, rawStatus: "sent" };
       }
-      throw unprocessable(describeEvolutionError(retry.status, retryJson, "media"), { status: retry.status });
+      attempts.push({ status: first.status, json });
     }
-    throw unprocessable(describeEvolutionError(first.status, json, "media"), { status: first.status });
+    const last = attempts[attempts.length - 1];
+    throw unprocessable(pickRicherEvolutionError("media", attempts), { status: last?.status ?? 400 });
   }
 
   async getQr(): Promise<QrResult> {

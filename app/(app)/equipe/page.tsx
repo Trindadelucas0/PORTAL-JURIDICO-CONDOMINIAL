@@ -13,9 +13,12 @@ import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { Toolbar } from "@/components/ui/toolbar";
 import { DataTable, Td, Th } from "@/components/ui/data-table";
 import { api } from "@/lib/client/api";
 import { useToast } from "@/components/ui/toast";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { initials } from "@/lib/ui-labels";
 
 type Member = {
   id: string;
@@ -100,14 +103,14 @@ export default function EquipePage() {
           </Button>
         }
       />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <Toolbar>
         <Input className="max-w-xs" placeholder="Buscar usuário…" value={qtext} onChange={(e) => setQtext(e.target.value)} aria-label="Buscar usuário" />
         <Select className="max-w-[10rem]" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
           <option value="all">Todos</option>
           <option value="ativo">Ativos</option>
           <option value="inativo">Inativos</option>
         </Select>
-      </div>
+      </Toolbar>
       {q.isLoading ? (
         <Skeleton className="h-32" />
       ) : items.length === 0 ? (
@@ -126,12 +129,19 @@ export default function EquipePage() {
             {items.map((m) => (
               <tr key={m.id}>
                 <Td>
-                  <button type="button" className="text-left" onClick={() => setEditing(m)}>
-                    <p className="font-medium">{m.nome || "—"}</p>
-                    <p className="text-[var(--muted)]">{m.email}</p>
+                  <button type="button" className="flex items-center gap-3 text-left" onClick={() => setEditing(m)}>
+                    <Avatar className="size-8">
+                      <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">{initials(m.nome || m.email)}</AvatarFallback>
+                    </Avatar>
+                    <span>
+                      <p className="font-medium">{m.nome || "—"}</p>
+                      <p className="text-muted-foreground">{m.email}</p>
+                    </span>
                   </button>
                 </Td>
-                <Td>{m.role === "admin" ? "Administrador" : "Funcionário"}</Td>
+                <Td>
+                  <Badge tone={m.role === "admin" ? "dev" : "muted"}>{m.role === "admin" ? "Administrador" : "Funcionário"}</Badge>
+                </Td>
                 <Td>{m.apenasRascunho ? "Sem WhatsApp" : m.podeResponderCliente ? "Pode enviar" : "Restrito"}</Td>
                 <Td>
                   <Badge tone={m.ativo ? "ok" : "muted"}>{m.ativo ? "Ativo" : "Inativo"}</Badge>
@@ -224,7 +234,7 @@ export default function EquipePage() {
       </Drawer>
 
       <Dialog open={Boolean(passwordOnce)} onClose={() => setPasswordOnce(null)} title="Senha provisória">
-        <p className="text-sm text-[var(--muted)]">Copie agora — não será mostrada de novo.</p>
+        <p className="text-sm text-muted-foreground">Copie agora — não será mostrada de novo.</p>
         <p className="mt-3 break-all font-mono text-sm">{passwordOnce}</p>
         <Button className="mt-4" type="button" variant="secondary" onClick={() => setPasswordOnce(null)}>
           Ok, já copiei

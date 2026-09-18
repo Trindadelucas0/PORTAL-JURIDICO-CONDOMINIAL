@@ -35,6 +35,35 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       return { items, total, page, pageSize };
     },
 
+    async summaryByCondominium(user: User) {
+      const where: Prisma.OfficeDocumentWhereInput = {};
+      if (!isAdmin(user)) {
+        where.ticket = { assignedToId: user.id };
+      }
+      const groups = await db.officeDocument.groupBy({
+        by: ["condominiumId"],
+        where,
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+        _max: { createdAt: true },
+      });
+      if (groups.length === 0) return [];
+      const condos = await db.condominium.findMany({
+        where: { id: { in: groups.map((g) => g.condominiumId) }, deletedAt: null },
+        select: { id: true, nome: true },
+      });
+      const byId = new Map(condos.map((c) => [c.id, c.nome]));
+      return groups
+        .map((g) => ({
+          condominiumId: g.condominiumId,
+          nome: byId.get(g.condominiumId) || "Condomínio",
+          count: g._count._all,
+          sizeBytes: g._sum.sizeBytes ?? 0,
+          lastAt: g._max.createdAt,
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    },
+
     async upload(
       user: User,
       input: {

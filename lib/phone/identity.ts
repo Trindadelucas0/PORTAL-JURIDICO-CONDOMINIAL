@@ -34,3 +34,13 @@ export function uniquePhones(...values: Array<string | null | undefined>): strin
 export function identityKind(value: string): "phone" | "lid" {
   return isLidPeer(value) ? "lid" : "phone";
 }
+
+export function sendableWhatsAppE164(input: {
+  contactPhoneE164?: string | null;
+  peerPhoneE164?: string | null;
+}): string | null {
+  for (const value of [input.contactPhoneE164, input.peerPhoneE164]) {
+    if (value && !isLidPeer(value) && !isOrphanPeer(value)) return value;
+  }
+  return null;
+}

@@ -1,5 +1,20 @@
+import { brazilWhatsAppNumberVariants, isLidPeer } from "@/lib/phone/identity";
+
 export function whatsAppNumberFromE164(e164: string): string {
   return e164.replace(/\D/g, "");
+}
+
+/** Destino Evolution: E.164 BR (variante 8↔9) ou JID `@lid` quando o WhatsApp não mandou telefone. */
+export function evolutionSendDestinations(to: string): string[] {
+  const trimmed = to.trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("@lid") || lower.endsWith(".lid")) return [trimmed];
+  if (isLidPeer(trimmed)) {
+    const digits = trimmed.replace(/^\+999/, "").replace(/\D/g, "");
+    return digits ? [`${digits}@lid`] : [];
+  }
+  return brazilWhatsAppNumberVariants(whatsAppNumberFromE164(trimmed));
 }
 
 export function isBaileysSessionOpen(status: string): boolean {

@@ -18,8 +18,8 @@ export function FilterChip({
       className={cn(
         "rounded-full border px-3 py-1.5 text-sm transition-colors",
         active
-          ? "border-[var(--brand)] bg-[var(--brand)] text-white"
-          : "border-[var(--border)] bg-white text-[var(--ink)] hover:bg-[var(--page)]",
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-card text-foreground hover:bg-muted",
       )}
     >
       {children}
@@ -28,6 +28,6 @@ export function FilterChip({
   );
 }
 
-export function FilterBar({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+export function FilterBar({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("flex flex-wrap items-center gap-2", className)}>{children}</div>;
 }

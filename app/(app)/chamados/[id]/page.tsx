@@ -13,12 +13,20 @@ import { Accordion } from "@/components/ui/accordion";
 import { Dialog } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Timeline } from "@/components/ui/timeline";
+import { Frame, FrameHeader, FramePanel, FrameTitle } from "@/components/reui/frame";
+import {
+  Stepper,
+  StepperIndicator,
+  StepperItem,
+  StepperNav,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from "@/components/reui/stepper";
 import { FileItem } from "@/components/ui/file-item";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/client/api";
 import { CATEGORIES, CATEGORY_LABEL, PRIORITIES, PRIORITY_LABEL, TICKET_STATUSES, STATUS_LABEL, formatBytes, formatWhen } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
 
 type Ticket = {
   id: string;
@@ -34,7 +42,6 @@ type Ticket = {
   contact: { nome: string; phoneE164: string };
   conversation: { connection: { status: string; label: string; type: string } } | null;
   documents: Array<{ id: string; originalName: string; sizeBytes: number; ingestStatus: string; storageKey: string }>;
-  deadlines: Array<{ id: string; title: string; dueAt: string; doneAt: string | null; kind: string }>;
   messages: Array<{ id: string; body: string; sendStatus: string }>;
 };
 
@@ -75,11 +82,8 @@ export default function ChamadoFichaPage() {
   const [priority, setPriority] = useState("");
   const [category, setCategory] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
-  const [deadlineTitle, setDeadlineTitle] = useState("");
-  const [dueAt, setDueAt] = useState("");
   const [openDocModal, setOpenDocModal] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [openPrazoModal, setOpenPrazoModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const team = useQuery({
     queryKey: ["team"],
@@ -130,25 +134,6 @@ export default function ChamadoFichaPage() {
       qc.invalidateQueries({ queryKey: ["ticket", id] });
     },
   });
-  const addDeadline = useMutation({
-    mutationFn: () =>
-      api("/api/deadlines", {
-        method: "POST",
-        body: JSON.stringify({
-          ticketId: id,
-          title: deadlineTitle,
-          dueAt: new Date(dueAt).toISOString(),
-          kind: "atendimento",
-        }),
-      }),
-    onSuccess: () => {
-      toast("Prazo adicionado");
-      setDeadlineTitle("");
-      setDueAt("");
-      setOpenPrazoModal(false);
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-    },
-  });
   const upload = useMutation({
     mutationFn: async (docFile: File) => {
       const form = new FormData();
@@ -172,12 +157,6 @@ export default function ChamadoFichaPage() {
     upload.reset();
   };
 
-  const closePrazoModal = () => {
-    setOpenPrazoModal(false);
-    setDeadlineTitle("");
-    setDueAt("");
-    addDeadline.reset();
-  };
   const sendDoc = useMutation({
     mutationFn: (docId: string) => api(`/api/documents/${docId}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
     onSuccess: () => {
@@ -237,24 +216,30 @@ export default function ChamadoFichaPage() {
         <>
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="space-y-8">
-            <ol className="flex flex-wrap gap-2 text-sm">
-              {steps.map((s, i) => {
-                const idx = steps.indexOf(t.status);
-                const done = i <= idx;
-                return (
-                  <li key={s} className={cn("flex items-center gap-2", done ? "text-[var(--ink)]" : "text-[var(--muted)]")}>
-                    <span className={cn("h-2 w-2 rounded-full", done ? "bg-[var(--brand)]" : "border border-[var(--border)]")} />
-                    {STATUS_LABEL[s]}
-                    {i < steps.length - 1 ? <span className="text-[var(--border)]">—</span> : null}
-                  </li>
-                );
-              })}
-            </ol>
+            <Stepper value={Math.max(1, steps.indexOf(t.status) + 1)} className="w-full">
+              <StepperNav>
+                {steps.map((s, i) => (
+                  <StepperItem key={s} step={i + 1} className="flex-1">
+                    <StepperTrigger>
+                      <StepperIndicator />
+                      <StepperTitle>{STATUS_LABEL[s]}</StepperTitle>
+                    </StepperTrigger>
+                    {i < steps.length - 1 ? <StepperSeparator /> : null}
+                  </StepperItem>
+                ))}
+              </StepperNav>
+            </Stepper>
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Atividade</h2>
-              <div className="mt-3">
-                {messages.isLoading ? <Skeleton className="h-24" /> : <Timeline items={timeline} />}
-              </div>
+              <Frame>
+                <FramePanel>
+                  <FrameHeader>
+                    <FrameTitle>Atividade</FrameTitle>
+                  </FrameHeader>
+                  <div className="px-4 pb-4">
+                    {messages.isLoading ? <Skeleton className="h-24" /> : <Timeline items={timeline} />}
+                  </div>
+                </FramePanel>
+              </Frame>
             </section>
             <section>
               <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Notas / mensagens</h2>
@@ -297,10 +282,9 @@ export default function ChamadoFichaPage() {
                 </Button>
               </form>
             </section>
-            <div className="grid gap-6 sm:grid-cols-2">
-              <section>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Documentos</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
+            <section>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Documentos</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
                   {t.documents.length === 0 ? "Nenhum documento ainda" : `${t.documents.length} arquivo${t.documents.length === 1 ? "" : "s"}`}
                 </p>
                 {t.documents.length > 0 ? (
@@ -312,10 +296,10 @@ export default function ChamadoFichaPage() {
                           sizeBytes={d.sizeBytes}
                           actions={
                             <>
-                              <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
+                              <a className="text-primary" href={`/api/files/${d.storageKey}`}>
                                 Baixar
                               </a>
-                              <button type="button" className="text-[var(--brand)]" disabled={sendDoc.isPending} onClick={() => sendDoc.mutate(d.id)}>
+                              <button type="button" className="text-primary" disabled={sendDoc.isPending} onClick={() => sendDoc.mutate(d.id)}>
                                 Enviar WhatsApp
                               </button>
                             </>
@@ -329,30 +313,6 @@ export default function ChamadoFichaPage() {
                   Enviar arquivo
                 </Button>
               </section>
-              <section>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Prazos</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {t.deadlines.length === 0 ? "Nenhum prazo ainda" : `${t.deadlines.length} prazo(s)`}
-                </p>
-                {t.deadlines.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-sm">
-                    {t.deadlines.map((d) => (
-                      <li key={d.id}>
-                        {d.title} · {formatWhen(d.dueAt)}
-                        {d.doneAt ? (
-                          <Badge className="ml-2" tone="ok">
-                            concluído
-                          </Badge>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <Button className="mt-3" type="button" variant="secondary" onClick={() => setOpenPrazoModal(true)}>
-                  Adicionar prazo
-                </Button>
-              </section>
-            </div>
           </div>
           <aside className="space-y-4 lg:border-l lg:border-[var(--border)] lg:pl-6">
             <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Informações</h2>
@@ -437,19 +397,26 @@ export default function ChamadoFichaPage() {
               {patch.isError ? <p className="text-sm text-[var(--danger)]">{(patch.error as Error).message}</p> : null}
             </form>
             {admin ? (
-              <Accordion title="Histórico técnico">
-                {(audit.data?.data ?? []).length === 0 ? (
-                  <p className="text-sm text-[var(--muted)]">Sem eventos.</p>
-                ) : (
-                  <ul className="space-y-2 text-xs">
-                    {(audit.data?.data ?? []).map((a) => (
-                      <li key={a.id}>
-                        {formatWhen(a.createdAt)} · {a.actor.email} · {a.action}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Accordion>
+              <Frame>
+                <FramePanel>
+                  <FrameHeader>
+                    <FrameTitle>Histórico técnico</FrameTitle>
+                  </FrameHeader>
+                  <div className="px-4 pb-4">
+                    {(audit.data?.data ?? []).length === 0 ? (
+                      <p className="text-sm text-[var(--muted)]">Sem eventos.</p>
+                    ) : (
+                      <ul className="space-y-2 text-xs">
+                        {(audit.data?.data ?? []).map((a) => (
+                          <li key={a.id}>
+                            {formatWhen(a.createdAt)} · {a.actor.email} · {a.action}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </FramePanel>
+              </Frame>
             ) : null}
           </aside>
         </div>
@@ -486,40 +453,6 @@ export default function ChamadoFichaPage() {
               </Button>
               <Button type="submit" disabled={!pendingFile || upload.isPending}>
                 {upload.isPending ? "Enviando…" : "Enviar"}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
-        <Dialog open={openPrazoModal} onClose={closePrazoModal} title="Adicionar prazo">
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!deadlineTitle.trim() || !dueAt) return;
-              addDeadline.mutate();
-            }}
-          >
-            <div>
-              <Label htmlFor="ticket-deadline-title">Título</Label>
-              <Input
-                id="ticket-deadline-title"
-                value={deadlineTitle}
-                onChange={(e) => setDeadlineTitle(e.target.value)}
-                placeholder="Título do prazo"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="ticket-deadline-due">Vencimento</Label>
-              <Input id="ticket-deadline-due" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} required />
-            </div>
-            {addDeadline.isError ? <ErrorBanner message={(addDeadline.error as Error).message} /> : null}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={closePrazoModal}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={!deadlineTitle.trim() || !dueAt || addDeadline.isPending}>
-                {addDeadline.isPending ? "Salvando…" : "Adicionar"}
               </Button>
             </div>
           </form>

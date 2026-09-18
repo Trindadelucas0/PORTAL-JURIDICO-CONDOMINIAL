@@ -6,7 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("rounded-[12px] border border-[var(--border)] bg-[var(--card)] p-5", className)} {...props} />
+    <div
+      className={cn(
+        "rounded-[12px] border border-border bg-card p-5 shadow-[var(--shadow-sm)]",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 

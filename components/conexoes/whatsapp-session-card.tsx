@@ -158,20 +158,29 @@ export function WhatsappSessionCard({ c, compact = false }: { c: Connection; com
   const [confirmDisc, setConfirmDisc] = useState(false);
 
   return (
-    <div className="flex flex-col gap-4 rounded-[12px] border border-[var(--border)] bg-[var(--card)] p-5">
+    <div className="flex flex-col gap-4 rounded-[12px] border border-border bg-card p-5 shadow-[var(--shadow-md)]">
       <div className="flex flex-col gap-3">
         <div>
           <p className="font-medium">{compact ? c.label : "WhatsApp do escritório"}</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">Canal utilizado para atendimento aos condomínios</p>
+          <p className="mt-1 text-sm text-muted-foreground">Canal utilizado para atendimento aos condomínios</p>
         </div>
-        <p className="flex items-center gap-2 text-sm" aria-live="polite">
+        <p
+          className={
+            human.tone === "ok"
+              ? "inline-flex items-center gap-2 rounded-full bg-[var(--status-resolvido-bg)] px-2.5 py-1 text-sm text-[var(--status-resolvido)]"
+              : human.tone === "warn"
+                ? "inline-flex items-center gap-2 rounded-full bg-[var(--status-andamento-bg)] px-2.5 py-1 text-sm text-[var(--status-andamento)]"
+                : "inline-flex items-center gap-2 rounded-full bg-muted px-2.5 py-1 text-sm text-muted-foreground"
+          }
+          aria-live="polite"
+        >
           <span
             className={
               human.tone === "ok"
                 ? "h-2.5 w-2.5 rounded-full bg-[var(--ok)]"
                 : human.tone === "warn"
                   ? "h-2.5 w-2.5 rounded-full bg-[var(--warn)]"
-                  : "h-2.5 w-2.5 rounded-full bg-[var(--muted)]"
+                  : "h-2.5 w-2.5 rounded-full bg-muted-foreground"
             }
             aria-hidden
           />

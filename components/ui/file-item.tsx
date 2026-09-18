@@ -15,7 +15,7 @@ export function FileItem({
     <div className="flex items-center justify-between gap-3 py-3">
       <div className="min-w-0">
         <p className="truncate font-medium">{name}</p>
-        <p className="text-sm text-[var(--muted)]">
+        <p className="text-sm text-muted-foreground">
           {meta}
           {typeof sizeBytes === "number" ? ` · ${formatBytes(sizeBytes)}` : ""}
         </p>

@@ -25,7 +25,7 @@ describe("inbound ingest", () => {
     await db.$disconnect();
   });
 
-  it("creates conversation + triage and is idempotent; never creates ticket", async () => {
+  it("creates conversation without triage for unknown numbers; never creates ticket", async () => {
     const waMessageId = `test-${Date.now()}`;
     const fromPhone = `+55119${String(Date.now()).slice(-8)}`;
     const beforeTickets = await db.ticket.count();
@@ -36,10 +36,11 @@ describe("inbound ingest", () => {
       connectionType: "dev_mock",
     });
     expect(first.created).toBe(true);
-    expect(first.triageId).toBeTruthy();
+    expect(first.triageId).toBeNull();
     expect(first.unidentified).toBe(true);
     const conv = await db.conversation.findFirstOrThrow({ where: { id: first.conversationId } });
     expect(conv.peerPhoneE164).toBe(fromPhone);
+    expect(await db.triageItem.count({ where: { conversationId: first.conversationId } })).toBe(0);
 
     const second = await svc.ingestInbound({
       waMessageId,
@@ -56,7 +57,7 @@ describe("inbound ingest", () => {
     expect(await db.ticket.count()).toBe(beforeTickets);
   });
 
-  it("keeps the same conversation for two LID messages and after identify", async () => {
+  it("keeps the same conversation for two LID messages and after enroll", async () => {
     const suffix = `${Date.now()}`;
     const lidJid = `${suffix.slice(-10)}43035656@lid`;
     const lidPhone = phoneFromWhatsAppLid(lidJid);
@@ -77,7 +78,8 @@ describe("inbound ingest", () => {
     });
     expect(second.conversationId).toBe(first.conversationId);
     expect(second.created).toBe(true);
-    expect(await db.triageItem.count({ where: { conversationId: first.conversationId } })).toBe(1);
+    expect(first.triageId).toBeNull();
+    expect(await db.triageItem.count({ where: { conversationId: first.conversationId } })).toBe(0);
 
     const admin = await db.user.create({
       data: {
@@ -87,23 +89,23 @@ describe("inbound ingest", () => {
       },
     });
     const condo = await db.condominium.create({ data: { nome: `Lid ${suffix}` } });
-    const contact = await db.contact.create({
-      data: {
-        nome: "Lid Contato",
-        phoneE164: `+55117${String(Date.now()).slice(-8)}`,
-        condominiumId: condo.id,
-      },
+    const realPhone = `+55117${String(Date.now()).slice(-8)}`;
+    const enrolled = await cadastroService.enrollConversation(admin, first.conversationId, {
+      nome: "Lid Contato",
+      condominiumId: condo.id,
+      phone: realPhone,
     });
-    await cadastroService.patchTriage(admin, first.triageId!, { action: "identify", contactId: contact.id });
+    expect(enrolled.triage.id).toBeTruthy();
     const third = await svc.ingestInbound({
       waMessageId: `lid-c-${suffix}`,
       fromPhone: lidPhone!,
       waLid: lidPhone,
-      body: "depois de identificar",
+      body: "depois de cadastrar",
       connectionType: "dev_mock",
     });
     expect(third.conversationId).toBe(first.conversationId);
     expect(third.unidentified).toBe(false);
+    expect(third.triageId).toBeTruthy();
   });
 
   it("matches contact with Brazil 8/9 digit variant", async () => {
@@ -122,7 +124,45 @@ describe("inbound ingest", () => {
       connectionType: "dev_mock",
     });
     expect(inbound.unidentified).toBe(false);
+    expect(inbound.triageId).toBeTruthy();
     const conv = await db.conversation.findFirstOrThrow({ where: { id: inbound.conversationId } });
     expect(conv.contactId).toBeTruthy();
+    const second = await svc.ingestInbound({
+      waMessageId: `var-2-${suffix}`,
+      fromPhone: withoutNine,
+      body: "de novo, sem identificar",
+      connectionType: "dev_mock",
+    });
+    expect(second.conversationId).toBe(inbound.conversationId);
+    expect(second.unidentified).toBe(false);
+    expect(second.triageId).toBe(inbound.triageId);
+  });
+
+  it("links a condominium contact to a later LID inbound after the LID alias exists", async () => {
+    const suffix = `${Date.now()}`;
+    const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}142112045@lid`);
+    expect(lidPhone).toBeTruthy();
+    const realPhone = `+55116${String(Date.now()).slice(-8)}`;
+    const condo = await db.condominium.create({ data: { nome: `LidCad ${suffix}` } });
+    const contact = await cadastroService.createContact({
+      nome: `Cadastro ${suffix}`,
+      phone: realPhone,
+      condominiumId: condo.id,
+    });
+    await db.contactIdentity.create({
+      data: { contactId: contact.id, kind: "lid", value: lidPhone! },
+    });
+    const inbound = await svc.ingestInbound({
+      waMessageId: `lidcad-${suffix}`,
+      fromPhone: lidPhone!,
+      waLid: lidPhone,
+      body: "depois do cadastro no condominio",
+      connectionType: "dev_mock",
+    });
+    expect(inbound.unidentified).toBe(false);
+    expect(inbound.triageId).toBeTruthy();
+    const conv = await db.conversation.findFirstOrThrow({ where: { id: inbound.conversationId } });
+    expect(conv.contactId).toBe(contact.id);
+    expect(conv.condominiumId).toBe(condo.id);
   });
 });

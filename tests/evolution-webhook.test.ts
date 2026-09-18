@@ -147,6 +147,106 @@ describe("interpretEvolutionWebhook", () => {
       ],
     });
   });
+
+  it("keeps LID from previousRemoteJid when Evolution already swapped remoteJid to the phone", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: {
+          id: "SWAP1",
+          remoteJid: "551196522318@s.whatsapp.net",
+          previousRemoteJid: "142112045666497@lid",
+          fromMe: false,
+        },
+        message: { conversation: "oi" },
+      },
+    });
+    expect(result).toEqual({
+      kind: "messages",
+      items: [
+        {
+          waMessageId: "SWAP1",
+          fromPhone: "+551196522318",
+          waLid: phoneFromWhatsAppLid("142112045666497@lid"),
+          body: "oi",
+        },
+      ],
+    });
+  });
+
+  it("reads snake_case sender_pn", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: { id: "SN1", remoteJid: "112045666497@lid", fromMe: false },
+        sender_pn: "5511996522318@s.whatsapp.net",
+        message: { conversation: "snake" },
+      },
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items[0]?.fromPhone).toBe("+5511996522318");
+      expect(result.items[0]?.waLid).toBe(phoneFromWhatsAppLid("112045666497@lid"));
+    }
+  });
+
+  it("prefers senderPn digits over LID placeholder", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      sender: "553898100827@s.whatsapp.net",
+      data: {
+        key: {
+          id: "PN1",
+          remoteJid: "130885504524400@lid",
+          senderPn: "5511988880000",
+          fromMe: false,
+        },
+        message: { conversation: "oi" },
+      },
+    });
+    expect(result).toEqual({
+      kind: "messages",
+      items: [
+        {
+          waMessageId: "PN1",
+          fromPhone: "+5511988880000",
+          waLid: "+999885504524400",
+          body: "oi",
+        },
+      ],
+    });
+  });
+
+  it("strips WhatsApp device suffix from the phone JID", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: { id: "DEV1", remoteJid: "5511988880000:51@s.whatsapp.net", fromMe: false },
+        message: { conversation: "device" },
+      },
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items[0]?.fromPhone).toBe("+5511988880000");
+    }
+  });
+
+  it("does not treat data.jid (often the office) as the inbound phone", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      sender: "553898100827@s.whatsapp.net",
+      data: {
+        key: { id: "JID1", remoteJid: "130885504524400@lid", fromMe: false },
+        jid: "553898100827@s.whatsapp.net",
+        message: { conversation: "nao e o escritorio" },
+      },
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items[0]?.fromPhone).toBe(phoneFromWhatsAppLid("130885504524400@lid"));
+      expect(result.items[0]?.fromPhone).not.toBe("+553898100827");
+    }
+  });
 });
 
 describe("extractMessageText", () => {

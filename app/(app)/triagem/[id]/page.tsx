@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/client/api";
+import { conversationPhoneLabel } from "@/lib/phone/display";
 import { CATEGORIES, CATEGORY_LABEL, PRIORITIES, PRIORITY_LABEL } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
 
@@ -22,9 +23,8 @@ type Item = {
   status: string;
   conversationId: string;
   conversation: {
-    unidentified: boolean;
     peerPhoneE164?: string;
-    contact: { nome: string; phoneE164: string; condominiumId?: string | null } | null;
+    contact: { nome: string; phoneE164: string } | null;
     condominium: { nome: string } | null;
   };
 };
@@ -37,8 +37,6 @@ export default function TriagemAnalisePage() {
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
-  const [contactId, setContactId] = useState("");
-  const [condoId, setCondoId] = useState("");
   const [category, setCategory] = useState("outro");
   const [priority, setPriority] = useState("media");
   const [assignedToId, setAssignedToId] = useState("");
@@ -53,14 +51,6 @@ export default function TriagemAnalisePage() {
     queryKey: ["messages", conversationId],
     enabled: Boolean(conversationId),
     queryFn: () => api<MessageBubbleItem[]>(`/api/conversations/${conversationId}/messages?pageSize=50`),
-  });
-  const contacts = useQuery({
-    queryKey: ["contacts"],
-    queryFn: () => api<Array<{ id: string; nome: string }>>("/api/contacts"),
-  });
-  const condos = useQuery({
-    queryKey: ["condominiums"],
-    queryFn: () => api<Array<{ id: string; nome: string }>>("/api/condominiums"),
   });
   const team = useQuery({ queryKey: ["team"], queryFn: () => api<Member[]>("/api/team") });
   const patch = useMutation({
@@ -77,8 +67,6 @@ export default function TriagemAnalisePage() {
       } else if (action === "archive") {
         toast("Solicitação arquivada");
         router.push("/triagem");
-      } else {
-        itemQ.refetch();
       }
     },
   });
@@ -91,23 +79,13 @@ export default function TriagemAnalisePage() {
   }
 
   const item = itemQ.data?.data;
-  const unidentified = Boolean(item?.conversation.unidentified);
-  const hasCondo = Boolean(item?.conversation.condominium?.nome || item?.conversation.contact?.condominiumId);
-  const canPromote = Boolean(item && !unidentified && hasCondo);
   const members = (team.data?.data ?? []).filter((m) => m.ativo);
-  const threadTitle = item
-    ? unidentified
-      ? "Não identificado"
-      : item.conversation.contact?.nome || "Solicitação"
-    : "Analisar";
+  const threadTitle = item?.conversation.contact?.nome || "Solicitação";
   const threadSub = item
-    ? unidentified
-      ? item.conversation.peerPhoneE164
-        ? `WhatsApp · ${item.conversation.peerPhoneE164}`
-        : "WhatsApp · sem cadastro"
-      : `${item.conversation.condominium?.nome || "sem condomínio"} · WhatsApp`
+    ? `${item.conversation.condominium?.nome || "sem condomínio"} · ${conversationPhoneLabel(item.conversation.contact?.phoneE164, item.conversation.peerPhoneE164)}`
     : undefined;
   const messages = messagesQ.data?.data ?? [];
+  const canPromote = Boolean(item?.conversation.contact && item.conversation.condominium);
 
   return (
     <div>
@@ -117,7 +95,7 @@ export default function TriagemAnalisePage() {
             ← Triagem
           </Link>
         }
-        title={threadTitle}
+        title={item ? threadTitle : "Analisar"}
         description={threadSub}
       />
       {itemQ.isLoading || !item ? (
@@ -151,44 +129,15 @@ export default function TriagemAnalisePage() {
           <section className="space-y-4">
             <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Classificar</h2>
             <div>
-              <Label htmlFor="contact">Contato</Label>
-              <Select id="contact" value={contactId} onChange={(e) => setContactId(e.target.value)}>
-                <option value="">Identificar contato</option>
-                {(contacts.data?.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                className="mt-2"
-                type="button"
-                variant="secondary"
-                disabled={!contactId || patch.isPending}
-                onClick={() => patch.mutate({ action: "identify", contactId })}
-              >
-                Identificar
-              </Button>
+              <p className="text-xs text-[var(--muted)]">Contato</p>
+              <p>{item.conversation.contact?.nome}</p>
+              <p className="text-xs text-[var(--muted)]">
+                {conversationPhoneLabel(item.conversation.contact?.phoneE164, item.conversation.peerPhoneE164)}
+              </p>
             </div>
             <div>
-              <Label htmlFor="condo">Condomínio</Label>
-              <Select id="condo" value={condoId} onChange={(e) => setCondoId(e.target.value)}>
-                <option value="">Vincular condomínio</option>
-                {(condos.data?.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                className="mt-2"
-                type="button"
-                variant="secondary"
-                disabled={!condoId || unidentified || patch.isPending}
-                onClick={() => patch.mutate({ action: "linkCondominium", condominiumId: condoId })}
-              >
-                Vincular
-              </Button>
+              <p className="text-xs text-[var(--muted)]">Condomínio</p>
+              <p>{item.conversation.condominium?.nome}</p>
             </div>
             <div>
               <Label htmlFor="cat">Categoria</Label>
@@ -221,11 +170,6 @@ export default function TriagemAnalisePage() {
                 ))}
               </Select>
             </div>
-            {unidentified ? (
-              <p className="text-xs text-[var(--muted)]">Identifique o contato e o condomínio antes de promover.</p>
-            ) : !hasCondo ? (
-              <p className="text-xs text-[var(--muted)]">Vincule um condomínio ao contato antes de promover.</p>
-            ) : null}
             {patch.isError ? <p className="text-sm text-[var(--danger)]">{(patch.error as Error).message}</p> : null}
             <div className="flex flex-wrap justify-between gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setConfirmArchive(true)}>

@@ -11,11 +11,11 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const unread = url.searchParams.get("unread") === "1";
     const untreated = url.searchParams.get("untreated") === "1";
-    const unidentified = url.searchParams.get("unidentified") === "1";
+    const unlinked = url.searchParams.get("unlinked") === "1";
     const result = await atendimentoService.listConversations(user, page, pageSize, q, {
       unread,
       untreated,
-      unidentified,
+      unlinked,
     });
     return ok(result.items, {
       page: result.page,

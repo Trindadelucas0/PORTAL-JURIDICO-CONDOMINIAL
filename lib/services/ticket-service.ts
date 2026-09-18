@@ -279,7 +279,7 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
       if (!item) throw notFound("Item de triagem não encontrado");
       if (item.status === "promovido" && item.ticket) return item.ticket;
       if (item.conversation.unidentified || !item.conversation.contactId) {
-        throw unprocessable("Identifique o contato antes de promover a chamado");
+        throw unprocessable("Cadastre o contato com condomínio antes de promover a chamado");
       }
       const contact = item.conversation.contact;
       if (!contact?.condominiumId) {

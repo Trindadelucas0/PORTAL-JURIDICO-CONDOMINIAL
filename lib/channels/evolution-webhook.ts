@@ -1,4 +1,5 @@
 import { normalizeE164 } from "@/lib/phone/e164";
+import { isLidPeer } from "@/lib/phone/identity";
 
 export type EvolutionInboundMessage = {
   waMessageId: string;
@@ -66,25 +67,40 @@ function isGroupOrStatusJid(jid: string): boolean {
   return lower.includes("@g.us") || lower.includes("status@broadcast") || lower.endsWith("@broadcast");
 }
 
+function isLidJid(jid: string): boolean {
+  const lower = jid.toLowerCase();
+  return lower.includes("@lid") || lower.endsWith(".lid");
+}
+
+function isPhoneJid(jid: string): boolean {
+  const lower = jid.toLowerCase();
+  return lower.includes("@s.whatsapp.net") || lower.includes("@c.us");
+}
+
+/** User part of a JID, without device/agent suffix (`number:device@s.whatsapp.net`). */
+function jidUserPart(jid: string): string {
+  return (jid.split("@")[0] || "").split(":")[0];
+}
+
 /** LID do WhatsApp não é E.164. +999 + 12 dígitos (máx. E.164) identifica o peer sem parecer telefone real. */
 export function phoneFromWhatsAppLid(jid: string): string | null {
-  const userPart = jid.split("@")[0] || "";
-  const digits = userPart.replace(/\D/g, "");
+  const digits = jidUserPart(jid).replace(/\D/g, "");
   if (digits.length < 8 || digits.length > 20) return null;
   return `+999${digits.slice(-12)}`;
 }
 
-function phoneFromCandidate(jid: string): string | null {
-  if (isGroupOrStatusJid(jid)) return null;
-  if (jid.toLowerCase().includes("@lid")) return phoneFromWhatsAppLid(jid);
-  const userPart = jid.split("@")[0] || "";
-  const digits = userPart.replace(/\D/g, "");
-  return normalizeE164(digits.startsWith("55") ? `+${digits}` : digits) || normalizeE164(`+${digits}`);
+function phoneFromPnCandidate(jid: string): string | null {
+  if (isGroupOrStatusJid(jid) || isLidJid(jid)) return null;
+  const digits = jidUserPart(jid).replace(/\D/g, "");
+  if (!digits) return null;
+  const phone = normalizeE164(digits.startsWith("55") ? `+${digits}` : digits) || normalizeE164(`+${digits}`);
+  if (!phone || isLidPeer(phone)) return null;
+  return phone;
 }
 
 function lidFromCandidates(candidates: string[]): string | null {
   for (const jid of candidates) {
-    if (jid.toLowerCase().includes("@lid")) {
+    if (isLidJid(jid)) {
       const lid = phoneFromWhatsAppLid(jid);
       if (lid) return lid;
     }
@@ -97,11 +113,17 @@ function phoneFromKey(
   extras: string[] = [],
 ): { phone: string | null; waLid: string | null; group: boolean } {
   const candidates = [
-    key.remoteJid,
     key.remoteJidAlt,
+    key.remote_jid_alt,
     key.senderPn,
-    key.participant,
+    key.sender_pn,
+    key.participantPn,
+    key.participant_pn,
     key.participantAlt,
+    key.previousRemoteJid,
+    key.previous_remote_jid,
+    key.remoteJid,
+    key.participant,
     ...extras,
   ]
     .map((v) => asString(v))
@@ -110,18 +132,18 @@ function phoneFromKey(
   if (primary && isGroupOrStatusJid(primary)) return { phone: null, waLid: null, group: true };
 
   const waLid = lidFromCandidates(candidates);
-  const preferred = candidates.find((jid) => {
-    const lower = jid.toLowerCase();
-    return lower.includes("@s.whatsapp.net") || lower.includes("@c.us");
-  });
-  if (preferred) {
-    const phone = phoneFromCandidate(preferred);
-    return { phone, waLid, group: false };
+
+  for (const jid of candidates) {
+    if (!isPhoneJid(jid)) continue;
+    const phone = phoneFromPnCandidate(jid);
+    if (phone) return { phone, waLid, group: false };
   }
   for (const jid of candidates) {
-    const phone = phoneFromCandidate(jid);
-    if (phone) return { phone, waLid: waLid || (phone.startsWith("+999") ? phone : null), group: false };
+    if (isLidJid(jid) || isGroupOrStatusJid(jid)) continue;
+    const phone = phoneFromPnCandidate(jid);
+    if (phone) return { phone, waLid, group: false };
   }
+  if (waLid) return { phone: waLid, waLid, group: false };
   return { phone: null, waLid, group: false };
 }
 
@@ -146,7 +168,17 @@ function extractInbound(row: Record<string, unknown>):
   | { item: EvolutionInboundMessage } {
   const key = isRecord(row.key) ? row.key : {};
   if (asBool(key.fromMe)) return { skip: "fromMe" };
-  const extraJids = [row.senderPn, row.remoteJidAlt, row.jid].map((v) => asString(v) || "").filter(Boolean);
+  const extraJids = [
+    row.senderPn,
+    row.sender_pn,
+    row.remoteJidAlt,
+    row.remote_jid_alt,
+    row.participantPn,
+    row.previousRemoteJid,
+    row.previous_remote_jid,
+  ]
+    .map((v) => asString(v) || "")
+    .filter(Boolean);
   const { phone, waLid, group } = phoneFromKey(key, extraJids);
   if (group) return { skip: "group" };
   const waMessageId = asString(key.id);

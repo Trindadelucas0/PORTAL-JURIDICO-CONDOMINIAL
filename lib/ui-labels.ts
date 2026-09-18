@@ -27,6 +27,48 @@ export const CATEGORIES = ["cobranca", "assembleia", "obras", "vizinhanca", "adm
 export const PRIORITIES = ["baixa", "media", "alta", "urgente"] as const;
 export const TICKET_STATUSES = ["aberto", "em_andamento", "aguardando", "resolvido"] as const;
 
+export const STATUS_TONE: Record<string, { bar: string; pill: string }> = {
+  aberto: {
+    bar: "bg-[var(--status-aberto)]",
+    pill: "bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]",
+  },
+  em_andamento: {
+    bar: "bg-[var(--status-andamento)]",
+    pill: "bg-[var(--status-andamento-bg)] text-[var(--status-andamento)]",
+  },
+  aguardando: {
+    bar: "bg-[var(--status-aguardando)]",
+    pill: "bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
+  },
+  resolvido: {
+    bar: "bg-[var(--status-resolvido)]",
+    pill: "bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
+  },
+  arquivado: {
+    bar: "bg-[var(--status-arquivado)]",
+    pill: "bg-[var(--status-arquivado-bg)] text-[var(--status-arquivado)]",
+  },
+};
+
+export const PRIORITY_TONE: Record<string, { bar: string; pill: string }> = {
+  urgente: {
+    bar: "bg-[var(--priority-urgente)]",
+    pill: "bg-red-50 text-[var(--priority-urgente)]",
+  },
+  alta: {
+    bar: "bg-[var(--priority-alta)]",
+    pill: "bg-orange-50 text-[var(--priority-alta)]",
+  },
+  media: {
+    bar: "bg-[var(--priority-media)]",
+    pill: "bg-slate-100 text-[var(--priority-media)]",
+  },
+  baixa: {
+    bar: "bg-[var(--priority-baixa)]",
+    pill: "bg-slate-50 text-[var(--priority-baixa)]",
+  },
+};
+
 export function formatWhen(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }

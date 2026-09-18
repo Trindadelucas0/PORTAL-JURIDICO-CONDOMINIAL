@@ -6,7 +6,7 @@ Operação atual: `OfficeDocument` guarda arquivo + `ingestStatus` (`stored` por
 
 Quando (e se) o contrato autorizar:
 
-- A ingestão de mensagem continua sendo `Conversation` + `TriageItem`. A IA **não** cria Ticket sozinha. Promoção a chamado é humana.
+- A ingestão de mensagem cadastrada continua sendo `Conversation` + `TriageItem`. Número avulso não gera triagem. A IA **não** cria Ticket sozinha. Promoção a chamado é humana.
 - Gatilho de índice = `DocumentIndexPort.enqueue` (hoje no-op). Job futuro lê `OfficeDocument` com `ingestStatus=pending_index`.
 - Qualquer modelo deve ser chamado por um serviço com allowlist de tools, sem acesso direto ao Prisma com privilégio irrestrito.
 - Dados de conversa são conteúdo do cliente; logs de produção não devem gravar o corpo completo.

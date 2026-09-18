@@ -6,10 +6,28 @@ import { localDiskStorage } from "@/lib/storage/local-disk";
 import { providerFor } from "@/lib/channels/resolve-provider";
 import { isBaileysSessionOpen, mapBaileysLiveToDb } from "@/lib/channels/evolution-send";
 import { writeAudit } from "@/lib/services/audit-service";
+import { sendableWhatsAppE164 } from "@/lib/services/operational-flow";
+import { isLidPeer } from "@/lib/phone/identity";
+import { resolveLidJidForPlaceholder } from "@/lib/channels/evolution-lid-map";
 
 export function canSendPublicWhatsApp(user: User) {
   if (isAdmin(user)) return true;
   return Boolean(user.podeResponderCliente) && !user.apenasRascunho;
+}
+
+export async function resolveWhatsAppSendDestination(conversation: {
+  contact?: { phoneE164: string } | null;
+  peerPhoneE164: string;
+  connection: { type: string };
+}): Promise<string | null> {
+  const phone = sendableWhatsAppE164({
+    contactPhoneE164: conversation.contact?.phoneE164,
+    peerPhoneE164: conversation.peerPhoneE164,
+  });
+  if (phone) return phone;
+  if (!isLidPeer(conversation.peerPhoneE164)) return null;
+  if (conversation.connection.type === "dev_mock") return conversation.peerPhoneE164;
+  return resolveLidJidForPlaceholder(conversation.peerPhoneE164);
 }
 
 async function assertConversationAccess(db: PrismaClient, user: User, conversationId: string) {
@@ -63,8 +81,12 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
     } else if (conversation.connection.status !== "open") {
       throw unprocessable("Conexão não está aberta para envio");
     }
-    const phone = conversation.contact?.phoneE164;
-    if (!phone) throw unprocessable("Identifique o contato antes de enviar");
+    const phone = await resolveWhatsAppSendDestination(conversation);
+    if (!phone) {
+      throw unprocessable(
+        "Não foi possível localizar este chat no WhatsApp para enviar. Cadastre o telefone se a resposta não sair.",
+      );
+    }
 
     const provider = providerFor(conversation.connection.type);
     const quotedWaMessageId = message.replyTo?.waMessageId || undefined;
