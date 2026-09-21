@@ -11,12 +11,16 @@ import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui/page-header";
 import { Accordion } from "@/components/ui/accordion";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/client/api";
+import { toE164FromMasked } from "@/lib/phone/mask";
 import {
   pickPrimaryBaileys,
   WhatsappSessionCard,
   type Connection,
 } from "@/components/conexoes/whatsapp-session-card";
+
+const IS_DEV = process.env.NODE_ENV === "development";
 
 export default function ConexoesPage() {
   const qc = useQueryClient();
@@ -56,7 +60,7 @@ export default function ConexoesPage() {
 
   return (
     <div>
-      <PageHeader title="Conexões" description="Canais utilizados pelo escritório" />
+      <PageHeader title="Conexões" description="WhatsApp do escritório. Status: Conectado, Aguardando QR ou Desconectado." />
       {baileysMissingEnv ? (
         <ErrorBanner message="Evolution Baileys sem EVOLUTION_API_URL / EVOLUTION_APIKEY no .env. Preencha as variáveis e reinicie o Next." />
       ) : null}
@@ -67,99 +71,109 @@ export default function ConexoesPage() {
       ) : (
         <EmptyState
           title="Nenhum WhatsApp do escritório"
-          hint="Crie uma conexão WhatsApp Web em Desenvolvimento."
+          hint={IS_DEV ? "Crie uma conexão WhatsApp Web em Desenvolvimento." : "Peça ao administrador para configurar o WhatsApp Web."}
         />
       )}
-      <Accordion title="Desenvolvimento">
-            <p className="text-sm text-[var(--muted)]">
-              Mock, Cloud (ainda não nesta fase) e conexões extras. Canal mock só existe se você criar abaixo.
-            </p>
-            <div className="mt-4 space-y-4">
-          {mocks.length === 0 ? (
-            <p className="text-sm text-[var(--muted)]">Nenhum canal Dev/mock cadastrado.</p>
-          ) : null}
-          {mocks.map((c) => (
-            <div key={c.id}>
-              <p className="font-medium">
-                {c.label} <Badge tone="dev">DEV</Badge>
-              </p>
-              <p className="text-sm text-[var(--muted)]">Simulado · sempre disponível neste ambiente.</p>
-            </div>
-          ))}
-          {clouds.map((c) => (
-            <div key={c.id}>
-              <p className="font-medium">
-                {c.label} <Badge tone="wa">WhatsApp</Badge>
-              </p>
-              <p className="text-sm text-[var(--muted)]">Cloud oficial — não configurado nesta fase.</p>
-            </div>
-          ))}
+      {!IS_DEV && extraBaileys.length > 0 ? (
+        <div className="mt-4 space-y-3">
           {extraBaileys.map((c) => (
             <WhatsappSessionCard key={c.id} c={c} compact />
           ))}
-          <div>
-            <h2 className="font-medium">Nova conexão</h2>
-            <form
-              className="mt-3 grid gap-3 md:grid-cols-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                create.mutate();
-              }}
-            >
-              <div>
-                <Label htmlFor="label">Nome</Label>
-                <Input id="label" required value={label} onChange={(e) => setLabel(e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="type">Tipo</Label>
-                <Select id="type" value={type} onChange={(e) => setType(e.target.value as Connection["type"])}>
-                  <option value="dev_mock">Dev / mock</option>
-                  <option value="evolution_baileys">WhatsApp Web (QR)</option>
-                  <option value="evolution_cloud">WhatsApp Cloud</option>
-                </Select>
-              </div>
-              <div className="flex items-end">
-                <Button type="submit" disabled={create.isPending || !label.trim()}>
-                  Adicionar
-                </Button>
-              </div>
-            </form>
-          </div>
-          {mocks.length > 0 ? (
-          <div>
-            <h2 className="font-medium">Injetar inbound DEV</h2>
-            <p className="text-sm text-[var(--muted)]">Disponível só em development. Não envia para WhatsApp.</p>
-            <form
-              className="mt-3 grid gap-3 md:grid-cols-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                mockInbound.mutate({ fromPhone, body });
-              }}
-            >
-              <div>
-                <Label htmlFor="phone">Telefone</Label>
-                <Input id="phone" required value={fromPhone} onChange={(e) => setFromPhone(e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="msg">Mensagem</Label>
-                <Input id="msg" required value={body} onChange={(e) => setBody(e.target.value)} />
-              </div>
-              <div className="flex items-end">
-                <Button type="submit" disabled={mockInbound.isPending || !fromPhone.trim() || !body.trim()}>
-                  Injetar
-                </Button>
-              </div>
-            </form>
-            {mockInbound.isSuccess ? (
-              <p className="mt-2 text-sm text-[var(--ok)]">Mensagem injetada na inbox/triagem.</p>
+        </div>
+      ) : null}
+      {IS_DEV ? (
+        <Accordion title="Desenvolvimento">
+          <p className="text-sm text-[var(--muted)]">
+            Mock, Cloud (ainda não nesta fase) e conexões extras. Canal mock só existe se você criar abaixo. Esta
+            seção não aparece em produção.
+          </p>
+          <div className="mt-4 space-y-4">
+            {mocks.length === 0 ? (
+              <p className="text-sm text-[var(--muted)]">Nenhum canal Dev/mock cadastrado.</p>
             ) : null}
-            {mockInbound.isError ? (
-              <p className="mt-2 text-sm text-[var(--danger)]">{(mockInbound.error as Error).message}</p>
-            ) : null}
-          </div>
-          ) : null}
+            {mocks.map((c) => (
+              <div key={c.id}>
+                <p className="font-medium">
+                  {c.label} <Badge tone="dev">DEV</Badge>
+                </p>
+                <p className="text-sm text-[var(--muted)]">Simulado · sempre disponível neste ambiente.</p>
+              </div>
+            ))}
+            {clouds.map((c) => (
+              <div key={c.id}>
+                <p className="font-medium">
+                  {c.label} <Badge tone="wa">WhatsApp</Badge>
+                </p>
+                <p className="text-sm text-[var(--muted)]">Cloud oficial — não configurado nesta fase.</p>
+              </div>
+            ))}
+            {extraBaileys.map((c) => (
+              <WhatsappSessionCard key={c.id} c={c} compact />
+            ))}
+            <div>
+              <h2 className="font-medium">Nova conexão</h2>
+              <form
+                className="mt-3 grid gap-3 md:grid-cols-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  create.mutate();
+                }}
+              >
+                <div>
+                  <Label htmlFor="label">Nome</Label>
+                  <Input id="label" required value={label} onChange={(e) => setLabel(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="type">Tipo</Label>
+                  <Select id="type" value={type} onChange={(e) => setType(e.target.value as Connection["type"])}>
+                    <option value="dev_mock">Dev / mock</option>
+                    <option value="evolution_baileys">WhatsApp Web (QR)</option>
+                    <option value="evolution_cloud">WhatsApp Cloud</option>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button type="submit" disabled={create.isPending || !label.trim()}>
+                    Adicionar
+                  </Button>
+                </div>
+              </form>
             </div>
-      </Accordion>
+            {mocks.length > 0 ? (
+              <div>
+                <h2 className="font-medium">Injetar inbound DEV</h2>
+                <p className="text-sm text-[var(--muted)]">Disponível só em development. Não envia para WhatsApp.</p>
+                <form
+                  className="mt-3 grid gap-3 md:grid-cols-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const e164 = toE164FromMasked(fromPhone) || fromPhone;
+                    mockInbound.mutate({ fromPhone: e164, body });
+                  }}
+                >
+                  <div>
+                    <PhoneInput id="phone" label="Telefone" required value={fromPhone} onChange={setFromPhone} />
+                  </div>
+                  <div>
+                    <Label htmlFor="msg">Mensagem</Label>
+                    <Input id="msg" required value={body} onChange={(e) => setBody(e.target.value)} />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="submit" disabled={mockInbound.isPending || !fromPhone.trim() || !body.trim()}>
+                      Injetar
+                    </Button>
+                  </div>
+                </form>
+                {mockInbound.isSuccess ? (
+                  <p className="mt-2 text-sm text-[var(--ok)]">Mensagem injetada na inbox/triagem.</p>
+                ) : null}
+                {mockInbound.isError ? (
+                  <p className="mt-2 text-sm text-[var(--danger)]">{(mockInbound.error as Error).message}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </Accordion>
+      ) : null}
     </div>
   );
 }

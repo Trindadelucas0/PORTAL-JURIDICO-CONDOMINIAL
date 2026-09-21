@@ -20,6 +20,7 @@ export function proxy(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (pathname !== "/") url.search = "expired=1";
     return NextResponse.redirect(url);
   }
 

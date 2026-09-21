@@ -3,7 +3,8 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { conflict, forbidden, notFound } from "@/lib/api/errors";
 import { normalizeE164 } from "@/lib/phone/e164";
-import { e164LookupValues, isLidPeer, uniquePhones } from "@/lib/phone/identity";
+import { e164LookupValues, isLidPeer, sendableWhatsAppE164, uniquePhones } from "@/lib/phone/identity";
+import { enrichConversationPeerProfile, peerAvatarPublicUrl } from "@/lib/services/peer-avatar-service";
 import { unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { ticketListWhere } from "@/lib/auth/ticket-access";
@@ -34,7 +35,7 @@ export const condominiumPatch = condominiumCreate.partial().extend({
 
 export const contactCreate = z.object({
   nome: z.string().min(2).max(120),
-  phone: z.string().min(8).max(20),
+  phone: z.string().min(8).max(32),
   email: z.string().email().optional().or(z.literal("")),
   cargo: z.string().max(80).optional(),
   condominiumId: z.string().uuid().optional().nullable(),
@@ -42,7 +43,7 @@ export const contactCreate = z.object({
 
 export const contactPatch = z.object({
   nome: z.string().min(2).max(120).optional(),
-  phone: z.string().min(8).max(20).optional(),
+  phone: z.string().min(8).max(32).optional(),
   email: z.string().email().optional().or(z.literal("")).nullable(),
   cargo: z.string().max(80).optional().nullable(),
   condominiumId: z.string().uuid().optional().nullable(),
@@ -140,6 +141,12 @@ export const cadastroService = {
           status: true,
           priority: true,
           assignedTo: { select: { id: true, email: true, nome: true } },
+          deadlines: {
+            where: { doneAt: null },
+            orderBy: { dueAt: "asc" },
+            take: 3,
+            select: { id: true, dueAt: true, title: true, doneAt: true },
+          },
         },
       }),
       prisma.officeDocument.findMany({
@@ -148,7 +155,17 @@ export const cadastroService = {
           : { condominiumId: id, ticket: { assignedToId: user.id } },
         orderBy: { createdAt: "desc" },
         take: 50,
-        select: { id: true, originalName: true, sizeBytes: true, ingestStatus: true, storageKey: true, ticketId: true },
+        select: {
+          id: true,
+          originalName: true,
+          title: true,
+          kind: true,
+          purpose: true,
+          sizeBytes: true,
+          ingestStatus: true,
+          storageKey: true,
+          ticketId: true,
+        },
       }),
       prisma.conversation.findMany({
         where: isAdmin(user)
@@ -303,7 +320,15 @@ export const cadastroService = {
       },
     });
     if (!item) throw notFound("Item de triagem não encontrado");
-    return item;
+    return {
+      ...item,
+      conversation: {
+        ...item.conversation,
+        peerAvatarUrl:
+          peerAvatarPublicUrl(item.conversation.peerAvatarKey) ||
+          peerAvatarPublicUrl(item.conversation.contact?.avatarKey),
+      },
+    };
   },
 
   async listTriage(page: number, pageSize: number) {
@@ -329,7 +354,20 @@ export const cadastroService = {
         },
       }),
     ]);
-    return { items, total, page, pageSize };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        conversation: {
+          ...item.conversation,
+          peerAvatarUrl:
+            peerAvatarPublicUrl(item.conversation.peerAvatarKey) ||
+            peerAvatarPublicUrl(item.conversation.contact?.avatarKey),
+        },
+      })),
+      total,
+      page,
+      pageSize,
+    };
   },
 
   async patchTriage(
@@ -366,12 +404,19 @@ export const cadastroService = {
   async enrollConversation(actor: User, conversationId: string, input: unknown) {
     if (!isAdmin(actor)) throw forbidden("Somente administradores cadastram no fluxo");
     const data = enrollConversationSchema.parse(input);
-    const conversation = await prisma.conversation.findFirst({ where: { id: conversationId } });
+    let conversation = await prisma.conversation.findFirst({ where: { id: conversationId } });
     if (!conversation) throw notFound("Conversa não encontrada");
     const condo = await prisma.condominium.findFirst({ where: { id: data.condominiumId, deletedAt: null } });
     if (!condo) throw notFound("Condomínio não encontrado");
 
-    const rawPhone = data.phone?.trim() || conversation.peerPhoneE164;
+    if (isLidPeer(conversation.peerPhoneE164)) {
+      const enriched = await enrichConversationPeerProfile(conversation.id, prisma);
+      conversation =
+        (await prisma.conversation.findFirst({ where: { id: enriched.conversationId } })) ?? conversation;
+    }
+
+    const whatsappPhone = sendableWhatsAppE164({ peerPhoneE164: conversation.peerPhoneE164 });
+    const rawPhone = whatsappPhone || data.phone?.trim() || "";
     const phoneE164 = normalizeE164(rawPhone);
     if (!phoneE164 || isLidPeer(phoneE164)) {
       throw unprocessable("Informe um telefone real para cadastrar no fluxo");
@@ -380,28 +425,43 @@ export const cadastroService = {
     const lookup = uniquePhones(phoneE164, conversation.peerPhoneE164, ...e164LookupValues(phoneE164));
     let contact = await findContactByPhones(prisma, lookup);
     if (contact) {
+      const previousPhone = contact.phoneE164;
       contact = await prisma.contact.update({
         where: { id: contact.id },
         data: {
           nome: data.nome,
-          phoneE164: isLidPeer(contact.phoneE164) ? phoneE164 : contact.phoneE164,
+          phoneE164,
           email: data.email ? data.email : undefined,
           cargo: data.cargo ? data.cargo : undefined,
           condominiumId: condo.id,
+          avatarKey: conversation.peerAvatarKey || contact.avatarKey,
         },
       });
+      await upsertContactIdentities(
+        prisma,
+        contact.id,
+        uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+      );
     } else {
       const taken = await prisma.contact.findFirst({ where: { phoneE164, deletedAt: null } });
       if (taken) {
+        const previousPhone = taken.phoneE164;
         contact = await prisma.contact.update({
           where: { id: taken.id },
           data: {
             nome: data.nome,
+            phoneE164,
             email: data.email ? data.email : undefined,
             cargo: data.cargo ? data.cargo : undefined,
             condominiumId: condo.id,
+            avatarKey: conversation.peerAvatarKey || taken.avatarKey,
           },
         });
+        await upsertContactIdentities(
+          prisma,
+          contact.id,
+          uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+        );
       } else {
         contact = await prisma.contact.create({
           data: {
@@ -410,27 +470,28 @@ export const cadastroService = {
             email: data.email || null,
             cargo: data.cargo || null,
             condominiumId: condo.id,
+            avatarKey: conversation.peerAvatarKey || null,
           },
         });
+        await upsertContactIdentities(prisma, contact.id, lookup);
       }
     }
 
-    await upsertContactIdentities(prisma, contact.id, lookup);
     await rememberWhatsAppLidIdentity(contact.id, contact.nome);
     const identities = await prisma.contactIdentity.findMany({ where: { contactId: contact.id } });
     const mergeKeys = uniquePhones(...lookup, ...identities.map((identity) => identity.value));
     const others = await prisma.conversation.findMany({
       where: {
         connectionId: conversation.connectionId,
-        id: { not: conversationId },
+        id: { not: conversation.id },
         OR: [{ contactId: contact.id }, { peerPhoneE164: { in: mergeKeys } }],
       },
     });
     for (const extra of others) {
-      await mergeConversations(prisma, conversationId, extra.id);
+      await mergeConversations(prisma, conversation.id, extra.id);
     }
     const updated = await prisma.conversation.update({
-      where: { id: conversationId },
+      where: { id: conversation.id },
       data: {
         contactId: contact.id,
         condominiumId: condo.id,
@@ -439,12 +500,12 @@ export const cadastroService = {
       },
       include: { contact: true, condominium: true },
     });
-    const triage = await openTriageForConversation(conversationId);
+    const triage = await openTriageForConversation(conversation.id);
     await writeAudit(prisma, {
       actorId: actor.id,
       action: "conversation.enroll",
       entityType: "conversation",
-      entityId: conversationId,
+      entityId: conversation.id,
       after: { contactId: contact.id, condominiumId: condo.id, triageId: triage.id },
     });
     return { conversation: updated, contact, triage };

@@ -3,18 +3,27 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ErrorBanner } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
-import { Accordion } from "@/components/ui/accordion";
-import { Frame, FrameHeader, FramePanel, FrameTitle } from "@/components/reui/frame";
+import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
+import { ExpandableRow } from "@/components/ui/expandable-row";
 import { Drawer } from "@/components/ui/drawer";
 import { api } from "@/lib/client/api";
+import { documentKindLabel } from "@/lib/documents/kinds";
+import { formatWhatsAppPeer } from "@/lib/phone/display";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { PeerAvatar } from "@/components/atendimento/peer-avatar";
+import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
+import { e164ToMaskedInput } from "@/lib/phone/mask";
+import { formatDue as formatDeadline, isOverdue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 type Condo = {
   id: string;
@@ -23,7 +32,14 @@ type Condo = {
   endereco: string | null;
   cidadeUf: string | null;
   observacao: string | null;
-  contacts: Array<{ id: string; nome: string; phoneE164: string; email: string | null; cargo: string | null }>;
+  contacts: Array<{
+    id: string;
+    nome: string;
+    phoneE164: string;
+    email: string | null;
+    cargo: string | null;
+    avatarKey?: string | null;
+  }>;
   tickets: Array<{
     id: string;
     protocol: string;
@@ -31,8 +47,17 @@ type Condo = {
     status: string;
     priority: string;
     assignedTo: { email: string; nome: string } | null;
+    deadlines?: Array<{ id: string; dueAt: string; title: string; doneAt: string | null }>;
   }>;
-  documents: Array<{ id: string; originalName: string; sizeBytes: number; ingestStatus: string; storageKey: string }>;
+  documents: Array<{
+    id: string;
+    originalName: string;
+    title?: string;
+    kind?: string;
+    sizeBytes: number;
+    ingestStatus: string;
+    storageKey: string;
+  }>;
   conversations: Array<{
     id: string;
     contact: { nome: string } | null;
@@ -50,12 +75,14 @@ type Audit = {
 };
 
 type Me = { user: { role: string } };
+type TabId = "contatos" | "chamados" | "documentos" | "comunicacoes" | "prazos";
 
 export default function CondominioFichaPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const qc = useQueryClient();
   const toast = useToast();
+  const [tab, setTab] = useState<TabId>("contatos");
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/auth/me") });
   const admin = me.data?.data.user.role === "admin";
   const q = useQuery({ queryKey: ["condominium", id], queryFn: () => api<Condo>(`/api/condominiums/${id}`) });
@@ -108,18 +135,27 @@ export default function CondominioFichaPage() {
   function openEditContact(ct: Condo["contacts"][number]) {
     setEditingContact(ct);
     setCNome(ct.nome);
-    setPhone(ct.phoneE164);
+    setPhone(e164ToMaskedInput(ct.phoneE164));
     setCargo(ct.cargo || "");
     setEmail(ct.email || "");
     setContactOpen(true);
   }
 
+  const c = q.data?.data;
+  const prazos = useMemo(
+    () =>
+      (c?.tickets ?? []).flatMap((t) =>
+        (t.deadlines ?? []).map((d) => ({ ...d, ticket: t })),
+      ),
+    [c],
+  );
+
   if (q.isError) {
     const status = (q.error as Error & { status?: number }).status;
+    if (status === 403) return <ForbiddenState />;
     if (status === 404) return <p className="text-[var(--muted)]">Condomínio não encontrado.</p>;
     return <ErrorBanner message="Falha ao carregar ficha." onRetry={() => q.refetch()} />;
   }
-  const c = q.data?.data;
   const data = form ?? c;
 
   return (
@@ -136,104 +172,95 @@ export default function CondominioFichaPage() {
       {q.isLoading || !c || !data ? (
         <Skeleton className="h-48" />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">
-            <Frame>
-              <FramePanel className="space-y-3 p-5">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="nome">Nome</Label>
-                  <Input id="nome" disabled={!admin} value={data.nome || ""} onChange={(e) => setForm({ ...data, nome: e.target.value })} />
-                </div>
-                <div>
-                  <Label htmlFor="cnpj">CNPJ</Label>
-                  <Input id="cnpj" disabled={!admin} value={data.cnpj || ""} onChange={(e) => setForm({ ...data, cnpj: e.target.value })} />
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="end">Endereço</Label>
-                  <Input id="end" disabled={!admin} value={data.endereco || ""} onChange={(e) => setForm({ ...data, endereco: e.target.value })} />
-                </div>
-                <div>
-                  <Label htmlFor="cid">Cidade/UF</Label>
-                  <Input id="cid" disabled={!admin} value={data.cidadeUf || ""} onChange={(e) => setForm({ ...data, cidadeUf: e.target.value })} />
-                </div>
-                <div>
-                  <Label htmlFor="obs">Observação</Label>
-                  <Input id="obs" disabled={!admin} value={data.observacao || ""} onChange={(e) => setForm({ ...data, observacao: e.target.value })} />
-                </div>
+        <div>
+          <ul className="flex flex-wrap gap-x-6 gap-y-1 border-b border-border px-4 py-3 text-sm">
+            <li>
+              <span className="tabular font-semibold">{c.contacts.length}</span>
+              <span className="ml-1 text-muted-foreground">contatos</span>
+            </li>
+            <li>
+              <span className="tabular font-semibold">{c.tickets.length}</span>
+              <span className="ml-1 text-muted-foreground">chamados</span>
+            </li>
+            <li>
+              <span className="tabular font-semibold">{c.documents.length}</span>
+              <span className="ml-1 text-muted-foreground">documentos</span>
+            </li>
+            <li>
+              <span className="tabular font-semibold">{c.conversations.length}</span>
+              <span className="ml-1 text-muted-foreground">comunicações</span>
+            </li>
+            {prazos.length > 0 ? (
+              <li>
+                <span className="tabular font-semibold">{prazos.length}</span>
+                <span className="ml-1 text-muted-foreground">prazos abertos</span>
+              </li>
+            ) : null}
+          </ul>
+          <section className="border-b border-border p-4">
+            <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Cadastro</h2>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <Label htmlFor="nome">Nome</Label>
+                <Input id="nome" disabled={!admin} value={data.nome || ""} onChange={(e) => setForm({ ...data, nome: e.target.value })} />
               </div>
+              <div>
+                <Label htmlFor="cnpj">CNPJ</Label>
+                <Input id="cnpj" disabled={!admin} value={data.cnpj || ""} onChange={(e) => setForm({ ...data, cnpj: e.target.value })} />
+              </div>
+              <div className="md:col-span-2">
+                <Label htmlFor="end">Endereço</Label>
+                <Input id="end" disabled={!admin} value={data.endereco || ""} onChange={(e) => setForm({ ...data, endereco: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="cid">Cidade/UF</Label>
+                <Input id="cid" disabled={!admin} value={data.cidadeUf || ""} onChange={(e) => setForm({ ...data, cidadeUf: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="obs">Observação</Label>
+                <Input id="obs" disabled={!admin} value={data.observacao || ""} onChange={(e) => setForm({ ...data, observacao: e.target.value })} />
+              </div>
+            </div>
+            {admin ? (
+              <Button className="mt-3" type="button" disabled={save.isPending} onClick={() => save.mutate()}>
+                Salvar cadastro
+              </Button>
+            ) : null}
+            {save.isError ? <p className="mt-2 text-sm text-[var(--danger)]">{(save.error as Error).message}</p> : null}
+          </section>
+          <SectionTabs
+            value={tab}
+            onChange={(id) => setTab(id as TabId)}
+            tabs={[
+              { id: "contatos", label: "Contatos", count: c.contacts.length },
+              { id: "chamados", label: "Chamados", count: c.tickets.length },
+              { id: "documentos", label: "Documentos", count: c.documents.length },
+              { id: "comunicacoes", label: "Comunicações", count: c.conversations.length },
+              { id: "prazos", label: "Prazos", count: prazos.length },
+            ]}
+          />
+          <SectionTabPanel id="contatos" active={tab === "contatos"} className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">Quem fala por este condomínio.</p>
               {admin ? (
-                <Button type="button" disabled={save.isPending} onClick={() => save.mutate()}>
-                  Salvar cadastro
+                <Button type="button" variant="secondary" size="sm" onClick={openNewContact}>
+                  Adicionar
                 </Button>
               ) : null}
-              {save.isError ? <p className="text-sm text-[var(--danger)]">{(save.error as Error).message}</p> : null}
-              </FramePanel>
-            </Frame>
-            <Frame>
-              <FramePanel>
-                <FrameHeader>
-                  <FrameTitle>Chamados</FrameTitle>
-                </FrameHeader>
-                <div className="px-4 pb-4">
-              {c.tickets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum chamado visível.</p>
-              ) : (
-                <ul className="space-y-2 text-sm">
-                  {c.tickets.map((t) => (
-                    <li key={t.id} className="flex flex-wrap items-center gap-2">
-                      <Link className="text-primary" href={`/chamados/${t.id}`}>
-                        #{t.protocol}
-                      </Link>
-                      <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                      <StatusBadge status={t.status} />
-                      <span className="text-muted-foreground">{t.assignedTo?.email || "sem responsável"}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </div>
-              </FramePanel>
-            </Frame>
-            <Frame>
-              <FramePanel>
-                <FrameHeader>
-                  <FrameTitle>Comunicações</FrameTitle>
-                </FrameHeader>
-                <div className="px-4 pb-4">
-              {c.conversations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma conversa visível.</p>
-              ) : (
-                <ul className="space-y-2 text-sm">
-                  {c.conversations.map((conv) => (
-                    <li key={conv.id}>
-                      {conv.contact?.nome || "contato"} · {conv.messages[0]?.body || "—"}
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </div>
-              </FramePanel>
-            </Frame>
-          </div>
-          <div className="space-y-4">
-            <Frame>
-              <FramePanel className="p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Contatos</h2>
-                {admin ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={openNewContact}>
-                    Adicionar
-                  </Button>
-                ) : null}
-              </div>
-              <ul className="mt-2 space-y-2 text-sm">
+            </div>
+            {c.contacts.length === 0 ? (
+              <EmptyState title="Nenhum contato" hint={admin ? "Adicione o síndico ou o administrador." : undefined} />
+            ) : (
+              <ul className="divide-y divide-border text-sm">
                 {c.contacts.map((ct) => (
-                  <li key={ct.id} className="flex items-start justify-between gap-2 rounded-[10px] bg-[var(--surface-2)] px-3 py-2">
-                    <span>
-                      {ct.nome} · {ct.phoneE164}
-                      {ct.cargo ? ` · ${ct.cargo}` : ""}
-                      {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
+                  <li key={ct.id} className="flex items-start justify-between gap-2 py-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <PeerAvatar name={ct.nome} avatarUrl={peerAvatarPublicUrl(ct.avatarKey)} className="size-7" />
+                      <span className="min-w-0">
+                        {ct.nome} · {formatWhatsAppPeer(ct.phoneE164)}
+                        {ct.cargo ? ` · ${ct.cargo}` : ""}
+                        {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
+                      </span>
                     </span>
                     {admin ? (
                       <button type="button" className="text-xs text-primary" onClick={() => openEditContact(ct)}>
@@ -243,33 +270,82 @@ export default function CondominioFichaPage() {
                   </li>
                 ))}
               </ul>
-              </FramePanel>
-            </Frame>
-            <Frame>
-              <FramePanel>
-                <FrameHeader>
-                  <FrameTitle>Documentos</FrameTitle>
-                </FrameHeader>
-                <div className="px-4 pb-4">
-              {c.documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum arquivo visível.</p>
-              ) : (
-                <ul className="space-y-2 text-sm">
-                  {c.documents.map((d) => (
-                    <li key={d.id} className="flex justify-between gap-2">
-                      <span>{d.originalName}</span>
-                      <a className="text-primary" href={`/api/files/${d.storageKey}`}>
-                        Baixar
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                </div>
-              </FramePanel>
-            </Frame>
-            {admin ? (
-              <Accordion title="Histórico">
+            )}
+          </SectionTabPanel>
+          <SectionTabPanel id="chamados" active={tab === "chamados"} className="p-4">
+            {c.tickets.length === 0 ? (
+              <EmptyState title="Nenhum chamado visível" />
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {c.tickets.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-2 py-2">
+                    <Link className="text-primary" href={`/chamados/${t.id}`}>
+                      #{t.protocol}
+                    </Link>
+                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    <StatusBadge status={t.status} />
+                    <span className="text-muted-foreground">{t.assignedTo?.nome || t.assignedTo?.email || "sem responsável"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionTabPanel>
+          <SectionTabPanel id="documentos" active={tab === "documentos"} className="p-4">
+            {c.documents.length === 0 ? (
+              <EmptyState title="Nenhum arquivo visível" />
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {c.documents.map((d) => (
+                  <li key={d.id} className="flex justify-between gap-2 py-2">
+                    <span className="min-w-0 truncate">
+                      {d.kind ? (
+                        <span className="mr-1 text-xs text-muted-foreground">{documentKindLabel(d.kind)}</span>
+                      ) : null}
+                      {d.title || d.originalName}
+                    </span>
+                    <a className="shrink-0 text-primary" href={`/api/files/${d.storageKey}`}>
+                      Baixar
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionTabPanel>
+          <SectionTabPanel id="comunicacoes" active={tab === "comunicacoes"} className="p-4">
+            {c.conversations.length === 0 ? (
+              <EmptyState title="Nenhuma conversa visível" />
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {c.conversations.map((conv) => (
+                  <li key={conv.id} className="py-2">
+                    {conv.contact?.nome || "contato"} · {conv.messages[0]?.body || "—"}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionTabPanel>
+          <SectionTabPanel id="prazos" active={tab === "prazos"} className="p-4">
+            {prazos.length === 0 ? (
+              <EmptyState title="Nenhum prazo aberto nestes chamados" hint="Prazos são criados na ficha do chamado." />
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {prazos.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center gap-2 py-2">
+                    <span className={cn("w-24 tabular text-xs", isOverdue(d.dueAt, d.doneAt) ? "text-[var(--danger)]" : "text-muted-foreground")}>
+                      {formatDeadline(d.dueAt)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                    <Link className="text-xs text-primary" href={`/chamados/${d.ticket.id}`}>
+                      #{d.ticket.protocol}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionTabPanel>
+          {admin ? (
+            <div className="border-t border-border px-4">
+              <ExpandableRow title="Histórico" summary="Auditoria cadastral">
                 {(audit.data?.data ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sem eventos.</p>
                 ) : (
@@ -281,9 +357,9 @@ export default function CondominioFichaPage() {
                     ))}
                   </ul>
                 )}
-              </Accordion>
-            ) : null}
-          </div>
+              </ExpandableRow>
+            </div>
+          ) : null}
         </div>
       )}
       <Drawer open={contactOpen} onClose={() => setContactOpen(false)} title={editingContact ? "Editar contato" : "Novo contato"}>
@@ -296,8 +372,7 @@ export default function CondominioFichaPage() {
         >
           <Label htmlFor="cn">Nome</Label>
           <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
-          <Label htmlFor="ph">Telefone</Label>
-          <Input id="ph" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <PhoneInput id="ph" label="Telefone" required value={phone} onChange={setPhone} />
           <Label htmlFor="cg">Cargo</Label>
           <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
           <Label htmlFor="em">E-mail</Label>

@@ -5,9 +5,27 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { requireTicketAccess } from "@/lib/auth/ticket-access";
+import { DOCUMENT_KIND_VALUES, type DocumentKindValue } from "@/lib/documents/kinds";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
+import { writeAudit } from "@/lib/services/audit-service";
+
+export const documentFichaSchema = z.object({
+  kind: z.enum(DOCUMENT_KIND_VALUES),
+  title: z.string().trim().min(2).max(160),
+  purpose: z.string().trim().min(10).max(2000),
+  notes: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  condominiumId: z.string().uuid().optional(),
+  ticketId: z.string().uuid().optional(),
+});
+
+export type DocumentFichaInput = z.infer<typeof documentFichaSchema>;
 
 export function createDocumentService(db: PrismaClient = defaultPrisma) {
   return {
@@ -36,45 +54,94 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
     },
 
     async summaryByCondominium(user: User) {
-      const where: Prisma.OfficeDocumentWhereInput = {};
-      if (!isAdmin(user)) {
-        where.ticket = { assignedToId: user.id };
+      if (isAdmin(user)) {
+        const [condos, groups] = await Promise.all([
+          db.condominium.findMany({
+            where: { deletedAt: null },
+            select: { id: true, nome: true },
+            orderBy: { nome: "asc" },
+          }),
+          db.officeDocument.groupBy({
+            by: ["condominiumId"],
+            _count: { _all: true },
+            _sum: { sizeBytes: true },
+            _max: { createdAt: true },
+          }),
+        ]);
+        const stats = new Map(groups.map((g) => [g.condominiumId, g]));
+        return condos.map((c) => {
+          const g = stats.get(c.id);
+          return {
+            condominiumId: c.id,
+            nome: c.nome,
+            count: g?._count._all ?? 0,
+            sizeBytes: g?._sum.sizeBytes ?? 0,
+            lastAt: g?._max.createdAt ?? null,
+          };
+        });
       }
-      const groups = await db.officeDocument.groupBy({
-        by: ["condominiumId"],
-        where,
-        _count: { _all: true },
-        _sum: { sizeBytes: true },
-        _max: { createdAt: true },
-      });
-      if (groups.length === 0) return [];
+
+      const [ticketCondos, docGroups] = await Promise.all([
+        db.ticket.findMany({
+          where: { assignedToId: user.id },
+          select: { condominiumId: true },
+          distinct: ["condominiumId"],
+        }),
+        db.officeDocument.groupBy({
+          by: ["condominiumId"],
+          where: { ticket: { assignedToId: user.id } },
+          _count: { _all: true },
+          _sum: { sizeBytes: true },
+          _max: { createdAt: true },
+        }),
+      ]);
+      const condoIds = new Set<string>([
+        ...ticketCondos.map((t) => t.condominiumId),
+        ...docGroups.map((g) => g.condominiumId),
+      ]);
+      if (condoIds.size === 0) return [];
       const condos = await db.condominium.findMany({
-        where: { id: { in: groups.map((g) => g.condominiumId) }, deletedAt: null },
+        where: { id: { in: [...condoIds] }, deletedAt: null },
         select: { id: true, nome: true },
+        orderBy: { nome: "asc" },
       });
-      const byId = new Map(condos.map((c) => [c.id, c.nome]));
-      return groups
-        .map((g) => ({
-          condominiumId: g.condominiumId,
-          nome: byId.get(g.condominiumId) || "Condomínio",
-          count: g._count._all,
-          sizeBytes: g._sum.sizeBytes ?? 0,
-          lastAt: g._max.createdAt,
-        }))
-        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      const stats = new Map(docGroups.map((g) => [g.condominiumId, g]));
+      return condos.map((c) => {
+        const g = stats.get(c.id);
+        return {
+          condominiumId: c.id,
+          nome: c.nome,
+          count: g?._count._all ?? 0,
+          sizeBytes: g?._sum.sizeBytes ?? 0,
+          lastAt: g?._max.createdAt ?? null,
+        };
+      });
     },
 
     async upload(
       user: User,
       input: {
+        kind: DocumentKindValue;
+        title: string;
+        purpose: string;
+        notes?: string;
         condominiumId?: string;
         ticketId?: string;
         file: { buffer: Buffer; name: string; mime: string };
       },
     ) {
-      let condominiumId = input.condominiumId;
-      if (input.ticketId) {
-        const ticket = await requireTicketAccess(user, input.ticketId, db);
+      const ficha = documentFichaSchema.parse({
+        kind: input.kind,
+        title: input.title,
+        purpose: input.purpose,
+        notes: input.notes,
+        condominiumId: input.condominiumId,
+        ticketId: input.ticketId,
+      });
+
+      let condominiumId = ficha.condominiumId;
+      if (ficha.ticketId) {
+        const ticket = await requireTicketAccess(user, ficha.ticketId, db);
         condominiumId = ticket.condominiumId;
       } else if (!isAdmin(user)) {
         throw forbidden("Funcionário só anexa documento em chamado atribuído");
@@ -88,8 +155,12 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       const doc = await db.officeDocument.create({
         data: {
           condominiumId: condo.id,
-          ticketId: input.ticketId || null,
+          ticketId: ficha.ticketId || null,
           uploadedById: user.id,
+          kind: ficha.kind,
+          title: ficha.title,
+          purpose: ficha.purpose,
+          notes: ficha.notes || null,
           storageKey: stored.storageKey,
           mime: stored.mime,
           sizeBytes: stored.sizeBytes,
@@ -99,6 +170,23 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         },
       });
       await noopDocumentIndex.enqueue({ documentId: doc.id, storageKey: doc.storageKey });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "document.create",
+        entityType: "document",
+        entityId: doc.id,
+        after: {
+          id: doc.id,
+          condominiumId: doc.condominiumId,
+          ticketId: doc.ticketId,
+          kind: doc.kind,
+          title: doc.title,
+          purpose: doc.purpose,
+          originalName: doc.originalName,
+          mime: doc.mime,
+          sizeBytes: doc.sizeBytes,
+        },
+      });
       return doc;
     },
 
@@ -122,7 +210,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
           direction: "out",
           visibility: "publica",
           sendStatus: "pending",
-          body: doc.originalName,
+          body: doc.title || doc.originalName,
           attachments: {
             create: {
               storageKey: doc.storageKey,

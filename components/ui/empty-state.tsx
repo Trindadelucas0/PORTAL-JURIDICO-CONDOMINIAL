@@ -1,7 +1,5 @@
-import { Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { IconTile } from "@/components/reui/icon-tile";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 
 export function EmptyState({
   title,
@@ -13,19 +11,14 @@ export function EmptyState({
   action?: { label: string; onClick: () => void };
 }) {
   return (
-    <Empty className="border border-dashed border-border">
+    <Empty className="border-0 bg-transparent py-10">
       <EmptyHeader>
-        <EmptyMedia>
-          <IconTile variant="frame" size="lg">
-            <Inbox />
-          </IconTile>
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyTitle className="text-sm font-medium text-muted-foreground">{title || "Tudo limpo"}</EmptyTitle>
         {hint ? <EmptyDescription>{hint}</EmptyDescription> : null}
       </EmptyHeader>
       {action ? (
         <EmptyContent>
-          <Button type="button" onClick={action.onClick}>
+          <Button type="button" variant="outline" size="sm" onClick={action.onClick}>
             {action.label}
           </Button>
         </EmptyContent>

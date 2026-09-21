@@ -82,6 +82,21 @@ enum IngestStatus {
   skipped
 }
 
+enum DocumentKind {
+  convencao
+  regimento
+  ata_assembleia
+  edital
+  contrato
+  procuracao
+  parecer
+  notificacao
+  correspondencia
+  evidencia
+  audio
+  outro
+}
+
 enum DeadlineKind {
   atendimento
   juridico
@@ -146,6 +161,7 @@ model Contact {
   phoneE164     String         @unique
   email         String?
   cargo         String?
+  avatarKey     String?
   condominiumId String?        @db.Uuid
   deletedAt     DateTime?
   createdAt     DateTime       @default(now())
@@ -186,8 +202,11 @@ model Conversation {
   contactId      String?            @db.Uuid
   condominiumId  String?            @db.Uuid
   connectionId   String             @db.Uuid
-  peerPhoneE164  String
-  unidentified   Boolean            @default(false)
+  peerPhoneE164    String
+  peerDisplayName  String?
+  peerAvatarKey    String?
+  peerAvatarFetchedAt DateTime?
+  unidentified     Boolean            @default(false)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   contact        Contact?           @relation(fields: [contactId], references: [id])
@@ -293,6 +312,10 @@ model OfficeDocument {
   condominiumId String       @db.Uuid
   ticketId      String?      @db.Uuid
   uploadedById  String       @db.Uuid
+  kind          DocumentKind
+  title         String
+  purpose       String
+  notes         String?
   storageKey    String       @unique
   mime          String
   sizeBytes     Int
@@ -308,6 +331,7 @@ model OfficeDocument {
   @@index([condominiumId])
   @@index([ticketId])
   @@index([ingestStatus])
+  @@index([condominiumId, kind])
 }
 
 model Deadline {

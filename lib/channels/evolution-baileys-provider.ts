@@ -1,12 +1,15 @@
-import { unprocessable } from "@/lib/api/errors";
+import { AppError, unavailable, unprocessable } from "@/lib/api/errors";
 import { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } from "@/lib/channels/evolution-qr-cache";
 import {
+  EVOLUTION_UNREACHABLE_MESSAGE,
   evolutionLogoutAlreadyOff,
   evolutionSendDestinations,
   evolutionSendLooksLikeLegacySchema,
+  isEvolutionUnreachable,
   pickRicherEvolutionError,
 } from "@/lib/channels/evolution-send";
 import type {
+  GetQrOptions,
   ProviderSendInput,
   ProviderSendMediaInput,
   ProviderStatusResult,
@@ -61,6 +64,17 @@ function headers(json = false): HeadersInit {
   };
 }
 
+async function evoFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (isEvolutionUnreachable(error)) {
+      throw unavailable(EVOLUTION_UNREACHABLE_MESSAGE);
+    }
+    throw error;
+  }
+}
+
 function parseQrPayload(json: {
   code?: string;
   pairingCode?: string;
@@ -106,7 +120,7 @@ function hasQrPayload(parsed: { qr: string | null; pairingCode: string | null })
 
 async function instanceExists(): Promise<boolean> {
   const name = instance();
-  const res = await fetch(`${evoBase()}/instance/connectionState/${encodeURIComponent(name)}`, {
+  const res = await evoFetch(`${evoBase()}/instance/connectionState/${encodeURIComponent(name)}`, {
     headers: headers(),
   });
   if (res.ok) return true;
@@ -120,7 +134,7 @@ async function instanceExists(): Promise<boolean> {
 }
 
 async function createInstance(): Promise<{ qr: string | null; pairingCode: string | null }> {
-  const res = await fetch(`${evoBase()}/instance/create`, {
+  const res = await evoFetch(`${evoBase()}/instance/create`, {
     method: "POST",
     headers: headers(true),
     body: JSON.stringify({
@@ -179,7 +193,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
     const urls = [`${evoBase()}/webhook/set/${name}`, `${evoBase()}/webhook/${name}`];
     for (const url of urls) {
       for (const payload of payloads) {
-        const res = await fetch(url, {
+        const res = await evoFetch(url, {
           method: "POST",
           headers: headers(true),
           body: JSON.stringify(payload),
@@ -200,7 +214,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
 
     for (const number of numbers) {
       const withQuote = { number, text: input.body, ...quoted };
-      const first = await fetch(url, {
+      const first = await evoFetch(url, {
         method: "POST",
         headers: headers(true),
         body: JSON.stringify(withQuote),
@@ -212,7 +226,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
       attempts.push({ status: first.status, json: firstJson });
 
       if (quoted && first.status >= 400) {
-        const plain = await fetch(url, {
+        const plain = await evoFetch(url, {
           method: "POST",
           headers: headers(true),
           body: JSON.stringify({ number, text: input.body }),
@@ -226,7 +240,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
 
       const lastJson = attempts[attempts.length - 1]?.json;
       if (first.status === 400 && evolutionSendLooksLikeLegacySchema(lastJson ?? firstJson)) {
-        const retry = await fetch(url, {
+        const retry = await evoFetch(url, {
           method: "POST",
           headers: headers(true),
           body: JSON.stringify({ number, textMessage: { text: input.body }, ...quoted }),
@@ -237,7 +251,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
         }
         attempts.push({ status: retry.status, json: retryJson });
         if (quoted) {
-          const retryPlain = await fetch(url, {
+          const retryPlain = await evoFetch(url, {
             method: "POST",
             headers: headers(true),
             body: JSON.stringify({ number, textMessage: { text: input.body } }),
@@ -279,7 +293,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
         ...(input.ptt && mediaType === "audio" ? { ptt: true } : {}),
         ...quoted,
       };
-      const first = await fetch(url, {
+      const first = await evoFetch(url, {
         method: "POST",
         headers: headers(true),
         body: JSON.stringify(base),
@@ -294,10 +308,28 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
     throw unprocessable(pickRicherEvolutionError("media", attempts), { status: last?.status ?? 400 });
   }
 
-  async getQr(): Promise<QrResult> {
+  async getQr(opts?: GetQrOptions): Promise<QrResult> {
     if (!this.isConfigured()) {
       throw unprocessable("Evolution Baileys não configurada");
     }
+
+    // Fresh poll: one connect, no 25s wait, ignore cache so the dialog can rotate the image.
+    if (opts?.fresh) {
+      clearEvolutionQr();
+      const live = await this.getStatus();
+      if (live.status === "open") {
+        return { qr: null, pairingCode: null, status: "open" };
+      }
+      const connect = await this.fetchConnectPayload().catch((error) => {
+        if (error instanceof AppError && error.status === 503) throw error;
+        return { qr: null, pairingCode: null };
+      });
+      if (hasQrPayload(connect)) {
+        return { ...connect, status: "connecting" };
+      }
+      return { qr: null, pairingCode: null, status: live.status || "connecting" };
+    }
+
     const hit = readEvolutionQr();
     if (hit?.qr || hit?.pairingCode) {
       return { qr: hit.qr, pairingCode: hit.pairingCode, status: "connecting" };
@@ -317,7 +349,10 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
 
     const deadline = Date.now() + 25_000;
     while (Date.now() < deadline) {
-      const connect = await this.fetchConnectPayload().catch(() => ({ qr: null, pairingCode: null }));
+      const connect = await this.fetchConnectPayload().catch((error) => {
+        if (error instanceof AppError && error.status === 503) throw error;
+        return { qr: null, pairingCode: null };
+      });
       if (hasQrPayload(connect)) {
         return { ...connect, status: "connecting" };
       }
@@ -333,7 +368,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
   }
 
   private async fetchConnectPayload(): Promise<{ qr: string | null; pairingCode: string | null }> {
-    const res = await fetch(`${evoBase()}/instance/connect/${encodeURIComponent(instance())}`, {
+    const res = await evoFetch(`${evoBase()}/instance/connect/${encodeURIComponent(instance())}`, {
       headers: headers(),
     });
     if (!res.ok) {
@@ -372,7 +407,7 @@ export class EvolutionBaileysProvider implements WhatsAppProvider {
     if (!this.isConfigured()) {
       throw unprocessable("Evolution Baileys não configurada");
     }
-    const res = await fetch(`${evoBase()}/instance/logout/${encodeURIComponent(instance())}`, {
+    const res = await evoFetch(`${evoBase()}/instance/logout/${encodeURIComponent(instance())}`, {
       method: "DELETE",
       headers: headers(),
     });

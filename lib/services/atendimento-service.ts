@@ -17,12 +17,17 @@ import {
   outOfFlowConversationWhere,
   sendableWhatsAppE164,
 } from "@/lib/services/operational-flow";
+import {
+  peerAvatarPublicUrl,
+  schedulePeerProfileEnrichment,
+} from "@/lib/services/peer-avatar-service";
 
 export type InboundPayload = {
   waMessageId: string;
   fromPhone: string;
   waLid?: string | null;
   body: string;
+  peerDisplayName?: string | null;
   connectionId?: string;
   connectionType?: ChannelType;
 };
@@ -35,6 +40,13 @@ export type IngestResult = {
   triageId: string | null;
   ticketCreated: false;
 };
+
+function sanitizePeerDisplayName(value?: string | null): string | null {
+  const text = value?.trim().replace(/\s+/g, " ");
+  if (!text || text.length < 2 || text.length > 80) return null;
+  if (/^\+?\d[\d\s()-]{6,}$/.test(text)) return null;
+  return text;
+}
 
 async function promoteLidPeerToPhone(
   db: PrismaClient,
@@ -112,6 +124,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         conversation = await db.conversation.findFirst({ where: { id: conversation.id } });
       }
 
+      const peerDisplayName = sanitizePeerDisplayName(payload.peerDisplayName);
       const peerKey = conversation?.peerPhoneE164 || phone;
       if (!conversation) {
         try {
@@ -122,6 +135,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
               condominiumId: contact?.condominiumId ?? null,
               unidentified: !contact,
               peerPhoneE164: peerKey,
+              peerDisplayName,
             },
           });
         } catch (error) {
@@ -135,6 +149,13 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         }
       }
       if (!conversation) throw unprocessable("Não foi possível abrir a conversa");
+
+      if (peerDisplayName && conversation.peerDisplayName !== peerDisplayName) {
+        conversation = await db.conversation.update({
+          where: { id: conversation.id },
+          data: { peerDisplayName },
+        });
+      }
 
       const realPhone = !isLidPeer(phone) ? phone : contact && !isLidPeer(contact.phoneE164) ? contact.phoneE164 : null;
       if (realPhone) {
@@ -193,6 +214,8 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         triageId = triage.id;
       }
 
+      schedulePeerProfileEnrichment(conversation.id);
+
       return {
         created: true,
         conversationId: conversation.id,
@@ -200,6 +223,18 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         unidentified: conversation.unidentified,
         triageId,
         ticketCreated: false,
+      };
+    },
+
+    /** Lazy PN + avatar (thread open / Vincular). Safe to call repeatedly. */
+    async enrichPeerProfile(user: User, conversationId: string) {
+      await this.getConversationForUser(user, conversationId);
+      const { enrichConversationPeerProfile } = await import("@/lib/services/peer-avatar-service");
+      const result = await enrichConversationPeerProfile(conversationId, db);
+      const row = await this.getConversationForUser(user, result.conversationId);
+      return {
+        ...row,
+        peerAvatarUrl: peerAvatarPublicUrl(row.peerAvatarKey) || peerAvatarPublicUrl(row.contact?.avatarKey),
       };
     },
 
@@ -224,6 +259,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             { contact: { nome: { contains: q, mode: "insensitive" as const } } },
             { condominium: { nome: { contains: q, mode: "insensitive" as const } } },
             { peerPhoneE164: { contains: q, mode: "insensitive" as const } },
+            { peerDisplayName: { contains: q, mode: "insensitive" as const } },
           ],
         });
       }
@@ -259,7 +295,12 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           const unread = !lastRead || lastRead < row.updatedAt;
           const { reads, ...rest } = row;
           void reads;
-          return { ...rest, unread };
+          return {
+            ...rest,
+            unread,
+            peerAvatarUrl:
+              peerAvatarPublicUrl(row.peerAvatarKey) || peerAvatarPublicUrl(row.contact?.avatarKey),
+          };
         })
         .filter((row) => (filters?.unread ? row.unread : true));
       if (filters?.unread) {
@@ -299,6 +340,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
 
     async listMessages(user: User, conversationId: string, page: number, pageSize: number) {
       await this.getConversationForUser(user, conversationId);
+      schedulePeerProfileEnrichment(conversationId);
       const [total, items] = await Promise.all([
         db.message.count({ where: { conversationId } }),
         db.message.findMany({
@@ -347,7 +389,9 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         return { message, sentToWhatsApp: false };
       }
 
-      if (!canSendPublicWhatsApp(user)) {
+      const canSendNow = canSendPublicWhatsApp(user);
+      const canDraftForApproval = Boolean(user.apenasRascunho) && Boolean(user.podeResponderCliente) && !isAdmin(user);
+      if (!canSendNow && !canDraftForApproval) {
         throw forbidden("Este perfil não pode responder o cliente");
       }
       const outOfFlow = !conversation.contactId || !conversation.condominiumId;
@@ -382,6 +426,31 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       if (input.file) {
         attachmentData = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
       }
+
+      if (canDraftForApproval) {
+        const draft = await db.message.create({
+          data: {
+            conversationId,
+            ticketId,
+            replyToId,
+            direction: "out",
+            visibility: "publica",
+            sendStatus: "draft",
+            body: (input.body || input.file?.name || "").slice(0, 8000),
+            attachments: attachmentData ? { create: attachmentData } : undefined,
+          },
+          include: { attachments: true },
+        });
+        await writeAudit(db, {
+          actorId: user.id,
+          action: "message.draft",
+          entityType: "message",
+          entityId: draft.id,
+          after: { conversationId, ticketId, visibility: "publica", sendStatus: "draft" },
+        });
+        return { message: draft, sentToWhatsApp: false, awaitingApproval: true };
+      }
+
       const created = await db.message.create({
         data: {
           conversationId,
@@ -410,7 +479,19 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       const prazosVencidos = await deadlineService.countOverdue(user);
       const prazosProximos = await deadlineService.countDueSoon(user);
       const ticketWhere = isAdmin(user) ? {} : { assignedToId: user.id };
-      const [abertos, emAndamento, aguardando, semResponsavel, altaUrgente, rascunhos] = await Promise.all([
+      const access: Prisma.ConversationWhereInput = isAdmin(user)
+        ? inFlowConversationWhere
+        : { AND: [inFlowConversationWhere, { tickets: { some: { assignedToId: user.id } } }] };
+      const ticketListSelect = {
+        id: true,
+        protocol: true,
+        title: true,
+        status: true,
+        updatedAt: true,
+        condominium: { select: { nome: true } },
+        contact: { select: { nome: true } },
+      } as const;
+      const [abertos, emAndamento, aguardando, semResponsavel, altaUrgente, rascunhos, unreadRows] = await Promise.all([
         db.ticket.count({ where: { ...ticketWhere, status: "aberto" } }),
         db.ticket.count({ where: { ...ticketWhere, status: "em_andamento" } }),
         db.ticket.count({ where: { ...ticketWhere, status: "aguardando" } }),
@@ -423,15 +504,35 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             ...(isAdmin(user) ? {} : { ticket: { assignedToId: user.id } }),
           },
         }),
+        db.conversation.findMany({
+          where: access,
+          select: {
+            updatedAt: true,
+            reads: { where: { userId: user.id }, select: { lastReadAt: true }, take: 1 },
+          },
+        }),
       ]);
+      const naoLidas = unreadRows.filter((row) => {
+        const lastRead = row.reads[0]?.lastReadAt;
+        return !lastRead || lastRead < row.updatedAt;
+      }).length;
       if (!isAdmin(user)) {
-        const meus = await db.ticket.count({
-          where: { assignedToId: user.id, status: { not: "resolvido" } },
-        });
+        const [meus, meusChamadosLista] = await Promise.all([
+          db.ticket.count({
+            where: { assignedToId: user.id, status: { not: "resolvido" } },
+          }),
+          db.ticket.findMany({
+            where: { assignedToId: user.id, status: { not: "resolvido" } },
+            orderBy: { updatedAt: "desc" },
+            take: 8,
+            select: ticketListSelect,
+          }),
+        ]);
         return {
           triagem: 0,
           naoIdent: 0,
           naoVinculados: 0,
+          naoLidas,
           conexao: null,
           enviosFalhos: 0,
           recent: [] as unknown[],
@@ -439,6 +540,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           prazosVencidos,
           prazosProximos,
           meusChamados: meus,
+          meusChamadosLista,
           abertos,
           emAndamento,
           aguardando,
@@ -447,7 +549,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           rascunhos,
         };
       }
-      const [triagem, naoVinculados, conexao, enviosFalhos, recent, connections] = await Promise.all([
+      const [triagem, naoVinculados, conexao, enviosFalhos, recent, connections, meusChamadosLista] = await Promise.all([
         db.triageItem.count({
           where: { status: "aberto", conversation: inFlowConversationWhere },
         }),
@@ -464,17 +566,25 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           include: { contact: true, condominium: true },
         }),
         db.channelConnection.findMany({ orderBy: { createdAt: "asc" } }),
+        db.ticket.findMany({
+          where: { status: { not: "resolvido" } },
+          orderBy: { updatedAt: "desc" },
+          take: 8,
+          select: ticketListSelect,
+        }),
       ]);
       return {
         triagem,
         naoIdent: naoVinculados,
         naoVinculados,
+        naoLidas,
         conexao,
         enviosFalhos,
         recent,
         connections,
         prazosVencidos,
         prazosProximos,
+        meusChamadosLista,
         abertos,
         emAndamento,
         aguardando,

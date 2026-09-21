@@ -1,16 +1,11 @@
 import * as React from "react";
-import { Frame, FramePanel } from "@/components/reui/frame";
 import { cn } from "@/lib/utils";
 
 export function DataTable({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <Frame dense className={className}>
-      <FramePanel>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm [&_tbody_tr:hover]:bg-muted/40">{children}</table>
-        </div>
-      </FramePanel>
-    </Frame>
+    <div data-slot="data-table" className={cn("overflow-x-auto border-t border-border/80", className)}>
+      <table className="w-full min-w-[720px] text-left text-sm [&_tbody_tr:hover]:bg-muted/30">{children}</table>
+    </div>
   );
 }
 
@@ -18,7 +13,7 @@ export function Th({ children, className }: { children: React.ReactNode; classNa
   return (
     <th
       className={cn(
-        "sticky top-0 border-b border-border bg-card px-4 py-3 font-medium text-muted-foreground",
+        "sticky top-0 border-b border-border bg-background px-3 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground",
         className,
       )}
     >
@@ -29,6 +24,6 @@ export function Th({ children, className }: { children: React.ReactNode; classNa
 
 export function Td({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <td className={cn("border-b border-border px-4 py-3.5 align-top", className)}>{children}</td>
+    <td className={cn("border-b border-border/70 px-3 py-2.5 align-top", className)}>{children}</td>
   );
 }

@@ -1,20 +1,12 @@
+import { formatPhoneInput } from "@/lib/phone/mask";
 import { isLidPeer, isOrphanPeer } from "@/lib/phone/identity";
 
 export const WHATSAPP_HIDDEN_NUMBER_LABEL = "Número não informado pelo WhatsApp";
 
-function formatBrazilNational(digits: string): string {
-  const ddd = digits.slice(2, 4);
-  let local = digits.slice(4);
-  if (local.length === 8 && local[0] >= "6" && local[0] <= "9") {
-    local = `9${local}`;
-  }
-  if (local.length === 9) {
-    return `+55 (${ddd}) ${local.slice(0, 5)}-${local.slice(5)}`;
-  }
-  if (local.length === 8) {
-    return `+55 (${ddd}) ${local.slice(0, 4)}-${local.slice(4)}`;
-  }
-  return `+${digits}`;
+/** Shared BR display (+55 + optional 9th digit). Prefer formatPhoneInput for forms. */
+export function formatBrazilNational(digits: string): string {
+  const withCc = digits.startsWith("55") ? digits : `55${digits}`;
+  return formatPhoneInput(`+${withCc}`) || `+${withCc}`;
 }
 
 /** Rótulo para UI: LID/placeholder nunca aparece como se fosse telefone. */
@@ -30,4 +22,19 @@ export function formatWhatsAppPeer(phone?: string | null): string {
 
 export function conversationPhoneLabel(contactPhone?: string | null, peerPhone?: string | null): string {
   return formatWhatsAppPeer(contactPhone || peerPhone);
+}
+
+/** Nome operacional da thread: cadastro → pushName → telefone → rótulo curto (nunca o parágrafo LID). */
+export function conversationIdentityLabel(row: {
+  contact?: { nome?: string | null; phoneE164?: string | null } | null;
+  peerDisplayName?: string | null;
+  peerPhoneE164?: string | null;
+}): string {
+  const nome = row.contact?.nome?.trim();
+  if (nome) return nome;
+  const push = row.peerDisplayName?.trim();
+  if (push) return push;
+  const phone = conversationPhoneLabel(row.contact?.phoneE164, row.peerPhoneE164);
+  if (phone !== WHATSAPP_HIDDEN_NUMBER_LABEL && phone !== "—") return phone;
+  return "Contato WhatsApp";
 }

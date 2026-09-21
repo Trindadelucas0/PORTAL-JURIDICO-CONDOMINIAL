@@ -6,6 +6,7 @@ export type EvolutionInboundMessage = {
   fromPhone: string;
   body: string;
   waLid: string | null;
+  pushName?: string | null;
 };
 
 export type EvolutionWebhookResult =
@@ -184,14 +185,23 @@ function extractInbound(row: Record<string, unknown>):
   const waMessageId = asString(key.id);
   if (!waMessageId || !phone) return { skip: "incomplete" };
   const text = extractMessageText(row.message);
+  const pushName = sanitizePushName(asString(row.pushName) || asString(row.pushname) || asString(row.notifyName));
   return {
     item: {
       waMessageId,
       fromPhone: phone,
       waLid: waLid || (phone.startsWith("+999") ? phone : null),
       body: text || "(mídia ou mensagem sem texto)",
+      ...(pushName ? { pushName } : {}),
     },
   };
+}
+
+function sanitizePushName(value?: string): string | null {
+  const text = value?.trim().replace(/\s+/g, " ");
+  if (!text || text.length < 2 || text.length > 80) return null;
+  if (/^\+?\d[\d\s()-]{6,}$/.test(text)) return null;
+  return text;
 }
 
 export function interpretEvolutionWebhook(body: unknown): EvolutionWebhookResult {

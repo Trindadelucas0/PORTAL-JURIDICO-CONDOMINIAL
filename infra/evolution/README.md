@@ -36,7 +36,7 @@ Reinicie o Next após alterar o `.env` para carregar as variáveis.
 Admin, conexão `evolution_baileys`:
 
 1. **Atualizar status** → `GET /api/connections/:id/status` (consulta Evolution `connectionState` e sincroniza `ChannelConnection.status` quando possível).
-2. **Obter QR** → cria a instância se faltar e faz poll em `GET /instance/connect/:name` (também aceita cache do webhook `QRCODE_UPDATED`). Não precisa de telefone.
+2. **Obter QR** → cria a instância se faltar e faz poll em `GET /instance/connect/:name` (também aceita cache do webhook `QRCODE_UPDATED`, TTL **20s**). No app: `/conexoes` → **Conectar**; com o dialog aberto, `GET /qr?fresh=1` a cada ~15s e botão **Atualizar QR**. Não precisa de telefone.
    - `CONFIG_SESSION_PHONE_VERSION=2.3000.1043857760` no compose (sobrescreve o `.env` interno da imagem `2.3000.1015901307`, que deixava o socket em loop sem QR). Atualizar se o Baileys publicar versão nova. **Não** use `22.5.0`.
    - Nesta imagem o 3º item do browser é sempre `os.release()`. No Docker Desktop/WSL isso era `*-microsoft-standard-WSL2`, o WhatsApp recusava a sessão e o connect voltava `{count:0}` (422 no app). O compose monta `infra/evolution/patch-os-release.cjs` via `NODE_OPTIONS` para reportar `10.0.22621`, com `CONFIG_SESSION_PHONE_CLIENT=Windows`.
    - Sem QR após ~25s: 422. Recrie o container (`docker compose up -d --force-recreate evolution-api`) depois de mudar o patch.
@@ -48,4 +48,4 @@ Rótulo na UI: **WhatsApp Web (não oficial)**. Risco de banimento da conta. Nã
 
 ## Se o Docker não estiver rodando
 
-O escritório opera com DevMock. Falha de QR/envio Baileys aparece na UI; o mock permanece.
+O escritório opera, mas **Conectar** no `/conexoes` não gera QR: o app responde 503 (“Evolution API não está no ar”) no dialog. Suba `docker compose up -d` e use **Tentar de novo**. Sem o compose, inbound/envio Baileys também falham.

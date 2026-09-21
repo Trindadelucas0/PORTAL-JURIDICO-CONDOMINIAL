@@ -1,29 +1,28 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { EmptyState } from "@/components/ui/empty-state";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Drawer } from "@/components/ui/drawer";
-import { PageHeader } from "@/components/ui/page-header";
-import { ThreadPanel, type ThreadConversation } from "@/components/atendimento/thread-panel";
-import { Frame, FramePanel } from "@/components/reui/frame";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { PeerAvatar } from "@/components/atendimento/peer-avatar";
+import { ThreadPanel } from "@/components/atendimento/thread-panel";
+import { UnlinkedIdentityPanel } from "@/components/nao-vinculados/unlinked-identity-panel";
+import { UnlinkedQueue, type UnlinkedConversation } from "@/components/nao-vinculados/unlinked-queue";
+import { WorkspacePane, WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { api } from "@/lib/client/api";
+import { livePollQuery } from "@/lib/client/live-poll";
 import { cn } from "@/lib/utils";
-import { conversationPhoneLabel } from "@/lib/phone/display";
-import { sendableWhatsAppE164 } from "@/lib/phone/identity";
+import { conversationIdentityLabel, formatWhatsAppPeer } from "@/lib/phone/display";
+import { e164ToMaskedInput } from "@/lib/phone/mask";
+import { canPullWhatsAppPhone, sendableWhatsAppE164 } from "@/lib/phone/identity";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
-
-type Conversation = ThreadConversation & {
-  unread?: boolean;
-  updatedAt: string;
-  messages: { body: string }[];
-};
 
 type Condo = { id: string; nome: string };
 type SavedContact = {
@@ -34,28 +33,41 @@ type SavedContact = {
   condominium?: { id: string; nome: string } | null;
 };
 
-export default function NaoVinculadosPage() {
+const ROLE_OPTIONS = ["Síndico", "Administrador", "Outro"] as const;
+
+function NaoVinculadosInner() {
   const qc = useQueryClient();
   const router = useRouter();
   const toast = useToast();
+  const params = useSearchParams();
+  const paramsQ = params.get("q") || "";
   const [selected, setSelected] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(paramsQ);
   const [mobilePane, setMobilePane] = useState<"list" | "thread" | "context">("list");
   const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollRow, setEnrollRow] = useState<UnlinkedConversation | null>(null);
   const [nome, setNome] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneFromWhatsApp, setPhoneFromWhatsApp] = useState(false);
   const [cargo, setCargo] = useState("");
   const [email, setEmail] = useState("");
   const [condominiumId, setCondominiumId] = useState("");
   const [existingContactId, setExistingContactId] = useState("");
+  const [enriching, setEnriching] = useState(false);
+  const [confirmEnroll, setConfirmEnroll] = useState(false);
+
+  useEffect(() => {
+    setQ(paramsQ);
+  }, [paramsQ]);
 
   const list = useQuery({
     queryKey: ["conversations", "unlinked", q],
     queryFn: () => {
       const p = new URLSearchParams({ unlinked: "1" });
       if (q) p.set("q", q);
-      return api<Conversation[]>(`/api/conversations?${p.toString()}`);
+      return api<UnlinkedConversation[]>(`/api/conversations?${p.toString()}`);
     },
+    ...livePollQuery,
   });
   const condos = useQuery({
     queryKey: ["condominiums"],
@@ -69,26 +81,31 @@ export default function NaoVinculadosPage() {
   const items = list.data?.data ?? [];
   const current = items.find((c) => c.id === selected) || items[0];
   const currentId = selected || current?.id;
+  const drawerPeer = enrollRow || current;
   const sendable = sendableWhatsAppE164({
-    contactPhoneE164: current?.contact?.phoneE164,
-    peerPhoneE164: current?.peerPhoneE164,
+    contactPhoneE164: drawerPeer?.contact?.phoneE164,
+    peerPhoneE164: drawerPeer?.peerPhoneE164,
   });
+  const phoneLocked = phoneFromWhatsApp || Boolean(sendable);
+  const whatsappOpen = drawerPeer?.connection.status === "open";
+  const showPullPhone = canPullWhatsAppPhone(drawerPeer?.connection.status, phoneLocked);
 
   const enroll = useMutation({
     mutationFn: () =>
-      api<{ triage: { id: string } }>(`/api/conversations/${current!.id}/enroll`, {
+      api<{ triage: { id: string } }>(`/api/conversations/${drawerPeer!.id}/enroll`, {
         method: "POST",
         body: JSON.stringify({
           nome,
           condominiumId,
-          phone: phone || undefined,
+          phone: phoneLocked ? undefined : phone || undefined,
           cargo: cargo || undefined,
           email: email || undefined,
         }),
       }),
     onSuccess: (res) => {
-      toast("Cadastrado no fluxo");
+      toast("Vinculado ao fluxo");
       setEnrollOpen(false);
+      setEnrollRow(null);
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["triage"] });
@@ -99,118 +116,143 @@ export default function NaoVinculadosPage() {
   if (list.isError) {
     const status = (list.error as Error & { status?: number }).status;
     if (status === 403) return <ForbiddenState />;
-    return <ErrorBanner message="Não foi possível carregar números não vinculados." onRetry={() => list.refetch()} />;
+    return (
+      <div className="p-4">
+        <ErrorBanner message="Não foi possível carregar números não vinculados." onRetry={() => list.refetch()} />
+      </div>
+    );
   }
 
-  function openEnroll(row: Conversation) {
-    setNome(row.contact?.nome || "");
-    setPhone(sendableWhatsAppE164({ contactPhoneE164: row.contact?.phoneE164, peerPhoneE164: row.peerPhoneE164 }) || "");
+  async function runEnrich(row: UnlinkedConversation, opts: { silent: boolean }) {
+    if (enriching) return;
+    setEnriching(true);
+    try {
+      const res = await api<UnlinkedConversation>(`/api/conversations/${row.id}/enrich-peer`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      const enriched = res.data;
+      setEnrollRow(enriched);
+      const next = sendableWhatsAppE164({
+        contactPhoneE164: enriched.contact?.phoneE164,
+        peerPhoneE164: enriched.peerPhoneE164,
+      });
+      if (next) {
+        setPhone(e164ToMaskedInput(next));
+        setPhoneFromWhatsApp(true);
+        if (!opts.silent) toast("Telefone puxado do WhatsApp");
+      } else if (!opts.silent) {
+        toast("WhatsApp ainda não liberou o número deste contato");
+      }
+      setNome((prev) => {
+        if (prev.trim()) return prev;
+        return enriched.contact?.nome || enriched.peerDisplayName || prev;
+      });
+      qc.invalidateQueries({ queryKey: ["conversations", "unlinked"] });
+    } catch (e) {
+      if (!opts.silent) {
+        toast((e as Error).message || "Não foi possível consultar o WhatsApp");
+      }
+    } finally {
+      setEnriching(false);
+    }
+  }
+
+  async function openEnroll(row: UnlinkedConversation) {
+    setEnrollRow(row);
+    setNome(row.contact?.nome || row.peerDisplayName || "");
+    const existing = sendableWhatsAppE164({
+      contactPhoneE164: row.contact?.phoneE164,
+      peerPhoneE164: row.peerPhoneE164,
+    });
+    setPhone(existing ? e164ToMaskedInput(existing) : "");
+    setPhoneFromWhatsApp(Boolean(existing));
     setCargo("");
     setEmail("");
     setCondominiumId("");
     setExistingContactId("");
     setEnrollOpen(true);
+    await runEnrich(row, { silent: true });
   }
 
+  const avatarUrl = enrollRow?.peerAvatarUrl;
+  const displayName = enrollRow ? conversationIdentityLabel(enrollRow) : "";
+
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
-      <PageHeader
-        title="Não vinculados"
-        description="Números sem cadastro no condomínio. Só conversa, sem triagem, até você cadastrar no fluxo."
-      />
-      <Frame className="mt-4 min-h-0 flex-1">
-        <FramePanel className="min-h-0">
-          <div
-            className={cn(
-              "grid min-h-[calc(100vh-12rem)] flex-1 gap-0 overflow-hidden",
-              "xl:grid-cols-[240px_minmax(0,1fr)_260px] lg:grid-cols-[240px_minmax(0,1fr)]",
-            )}
-          >
-        <aside className={cn("border-r border-[var(--border)] p-3", mobilePane !== "list" && "hidden lg:block")}>
-          <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar número" />
-          {list.isLoading ? (
-            <div className="mt-3 space-y-2">
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-            </div>
-          ) : items.length === 0 ? (
-            <EmptyState title="Nenhum número fora do fluxo" hint="Quando alguém sem cadastro mandar WhatsApp, a conversa aparece aqui." />
-          ) : (
-            <ul className="mt-3 space-y-0.5">
-              {items.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "w-full rounded-[10px] px-3 py-2 text-left text-sm",
-                      currentId === c.id ? "bg-muted" : "hover:bg-muted/70",
-                    )}
-                    onClick={() => {
-                      setSelected(c.id);
-                      setMobilePane("thread");
-                    }}
-                  >
-                    <div className="flex items-center gap-2 font-medium">
-                      {c.unread ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand)]" aria-label="Não lida" /> : null}
-                      {conversationPhoneLabel(c.contact?.phoneE164, c.peerPhoneE164)}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">{c.messages[0]?.body || "—"}</div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-        <ThreadPanel
-          conversation={current}
-          hidden={mobilePane !== "thread"}
-          onBack={() => setMobilePane("list")}
-          onContext={() => setMobilePane("context")}
-          title={current ? conversationPhoneLabel(current.contact?.phoneE164, current.peerPhoneE164) : "Número"}
-          subtitle={current ? `Fora do fluxo · ${current.connection.label}` : undefined}
-          allowPublicSend={Boolean(current && current.connection.status === "open")}
-          publicBlockedHint={
-            current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
-          }
-          extraInvalidateKeys={[["conversations", "unlinked"]]}
-        />
-        <aside
-          className={cn(
-            "border-l border-[var(--border)] p-4 text-sm",
-            mobilePane !== "context" && "hidden xl:block",
-          )}
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <button type="button" className="text-[var(--brand)] xl:hidden" onClick={() => setMobilePane("thread")}>
-              ← Conversa
-            </button>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Fora do fluxo</h2>
-          </div>
-          {!current ? (
-            <p className="text-muted-foreground">Selecione uma conversa.</p>
-          ) : (
-            <div className="space-y-4">
-              <p>Sem condomínio. Sem chamado. Sem IA. Só receber e enviar mensagem.</p>
-              <p className="text-[var(--muted)]">
-                {conversationPhoneLabel(current.contact?.phoneE164, current.peerPhoneE164)}
-              </p>
-              <Button type="button" onClick={() => openEnroll(current)}>
-                Cadastrar no fluxo
-              </Button>
-            </div>
-          )}
-        </aside>
-          </div>
-        </FramePanel>
-      </Frame>
-      <Drawer open={enrollOpen} onClose={() => setEnrollOpen(false)} title="Cadastrar no fluxo">
-          <form
+    <div className="flex h-[calc(100dvh-3rem)] flex-col">
+      <div className="shrink-0 border-b border-border px-3 py-2">
+        <h1 className="text-sm font-semibold">Não vinculados</h1>
+        <p className="text-xs text-muted-foreground">
+          {list.isLoading
+            ? "Carregando fila…"
+            : `${items.length} fora do fluxo · mensagem recebida → identidade → vincular (vira triagem)`}
+        </p>
+      </div>
+      <WorkspaceShell cols="unlinked" contextOpen>
+        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
+          <UnlinkedQueue
+            items={items}
+            loading={list.isLoading}
+            selectedId={currentId}
+            q={q}
+            onQuery={setQ}
+            onSelect={(id) => {
+              setSelected(id);
+              setMobilePane("thread");
+            }}
+          />
+        </WorkspacePane>
+        <WorkspacePane className={cn(mobilePane !== "thread" && "hidden lg:flex")}>
+          <ThreadPanel
+            conversation={current}
+            hidden={mobilePane !== "thread"}
+            onBack={() => setMobilePane("list")}
+            onContext={() => setMobilePane("context")}
+            title={current ? conversationIdentityLabel(current) : "Mensagem"}
+            subtitle={current ? `Fora do fluxo · ${current.connection.label}` : undefined}
+            allowPublicSend={Boolean(current && current.connection.status === "open")}
+            publicBlockedHint={
+              current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
+            }
+            extraInvalidateKeys={[["conversations", "unlinked"]]}
+          />
+        </WorkspacePane>
+        <WorkspacePane className={cn(mobilePane !== "context" && "hidden xl:flex")}>
+          <UnlinkedIdentityPanel
+            conversation={current}
+            onBack={() => setMobilePane("thread")}
+            onEnroll={() => current && openEnroll(current)}
+          />
+        </WorkspacePane>
+      </WorkspaceShell>
+      <Drawer open={enrollOpen} onClose={() => setEnrollOpen(false)} title="Vincular ao fluxo">
+        <form
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            enroll.mutate();
+            setConfirmEnroll(true);
           }}
         >
+          <p className="text-sm text-muted-foreground">
+            Informe quem é o contato e o condomínio. A conversa entra na triagem — não vira chamado sozinha.
+          </p>
+          {enrollRow ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <PeerAvatar name={displayName} avatarUrl={avatarUrl} size="lg" />
+              <div className="min-w-0">
+                <p className="truncate font-medium">{displayName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {phoneLocked
+                    ? formatWhatsAppPeer(sendable || phone)
+                    : enriching
+                      ? "Buscando número no WhatsApp…"
+                      : whatsappOpen
+                        ? "Número não liberado — use Puxar do WhatsApp"
+                        : "Número não liberado pelo WhatsApp"}
+                </p>
+              </div>
+            </div>
+          ) : null}
           <Label htmlFor="en-existing">Já cadastrado no condomínio</Label>
           <Select
             id="en-existing"
@@ -221,7 +263,7 @@ export default function NaoVinculadosPage() {
               const row = (savedContacts.data?.data ?? []).find((c) => c.id === id);
               if (!row) return;
               setNome(row.nome);
-              setPhone(row.phoneE164);
+              if (!phoneLocked) setPhone(e164ToMaskedInput(row.phoneE164));
               setCondominiumId(row.condominiumId || row.condominium?.id || "");
             }}
           >
@@ -230,22 +272,64 @@ export default function NaoVinculadosPage() {
               .filter((c) => c.condominiumId || c.condominium?.id)
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nome} · {c.phoneE164}
+                  {c.nome} · {formatWhatsAppPeer(c.phoneE164)}
                 </option>
               ))}
           </Select>
           <Label htmlFor="en-nome">Nome</Label>
           <Input id="en-nome" required value={nome} onChange={(e) => setNome(e.target.value)} />
-          <Label htmlFor="en-ph">Telefone</Label>
-          <Input
+          <PhoneInput
             id="en-ph"
-            required={!sendable}
+            label="Telefone"
+            required={!phoneLocked}
+            readOnly={phoneLocked}
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder={sendable ? "Já informado pelo WhatsApp" : "Obrigatório — o WhatsApp não mostrou o número"}
+            onChange={setPhone}
+            hint={
+              phoneLocked
+                ? "Vindo do WhatsApp — não precisa digitar"
+                : enriching
+                  ? "Consultando Evolution…"
+                  : "Obrigatório — o WhatsApp não mostrou o número"
+            }
+            action={
+              showPullPhone ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                  disabled={enriching}
+                  onClick={() => enrollRow && void runEnrich(enrollRow, { silent: false })}
+                >
+                  {enriching ? "Puxando…" : "Puxar do WhatsApp"}
+                </Button>
+              ) : undefined
+            }
           />
-          <Label htmlFor="en-cargo">Cargo</Label>
-          <Input id="en-cargo" value={cargo} onChange={(e) => setCargo(e.target.value)} />
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Papel</legend>
+            <div className="flex flex-wrap gap-3">
+              {ROLE_OPTIONS.map((role) => (
+                <label key={role} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="radio"
+                    name="cargo-role"
+                    value={role}
+                    checked={cargo === role}
+                    onChange={() => setCargo(role)}
+                  />
+                  {role}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Label htmlFor="en-cargo">Cargo (livre)</Label>
+          <Input
+            id="en-cargo"
+            value={cargo}
+            onChange={(e) => setCargo(e.target.value)}
+            placeholder="Ou digite outro cargo"
+          />
           <Label htmlFor="en-email">E-mail</Label>
           <Input id="en-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <Label htmlFor="en-condo">Condomínio</Label>
@@ -258,11 +342,47 @@ export default function NaoVinculadosPage() {
             ))}
           </Select>
           {enroll.isError ? <p className="text-sm text-[var(--danger)]">{(enroll.error as Error).message}</p> : null}
-          <Button type="submit" disabled={enroll.isPending || !nome.trim() || !condominiumId || (!sendable && !phone.trim())}>
-            Cadastrar
+          <Button
+            type="submit"
+            disabled={enroll.isPending || !nome.trim() || !condominiumId || (!phoneLocked && !phone.trim())}
+          >
+            Vincular ao fluxo
           </Button>
         </form>
       </Drawer>
+      <ConfirmDialog
+        open={confirmEnroll}
+        onClose={() => setConfirmEnroll(false)}
+        title="Confirmar vínculo"
+        message="Isso cadastra o contato no condomínio e abre triagem. Não cria chamado."
+        confirmLabel="Confirmar vínculo"
+        pending={enroll.isPending}
+        details={
+          <dl className="space-y-1.5">
+            <div>
+              <dt className="text-xs text-muted-foreground">Nome</dt>
+              <dd>{nome || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Telefone</dt>
+              <dd>{phoneLocked ? formatWhatsAppPeer(sendable || phone) : phone || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Condomínio</dt>
+              <dd>{(condos.data?.data ?? []).find((c) => c.id === condominiumId)?.nome || "—"}</dd>
+            </div>
+          </dl>
+        }
+        onConfirm={() => enroll.mutate()}
+      />
     </div>
+  );
+}
+
+export default function NaoVinculadosPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-40" />}>
+      <NaoVinculadosInner />
+    </Suspense>
   );
 }

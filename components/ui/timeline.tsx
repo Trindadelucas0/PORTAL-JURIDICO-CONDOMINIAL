@@ -1,6 +1,16 @@
 "use client";
 
 import {
+  CalendarClock,
+  CheckCircle2,
+  FileText,
+  MessageSquare,
+  Send,
+  ShieldCheck,
+  StickyNote,
+  UserRound,
+} from "lucide-react";
+import {
   Timeline as ReuiTimeline,
   TimelineContent,
   TimelineDate,
@@ -11,14 +21,39 @@ import {
   TimelineTitle,
 } from "@/components/reui/timeline";
 import { formatWhen } from "@/lib/ui-labels";
+import { cn } from "@/lib/utils";
+
+export type TimelineKind =
+  | "message"
+  | "note"
+  | "document"
+  | "status"
+  | "assignee"
+  | "deadline"
+  | "approval"
+  | "send"
+  | "system";
 
 export type TimelineItem = {
   id: string;
   at: string;
-  kind: "message" | "system";
+  kind: TimelineKind;
   body: string;
   label?: string;
-  tone?: "interna" | "in" | "out";
+  author?: string;
+  tone?: "interna" | "in" | "out" | "draft" | "failed";
+};
+
+const KIND_META: Record<TimelineKind, { label: string; icon: typeof MessageSquare }> = {
+  message: { label: "Mensagem", icon: MessageSquare },
+  note: { label: "Nota interna", icon: StickyNote },
+  document: { label: "Documento", icon: FileText },
+  status: { label: "Status", icon: CheckCircle2 },
+  assignee: { label: "Responsável", icon: UserRound },
+  deadline: { label: "Prazo", icon: CalendarClock },
+  approval: { label: "Aprovação", icon: ShieldCheck },
+  send: { label: "Envio", icon: Send },
+  system: { label: "Sistema", icon: CheckCircle2 },
 };
 
 export function Timeline({ items }: { items: TimelineItem[] }) {
@@ -27,17 +62,35 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
   }
   return (
     <ReuiTimeline value={items.length} className="px-1">
-      {items.map((item, index) => (
-        <ReuiTimelineItem key={item.id} step={index + 1}>
-          <TimelineHeader>
-            <TimelineDate dateTime={item.at}>{formatWhen(item.at)}</TimelineDate>
-            <TimelineTitle>{item.kind === "message" ? (item.label ?? "WhatsApp") : "Sistema"}</TimelineTitle>
-          </TimelineHeader>
-          <TimelineIndicator />
-          <TimelineSeparator />
-          <TimelineContent className={item.tone === "interna" ? "text-amber-800" : undefined}>{item.body}</TimelineContent>
-        </ReuiTimelineItem>
-      ))}
+      {items.map((item, index) => {
+        const meta = KIND_META[item.kind] ?? KIND_META.system;
+        const Icon = meta.icon;
+        return (
+          <ReuiTimelineItem key={item.id} step={index + 1}>
+            <TimelineHeader>
+              <TimelineDate dateTime={item.at}>{formatWhen(item.at)}</TimelineDate>
+              <TimelineTitle className="flex items-center gap-1.5">
+                <Icon className="size-3.5 text-muted-foreground" aria-hidden />
+                {item.label ?? meta.label}
+                {item.author ? (
+                  <span className="font-normal text-muted-foreground"> · {item.author}</span>
+                ) : null}
+              </TimelineTitle>
+            </TimelineHeader>
+            <TimelineIndicator />
+            <TimelineSeparator />
+            <TimelineContent
+              className={cn(
+                item.tone === "interna" && "text-amber-800",
+                item.tone === "draft" && "text-muted-foreground",
+                item.tone === "failed" && "text-[var(--danger)]",
+              )}
+            >
+              {item.body}
+            </TimelineContent>
+          </ReuiTimelineItem>
+        );
+      })}
     </ReuiTimeline>
   );
 }

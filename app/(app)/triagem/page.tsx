@@ -1,16 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { Toolbar } from "@/components/ui/toolbar";
-import { DataTable, Td, Th } from "@/components/ui/data-table";
+import { WorkspacePane, WorkspaceShell } from "@/components/workspace/workspace-shell";
+import { TriageAnalysisPanel } from "@/components/triagem/triage-analysis-panel";
+import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { api } from "@/lib/client/api";
 import { conversationPhoneLabel } from "@/lib/phone/display";
 import { formatWhen } from "@/lib/ui-labels";
@@ -23,6 +22,8 @@ type Item = {
   conversationId?: string;
   conversation: {
     peerPhoneE164?: string;
+    peerDisplayName?: string | null;
+    peerAvatarUrl?: string | null;
     contact: { nome: string; phoneE164: string } | null;
     condominium: { nome: string } | null;
     messages: { body: string; createdAt: string }[];
@@ -30,7 +31,10 @@ type Item = {
 };
 
 export default function TriagemPage() {
+  const router = useRouter();
   const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<"list" | "analysis">("list");
   const list = useQuery({
     queryKey: ["triage"],
     queryFn: () => api<Item[]>("/api/triage"),
@@ -52,68 +56,111 @@ export default function TriagemPage() {
   if (list.isError) {
     const errStatus = (list.error as Error & { status?: number }).status;
     if (errStatus === 403) return <ForbiddenState />;
-    return <ErrorBanner message="Falha ao carregar triagem." onRetry={() => list.refetch()} />;
+    return (
+      <div className="p-4">
+        <ErrorBanner message="Falha ao carregar triagem." onRetry={() => list.refetch()} />
+      </div>
+    );
   }
 
-  const items = list.data?.data ?? [];
+  const items = filtered;
+  const currentId = selected || items[0]?.id;
 
   return (
-    <div>
-      <PageHeader
-        title="Triagem"
-        description="Demandas de contatos já cadastrados no condomínio. Classifique e promova a chamado."
-        action={
-          <p className="text-sm text-muted-foreground">
-            <span className="tabular font-medium text-[var(--ink)]">{list.data?.meta?.total ?? items.length}</span> aguardando
+    <div className="flex h-[calc(100dvh-3rem)] flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+        <div>
+          <h1 className="text-sm font-semibold">Triagem</h1>
+          <p className="text-xs text-muted-foreground">
+            <span className="tabular font-medium text-foreground">{list.data?.meta?.total ?? items.length}</span>{" "}
+            aguardando classificação
           </p>
-        }
-      />
-      <Toolbar>
-        <Input placeholder="Buscar solicitação…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar triagem" />
-      </Toolbar>
-      {list.isLoading ? (
-        <div className="mt-4 space-y-3">
-          <Skeleton className="h-24" />
-          <Skeleton className="h-24" />
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title="Nada na triagem"
-          hint="Só entram números cadastrados no condomínio. Avulsos ficam em Não vinculados."
+        <Input
+          className="ml-auto h-8 max-w-xs"
+          placeholder="Buscar…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          aria-label="Buscar triagem"
         />
+      </div>
+      {list.isLoading ? (
+        <div className="space-y-2 p-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : items.length === 0 ? (
+        <EmptyState title="Tudo limpo" hint="Nada na triagem." />
       ) : (
-        <DataTable className="mt-4">
-          <thead>
-            <tr>
-              <Th>Solicitação</Th>
-              <Th>Condomínio</Th>
-              <Th>Quando</Th>
-              <Th><span className="sr-only">Ação</span></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((item) => (
-              <tr key={item.id}>
-                <Td>
-                  <p className="font-medium">{item.conversation.contact?.nome || "Contato"}</p>
-                  <p className="mt-1 line-clamp-2 rounded-md bg-muted px-2 py-1.5 text-sm">“{item.conversation.messages[0]?.body || "—"}”</p>
-                  {item.conversation.peerPhoneE164 || item.conversation.contact?.phoneE164 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {conversationPhoneLabel(item.conversation.contact?.phoneE164, item.conversation.peerPhoneE164)}
-                    </p>
-                  ) : null}
-                </Td>
-                <Td>{item.conversation.condominium?.nome || "—"}</Td>
-                <Td>{formatWhen(item.updatedAt)}</Td>
-                <Td>
-                  <Link href={`/triagem/${item.id}`} className={cn(buttonVariants(), "shrink-0")}>
-                    Analisar
-                  </Link>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
+        <WorkspaceShell cols="triage">
+          <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
+            <ul className="min-h-0 flex-1 overflow-y-auto">
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "w-full border-l-2 px-3 py-2.5 text-left transition-colors duration-[var(--motion-fast)]",
+                      currentId === item.id
+                        ? "border-l-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
+                        : "border-l-transparent hover:bg-muted/50",
+                    )}
+                    onClick={() => {
+                      setSelected(item.id);
+                      setMobilePane("analysis");
+                      router.replace(`/triagem?id=${item.id}`, { scroll: false });
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <PeerAvatar
+                        name={item.conversation.contact?.nome || item.conversation.peerDisplayName || "Contato"}
+                        avatarUrl={item.conversation.peerAvatarUrl}
+                        className="mt-0.5 size-7"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{item.conversation.contact?.nome || "Contato"}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          {item.conversation.messages[0]?.body || "—"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {item.conversation.condominium?.nome || "—"} · {formatWhen(item.updatedAt)}
+                        </p>
+                        {(item.conversation.peerPhoneE164 || item.conversation.contact?.phoneE164) && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {conversationPhoneLabel(
+                              item.conversation.contact?.phoneE164,
+                              item.conversation.peerPhoneE164,
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </WorkspacePane>
+          <WorkspacePane className={cn(mobilePane !== "analysis" && "hidden lg:flex")}>
+            <div className="flex shrink-0 items-center border-b border-border px-3 py-2 lg:hidden">
+              <button type="button" className="text-sm text-[var(--brand)]" onClick={() => setMobilePane("list")}>
+                ← Solicitações
+              </button>
+            </div>
+            {currentId ? (
+              <TriageAnalysisPanel
+                key={currentId}
+                id={currentId}
+                showThread
+                onDone={() => {
+                  setSelected(null);
+                  setMobilePane("list");
+                }}
+              />
+            ) : (
+              <EmptyState title="Selecione uma solicitação" />
+            )}
+          </WorkspacePane>
+        </WorkspaceShell>
       )}
     </div>
   );

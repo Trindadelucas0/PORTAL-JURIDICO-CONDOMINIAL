@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AppError } from "@/lib/api/errors";
+import { AppError, unavailable } from "@/lib/api/errors";
 import { assertAdmin } from "@/lib/auth/guards";
 import { hashPassword, verifyPassword } from "@/lib/auth/session";
 import { whatsappService } from "@/lib/services/whatsapp-service";
@@ -10,17 +10,22 @@ import { clientIp, rateLimit } from "@/lib/api/rate-limit";
 import {
   brazilWhatsAppNumberVariants,
   describeEvolutionError,
+  EVOLUTION_UNREACHABLE_MESSAGE,
   evolutionLogoutAlreadyOff,
   evolutionSendDestinations,
   evolutionSendLooksLikeLegacySchema,
   isBaileysSessionOpen,
+  isEvolutionUnreachable,
   pickRicherEvolutionError,
   whatsAppNumberFromE164,
 } from "@/lib/channels/evolution-send";
-import { e164LookupValues, sendableWhatsAppE164 } from "@/lib/phone/identity";
-import { conversationPhoneLabel, formatWhatsAppPeer, WHATSAPP_HIDDEN_NUMBER_LABEL } from "@/lib/phone/display";
+import { e164LookupValues, sendableWhatsAppE164, canPullWhatsAppPhone } from "@/lib/phone/identity";
+import { conversationIdentityLabel, conversationPhoneLabel, formatWhatsAppPeer, WHATSAPP_HIDDEN_NUMBER_LABEL } from "@/lib/phone/display";
+import { formatPhoneInput, toE164FromMasked, e164ToMaskedInput } from "@/lib/phone/mask";
+import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 import { isInOperationalFlow } from "@/lib/services/operational-flow";
 import { contactNameMatchesPushName, lidJidsMatchingPlaceholder, pickUniqueLidPlaceholder } from "@/lib/channels/evolution-lid-map";
+import { resolvePhoneFromLidChats } from "@/lib/channels/evolution-peer-profile";
 import { phoneFromWhatsAppLid } from "@/lib/channels/evolution-webhook";
 
 describe("login primitives", () => {
@@ -169,6 +174,44 @@ describe("evolution send errors", () => {
     expect(formatWhatsAppPeer("+5511988880000")).toBe("+55 (11) 98888-0000");
     expect(formatWhatsAppPeer("+553898034252")).toBe("+55 (38) 99803-4252");
     expect(conversationPhoneLabel("+5511999990000", "+999111")).toBe("+55 (11) 99999-0000");
+    expect(conversationIdentityLabel({ peerPhoneE164: "+999885504524400" })).toBe("Contato WhatsApp");
+    expect(conversationIdentityLabel({ peerDisplayName: "Ezequiel", peerPhoneE164: "+999885504524400" })).toBe("Ezequiel");
+    expect(conversationIdentityLabel({ contact: { nome: "Ana", phoneE164: "+5511999990000" }, peerDisplayName: "X" })).toBe("Ana");
+  });
+
+  it("masks Brazilian phone input and converts to E.164", () => {
+    expect(formatPhoneInput("38998034252")).toBe("+55 (38) 99803-4252");
+    expect(toE164FromMasked("+55 (38) 99803-4252")).toBe("+5538998034252");
+    expect(toE164FromMasked("11988880000")).toBe("+5511988880000");
+    expect(e164ToMaskedInput("+5511988880000")).toBe("+55 (11) 98888-0000");
+    expect(formatPhoneInput("+999885504524400")).toBe("");
+    expect(toE164FromMasked("+999885504524400")).toBeNull();
+    expect(formatPhoneInput("abc")).toBe("");
+  });
+
+  it("resolves PN from Evolution findChats LID row", () => {
+    const lid = phoneFromWhatsAppLid("142112045666497@lid");
+    expect(
+      resolvePhoneFromLidChats(
+        [
+          {
+            remoteJid: "142112045666497@lid",
+            remoteJidAlt: "5511988880000@s.whatsapp.net",
+            pushName: "Joao",
+          },
+        ],
+        lid!,
+      ),
+    ).toBe("+5511988880000");
+    expect(
+      resolvePhoneFromLidChats([{ remoteJid: "142112045666497@lid", pushName: "Joao" }], lid!),
+    ).toBeNull();
+  });
+
+  it("builds authenticated avatar file URL", () => {
+    expect(peerAvatarPublicUrl("avatars/abc.jpg")).toBe("/api/files/avatars/abc.jpg");
+    expect(peerAvatarPublicUrl("../secret")).toBeNull();
+    expect(peerAvatarPublicUrl(null)).toBeNull();
   });
 
   it("maps a unique Evolution LID chat by contact first name", () => {
@@ -204,6 +247,14 @@ describe("evolution send errors", () => {
     expect(sendableWhatsAppE164({ peerPhoneE164: "+999111" })).toBeNull();
   });
 
+  it("shows Puxar do WhatsApp only when session is open and phone unlocked", () => {
+    expect(canPullWhatsAppPhone("open", false)).toBe(true);
+    expect(canPullWhatsAppPhone("open", true)).toBe(false);
+    expect(canPullWhatsAppPhone("close", false)).toBe(false);
+    expect(canPullWhatsAppPhone("connecting", false)).toBe(false);
+    expect(canPullWhatsAppPhone(undefined, false)).toBe(false);
+  });
+
   it("sends WhatsApp to LID jid when the peer has no real phone", () => {
     expect(evolutionSendDestinations("142112045666497@lid")).toEqual(["142112045666497@lid"]);
     expect(evolutionSendDestinations("+999112045666497")).toEqual(["112045666497@lid"]);
@@ -224,5 +275,77 @@ describe("evolution send errors", () => {
     expect(evolutionLogoutAlreadyOff(400)).toBe(true);
     expect(evolutionLogoutAlreadyOff(404)).toBe(true);
     expect(evolutionLogoutAlreadyOff(500)).toBe(false);
+  });
+
+  it("maps fetch failed to Evolution unreachable without leaking internals", () => {
+    const failed = new Error("fetch failed");
+    (failed as Error & { cause: { code: string } }).cause = { code: "ECONNREFUSED" };
+    expect(isEvolutionUnreachable(failed)).toBe(true);
+    expect(isEvolutionUnreachable(new Error("QR ainda não gerado"))).toBe(false);
+    const err = unavailable(EVOLUTION_UNREACHABLE_MESSAGE);
+    expect(err.status).toBe(503);
+    expect(err.code).toBe("UNAVAILABLE");
+    expect(err.message).not.toMatch(/ECONNREFUSED|localhost:8080|apikey/i);
+  });
+});
+
+describe("live poll", () => {
+  it("refetches every 3s only while the tab is focused", async () => {
+    const { LIVE_POLL_MS, livePollQuery } = await import("@/lib/client/live-poll");
+    expect(LIVE_POLL_MS).toBe(3000);
+    expect(livePollQuery.refetchInterval).toBe(3000);
+    expect(livePollQuery.refetchIntervalInBackground).toBe(false);
+  });
+});
+
+describe("evolution QR cache", () => {
+  it("expires after 20s so a dead WhatsApp code is never reused", async () => {
+    const {
+      rememberEvolutionQr,
+      readEvolutionQr,
+      clearEvolutionQr,
+      EVOLUTION_QR_TTL_MS,
+    } = await import("@/lib/channels/evolution-qr-cache");
+    clearEvolutionQr();
+    expect(EVOLUTION_QR_TTL_MS).toBe(20_000);
+    const png = `data:image/png;base64,${"A".repeat(80)}`;
+    rememberEvolutionQr({ qr: png });
+    expect(readEvolutionQr()?.qr).toBe(png);
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + EVOLUTION_QR_TTL_MS + 1;
+    try {
+      expect(readEvolutionQr()).toBeNull();
+    } finally {
+      Date.now = realNow;
+      clearEvolutionQr();
+    }
+  });
+
+  it("does not replace a PNG with a text-only code from the webhook", async () => {
+    const { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } = await import(
+      "@/lib/channels/evolution-qr-cache"
+    );
+    clearEvolutionQr();
+    const png = `data:image/png;base64,${"B".repeat(80)}`;
+    rememberEvolutionQr({ qr: png, pairingCode: "111-111" });
+    rememberEvolutionQr({ qr: "2@longtextcodewithoutimageprefix" + "x".repeat(40), pairingCode: "222-222" });
+    const hit = readEvolutionQr();
+    expect(hit?.qr).toBe(png);
+    expect(hit?.pairingCode).toBe("222-222");
+    clearEvolutionQr();
+  });
+
+  it("replaces PNG when a newer image arrives", async () => {
+    const { rememberEvolutionQr, readEvolutionQr, clearEvolutionQr } = await import(
+      "@/lib/channels/evolution-qr-cache"
+    );
+    clearEvolutionQr();
+    const first = `data:image/png;base64,${"C".repeat(80)}`;
+    const second = `data:image/png;base64,${"D".repeat(80)}`;
+    rememberEvolutionQr({ qr: first });
+    rememberEvolutionQr({ qr: second });
+    expect(readEvolutionQr()?.qr).toBe(second);
+    clearEvolutionQr();
   });
 });

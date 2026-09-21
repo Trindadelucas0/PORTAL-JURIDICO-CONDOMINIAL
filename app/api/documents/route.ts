@@ -4,6 +4,7 @@ import { parsePage } from "@/lib/api/pagination";
 import { requireSession } from "@/lib/auth/guards";
 import { documentService } from "@/lib/services/document-service";
 import { unprocessable } from "@/lib/api/errors";
+import type { DocumentKindValue } from "@/lib/documents/kinds";
 
 export async function GET(request: Request) {
   try {
@@ -32,9 +33,17 @@ export async function POST(request: Request) {
     if (!(uploaded instanceof File) || uploaded.size === 0) {
       throw unprocessable("Arquivo obrigatório");
     }
+    const kind = String(form.get("kind") || "") as DocumentKindValue;
+    const title = String(form.get("title") || "");
+    const purpose = String(form.get("purpose") || "");
+    const notesRaw = String(form.get("notes") || "");
     const condominiumId = String(form.get("condominiumId") || "") || undefined;
     const ticketId = String(form.get("ticketId") || "") || undefined;
     const doc = await documentService.upload(user, {
+      kind,
+      title,
+      purpose,
+      notes: notesRaw || undefined,
       condominiumId,
       ticketId,
       file: {

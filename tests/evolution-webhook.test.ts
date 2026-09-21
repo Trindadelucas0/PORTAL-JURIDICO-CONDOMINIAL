@@ -106,6 +106,21 @@ describe("interpretEvolutionWebhook", () => {
     });
   });
 
+  it("keeps WhatsApp pushName when present", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: { id: "PN", remoteJid: "43035656245495@lid", fromMe: false },
+        pushName: "Ezequiel",
+        message: { conversation: "Oi" },
+      },
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items[0]?.pushName).toBe("Ezequiel");
+    }
+  });
+
   it("does not use webhook sender (número do escritório) as the inbound phone", () => {
     const result = interpretEvolutionWebhook({
       event: "messages.upsert",

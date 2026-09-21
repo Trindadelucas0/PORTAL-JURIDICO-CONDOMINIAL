@@ -5,7 +5,7 @@ export function Toolbar({ children, className }: { children: ReactNode; classNam
   return (
     <div
       className={cn(
-        "mb-5 flex flex-wrap items-center gap-2 rounded-[12px] border border-border bg-card p-3 shadow-[var(--shadow-sm)]",
+        "mb-3 flex flex-wrap items-center gap-2 border-b border-border/80 bg-transparent px-0 py-2",
         className,
       )}
     >

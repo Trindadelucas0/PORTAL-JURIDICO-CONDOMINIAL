@@ -27,6 +27,11 @@ export type QrResult = {
   status: string;
 };
 
+export type GetQrOptions = {
+  /** One Evolution connect round-trip; skip cache and the 25s wait loop. */
+  fresh?: boolean;
+};
+
 export type ProviderStatusResult = {
   status: string;
   detail: string;
@@ -38,7 +43,7 @@ export interface WhatsAppProvider {
   isConfigured(): boolean;
   send(input: ProviderSendInput): Promise<ProviderSendResult>;
   sendMedia(input: ProviderSendMediaInput): Promise<ProviderSendResult>;
-  getQr(): Promise<QrResult>;
+  getQr(opts?: GetQrOptions): Promise<QrResult>;
   getStatus(): Promise<ProviderStatusResult>;
   /** Garante instância Baileys na Evolution (no-op nos demais providers). */
   ensureInstance(): Promise<void>;

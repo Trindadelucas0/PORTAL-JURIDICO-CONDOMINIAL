@@ -1,28 +1,30 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { FilterBar, FilterChip } from "@/components/ui/filter-bar";
-import { PageHeader } from "@/components/ui/page-header";
-import { Toolbar } from "@/components/ui/toolbar";
-import { Accordion } from "@/components/ui/accordion";
 import { ThreadPanel, type ThreadConversation } from "@/components/atendimento/thread-panel";
+import { WorkspacePane, WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { api } from "@/lib/client/api";
+import { livePollQuery } from "@/lib/client/live-poll";
 import { cn } from "@/lib/utils";
-import { conversationPhoneLabel } from "@/lib/phone/display";
-import { STATUS_LABEL, initials } from "@/lib/ui-labels";
-import { Frame, FramePanel } from "@/components/reui/frame";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { conversationIdentityLabel, conversationPhoneLabel } from "@/lib/phone/display";
+import { ExpandableRow } from "@/components/ui/expandable-row";
+import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
+import { formatAge, STATUS_LABEL } from "@/lib/ui-labels";
+import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import Link from "next/link";
 
 type Conversation = ThreadConversation & {
   unread?: boolean;
   updatedAt: string;
+  peerAvatarUrl?: string | null;
+  peerDisplayName?: string | null;
   triageItem: { id: string; status: string } | null;
   tickets?: { id: string; protocol: string; status: string }[];
   messages: { body: string }[];
@@ -30,13 +32,25 @@ type Conversation = ThreadConversation & {
 
 type Filter = "all" | "unread" | "triage";
 
+function useNotebookCollapseDefault() {
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1439px)");
+    const apply = () => setOpen(!mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return [open, setOpen] as const;
+}
+
 function InboxInner() {
   const params = useSearchParams();
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState(params.get("q") || "");
   const [filter, setFilter] = useState<Filter>("all");
   const [mobilePane, setMobilePane] = useState<"list" | "thread" | "context">("list");
-  const [contextOpen, setContextOpen] = useState(true);
+  const [contextOpen, setContextOpen] = useNotebookCollapseDefault();
   const list = useQuery({
     queryKey: ["conversations", q, filter],
     queryFn: () => {
@@ -46,20 +60,25 @@ function InboxInner() {
       if (filter === "triage") p.set("untreated", "1");
       return api<Conversation[]>(`/api/conversations?${p.toString()}`);
     },
+    ...livePollQuery,
   });
   const items = list.data?.data ?? [];
   const current = items.find((c) => c.id === selected) || items[0];
   const currentId = selected || current?.id;
 
   if (list.isError) {
-    return <ErrorBanner message="Não foi possível carregar conversas." onRetry={() => list.refetch()} />;
+    return (
+      <div className="p-4">
+        <ErrorBanner message="Não foi possível carregar conversas." onRetry={() => list.refetch()} />
+      </div>
+    );
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
-      <PageHeader title="Atendimento" description="Conversas do fluxo (contato com condomínio)" />
-      <Toolbar>
-        <FilterBar>
+    <div className="flex h-[calc(100dvh-3rem)] flex-col lg:h-[calc(100dvh-3rem)]">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+        <h1 className="text-sm font-semibold">Atendimento</h1>
+        <FilterBar className="ml-auto sm:ml-0">
           <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
             Todas
           </FilterChip>
@@ -70,163 +89,202 @@ function InboxInner() {
             Triagem
           </FilterChip>
         </FilterBar>
-      </Toolbar>
-      <div
-        className={cn(
-          "mt-1 grid min-h-0 flex-1 gap-4 overflow-hidden",
-          contextOpen ? "xl:grid-cols-[260px_minmax(0,1fr)_260px]" : "xl:grid-cols-[260px_minmax(0,1fr)]",
-          "lg:grid-cols-[260px_minmax(0,1fr)]",
-        )}
-      >
-        <Frame className={cn(mobilePane !== "list" && "hidden lg:block")}>
-        <FramePanel>
-        <aside className="p-3">
-          <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar conversas" />
-          {list.isLoading ? (
-            <div className="mt-3 space-y-2">
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-            </div>
-          ) : items.length === 0 ? (
-            <EmptyState title="Nenhuma conversa" hint="Cadastre o contato no condomínio. Números avulsos ficam em Não vinculados." />
-          ) : (
-            <ul className="mt-3 space-y-1">
-              {items.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex w-full items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-sm",
-                      currentId === c.id ? "bg-muted" : "hover:bg-muted/70",
-                    )}
-                    onClick={() => {
-                      setSelected(c.id);
-                      setMobilePane("thread");
-                    }}
-                  >
-                    <Avatar className="mt-0.5 size-8">
-                      <AvatarFallback className="bg-primary/10 text-[10px] text-primary">
-                        {initials(c.contact?.nome || "C")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 font-medium">
-                        {c.unread ? <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Não lida" /> : null}
-                        <span className="truncate">{c.contact?.nome || "Contato"}</span>
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{c.messages[0]?.body || "—"}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-        </FramePanel>
-        </Frame>
-        <Frame className={cn(mobilePane !== "thread" && "hidden lg:block min-w-0")}>
-        <FramePanel className="min-h-0">
-        <ThreadPanel
-          conversation={current}
-          hidden={mobilePane !== "thread"}
-          onBack={() => setMobilePane("list")}
-          onContext={() => setMobilePane("context")}
-          title={current?.contact?.nome || "Contato"}
-          subtitle={
-            current
-              ? `${current.condominium?.nome || "sem condomínio"} · ${current.connection.label}`
-              : undefined
-          }
-          allowPublicSend={Boolean(current && current.connection.status === "open")}
-          publicBlockedHint={
-            current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
-          }
-        />
-        </FramePanel>
-        </Frame>
-        <Frame className={cn(mobilePane !== "context" && "hidden xl:block")}>
-        <FramePanel>
-        <ContextPane
-          conversation={current}
-          collapsed={!contextOpen}
-          onToggle={() => setContextOpen((v) => !v)}
-          hidden={mobilePane !== "context"}
-          onBack={() => setMobilePane("thread")}
-        />
-        </FramePanel>
-        </Frame>
       </div>
+      <WorkspaceShell cols="inbox" contextOpen={contextOpen}>
+        <WorkspacePane
+          className={cn(mobilePane !== "list" && "hidden lg:flex")}
+          hidden={false}
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <Input
+              placeholder="Buscar…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Buscar conversas"
+              className="h-8"
+            />
+            {list.isLoading ? (
+              <div className="mt-2 space-y-1">
+                <Skeleton className="h-12" />
+                <Skeleton className="h-12" />
+              </div>
+            ) : items.length === 0 ? (
+              <EmptyState title="Tudo limpo" hint="Nenhuma conversa no fluxo." />
+            ) : (
+              <ul className="mt-1">
+                {items.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex w-full items-start gap-2 border-l-2 px-2 py-2 text-left text-sm transition-colors duration-[var(--motion-fast)]",
+                        currentId === c.id
+                          ? "border-l-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
+                          : "border-l-transparent hover:bg-muted/50",
+                      )}
+                      onClick={() => {
+                        setSelected(c.id);
+                        setMobilePane("thread");
+                      }}
+                    >
+                      <PeerAvatar
+                        className="mt-0.5 size-7"
+                        name={c.contact?.nome || c.peerDisplayName || "Contato"}
+                        avatarUrl={c.peerAvatarUrl}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          {c.unread ? (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Não lida" />
+                          ) : null}
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {c.contact?.nome || c.peerDisplayName || conversationIdentityLabel(c)}
+                          </span>
+                          <span className="shrink-0 tabular text-[11px] text-muted-foreground">
+                            {formatAge(c.updatedAt) ?? ""}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {c.messages[0]?.body || "—"}
+                        </span>
+                        {c.triageItem?.status === "aberto" ? (
+                          <span className="mt-0.5 inline-block text-[10px] font-medium tracking-wide text-[var(--warn)] uppercase">
+                            Triagem
+                          </span>
+                        ) : c.tickets?.[0] ? (
+                          <span className="mt-0.5 inline-block text-[10px] font-medium tabular text-muted-foreground">
+                            #{c.tickets[0].protocol}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </WorkspacePane>
+        <WorkspacePane className={cn("min-w-0", mobilePane !== "thread" && "hidden lg:flex")}>
+          <ThreadPanel
+            conversation={current}
+            hidden={mobilePane !== "thread"}
+            onBack={() => setMobilePane("list")}
+            onContext={() => {
+              setContextOpen(true);
+              setMobilePane("context");
+            }}
+            title={
+              current
+                ? current.contact?.nome || current.peerDisplayName || conversationIdentityLabel(current)
+                : "Contato"
+            }
+            subtitle={
+              current
+                ? `${conversationPhoneLabel(current.contact?.phoneE164, current.peerPhoneE164)} · ${current.condominium?.nome || "sem condomínio"} · ${current.connection.label}`
+                : undefined
+            }
+            allowPublicSend={Boolean(current && current.connection.status === "open")}
+            publicBlockedHint={
+              current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
+            }
+          />
+        </WorkspacePane>
+        <WorkspacePane
+          className={cn(
+            !contextOpen && "xl:hidden",
+            mobilePane !== "context" && "hidden xl:flex",
+          )}
+        >
+          <ContextPane
+            conversation={current}
+            onToggle={() => setContextOpen((v) => !v)}
+            hidden={mobilePane !== "context"}
+            onBack={() => setMobilePane("thread")}
+          />
+        </WorkspacePane>
+      </WorkspaceShell>
     </div>
   );
 }
 
 function ContextPane({
   conversation,
-  collapsed,
   onToggle,
   hidden,
   onBack,
 }: {
   conversation?: Conversation;
-  collapsed: boolean;
   onToggle: () => void;
   hidden: boolean;
   onBack: () => void;
 }) {
   return (
-        <aside className={cn("p-4 text-sm", collapsed ? "xl:hidden" : "xl:block", hidden ? "hidden" : "block")}>
-      <div className="mb-3 flex items-center justify-between">
-        <button type="button" className="text-[var(--brand)] xl:hidden" onClick={onBack}>
-          ← Conversa
-        </button>
-        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Contexto</h2>
-        <button type="button" className="hidden text-[var(--muted)] xl:inline" onClick={onToggle} aria-label="Recolher contexto">
-          −
-        </button>
-      </div>
+    <ContextSummary hidden={hidden} onBack={onBack} onCollapse={onToggle}>
       {!conversation ? (
-        <p className="text-[var(--muted)]">Selecione uma conversa.</p>
+        <p className="text-muted-foreground">Selecione uma conversa.</p>
       ) : (
         <div className="space-y-4">
-          <div>
-            <p className="text-[var(--muted)]">Contato</p>
-            <p>{conversation.contact?.nome}</p>
-            <p className="text-[var(--muted)]">
-              {conversationPhoneLabel(conversation.contact?.phoneE164, conversation.peerPhoneE164)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[var(--muted)]">Condomínio</p>
-            <p>{conversation.condominium?.nome || "—"}</p>
-          </div>
-          <Accordion title="Mais informações" defaultOpen>
-            <div className="space-y-3">
-              <div>
-                <p className="text-[var(--muted)]">Triagem</p>
-                <p>{conversation.triageItem ? STATUS_LABEL[conversation.triageItem.status] || conversation.triageItem.status : "—"}</p>
-                {conversation.triageItem?.status === "aberto" ? (
-                  <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
-                    Analisar
-                  </Link>
-                ) : null}
-              </div>
-              <div>
-                <p className="text-[var(--muted)]">Chamados</p>
-                {conversation.tickets?.length ? (
-                  conversation.tickets.map((t) => (
-                    <Link key={t.id} className="block text-[var(--brand)]" href={`/chamados/${t.id}`}>
-                      #{t.protocol}
-                    </Link>
-                  ))
-                ) : (
-                  <p>Nenhum</p>
-                )}
-              </div>
+          <div className="flex items-center gap-3">
+            <PeerAvatar
+              name={conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
+              avatarUrl={conversation.peerAvatarUrl}
+              size="lg"
+            />
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Contato</p>
+              <p className="font-medium">
+                {conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {conversationPhoneLabel(conversation.contact?.phoneE164, conversation.peerPhoneE164)}
+              </p>
             </div>
-          </Accordion>
+          </div>
+          <ContextBlock label="Condomínio">
+            {conversation.condominium?.nome ? (
+              <Link href="/condominios" className="text-[var(--brand)]">
+                {conversation.condominium.nome}
+              </Link>
+            ) : (
+              <p>—</p>
+            )}
+          </ContextBlock>
+          <ContextBlock label="Chamado">
+            {conversation.tickets?.length ? (
+              conversation.tickets.map((t) => (
+                <Link key={t.id} className="block text-[var(--brand)]" href={`/chamados/${t.id}`}>
+                  #{t.protocol} · {STATUS_LABEL[t.status] || t.status}
+                </Link>
+              ))
+            ) : (
+              <p>Nenhum chamado ainda</p>
+            )}
+          </ContextBlock>
+          <ContextBlock label="Triagem">
+            {conversation.triageItem ? (
+              <p>
+                {STATUS_LABEL[conversation.triageItem.status] || conversation.triageItem.status}
+                {conversation.triageItem.status === "aberto" ? (
+                  <>
+                    {" · "}
+                    <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
+                      Analisar
+                    </Link>
+                  </>
+                ) : null}
+              </p>
+            ) : (
+              <p>—</p>
+            )}
+          </ContextBlock>
+          <ExpandableRow title="Mais informações" summary="Histórico e documentos no chamado">
+            <p className="text-xs text-muted-foreground">
+              Documentos e prazos ficam na ficha do chamado. Origem: {conversation.connection.label}.
+            </p>
+          </ExpandableRow>
         </div>
       )}
-    </aside>
+    </ContextSummary>
   );
 }
 

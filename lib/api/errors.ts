@@ -29,6 +29,10 @@ export function unprocessable(message: string, details?: unknown) {
   return new AppError(422, "VALIDATION_ERROR", message, details);
 }
 
+export function unavailable(message: string, details?: unknown) {
+  return new AppError(503, "UNAVAILABLE", message, details);
+}
+
 export function tooMany(message = "Muitas tentativas. Tente novamente em instantes.") {
   return new AppError(429, "RATE_LIMITED", message);
 }

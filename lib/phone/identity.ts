@@ -44,3 +44,11 @@ export function sendableWhatsAppE164(input: {
   }
   return null;
 }
+
+/** Drawer "Puxar do WhatsApp": só com sessão Baileys open e telefone ainda não travado. */
+export function canPullWhatsAppPhone(
+  connectionStatus: string | null | undefined,
+  phoneLocked: boolean,
+): boolean {
+  return connectionStatus === "open" && !phoneLocked;
+}

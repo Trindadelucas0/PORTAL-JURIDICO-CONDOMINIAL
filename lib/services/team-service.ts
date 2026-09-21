@@ -45,11 +45,22 @@ function generatePassword() {
 export function createTeamService(db: PrismaClient = defaultPrisma) {
   return {
     async list() {
-      return db.user.findMany({
+      const rows = await db.user.findMany({
         where: { deletedAt: null },
         orderBy: { email: "asc" },
-        select: teamSelect,
+        select: {
+          ...teamSelect,
+          _count: {
+            select: {
+              assignedTickets: { where: { status: { not: "resolvido" } } },
+            },
+          },
+        },
       });
+      return rows.map(({ _count, ...user }) => ({
+        ...user,
+        openTickets: _count.assignedTickets,
+      }));
     },
 
     async create(actorId: string, input: unknown) {

@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GripVertical, Inbox } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { TicketCard, type KanbanTicket } from "@/components/chamados/ticket-card";
-import { STATUS_LABEL, STATUS_TONE, TICKET_STATUSES } from "@/lib/ui-labels";
+import { STATUS_LABEL, TICKET_STATUSES } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
-import { IconTile } from "@/components/reui/icon-tile";
 import {
   Kanban,
   KanbanBoard as ReuiKanbanBoard,
@@ -30,14 +29,17 @@ export function KanbanBoard({
   tickets,
   onMove,
   movingId,
+  visibleStatus,
+  dragEnabled = true,
 }: {
   tickets: KanbanTicket[];
   onMove: (id: string, status: string) => void;
   movingId?: string | null;
+  visibleStatus?: string | null;
+  dragEnabled?: boolean;
 }) {
   const grouped = useMemo(() => groupTickets(tickets), [tickets]);
   const [board, setBoard] = useState(grouped);
-  const [expandedByColumn, setExpandedByColumn] = useState<Record<string, string | null>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +51,7 @@ export function KanbanBoard({
 
   return (
     <Kanban
+      className="flex h-full min-h-0 flex-col"
       value={board}
       onValueChange={setBoard}
       getItemValue={(item) => item.id}
@@ -66,55 +69,50 @@ export function KanbanBoard({
         onMove(id, meta.overContainer);
       }}
     >
-      <ReuiKanbanBoard className="mt-1 !grid-cols-1 gap-4 overflow-x-auto md:!grid-cols-4">
+      <ReuiKanbanBoard className="h-full min-h-0 !grid-cols-1 gap-2 overflow-x-auto md:!grid-cols-4 md:min-w-[56rem]">
         {TICKET_STATUSES.map((status) => {
           const columnTickets = board[status] ?? [];
-          const tone = STATUS_TONE[status] ?? STATUS_TONE.arquivado;
+          const hideOnMobile = Boolean(visibleStatus) && visibleStatus !== status;
           return (
-            <KanbanColumn key={status} value={status} disabled>
-              <div className="flex h-full min-h-[16rem] flex-col overflow-hidden rounded-[12px] border border-border bg-[var(--surface-2)] shadow-[var(--shadow-sm)]">
-                <div className={cn("h-[3px] w-full", tone.bar)} />
-                <header className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <h2 className="text-sm font-semibold">{STATUS_LABEL[status]}</h2>
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium tabular", tone.pill)}>
-                    {columnTickets.length}
-                  </span>
+            <KanbanColumn
+              key={status}
+              value={status}
+              disabled
+              className={cn("h-full min-h-0 !opacity-100", hideOnMobile && "max-md:hidden")}
+            >
+              <div className="flex h-full min-h-0 flex-col overflow-hidden border border-border/80 bg-background">
+                <header className="flex items-center justify-between gap-2 border-b border-border/80 px-2.5 py-1.5">
+                  <h2 className="text-xs font-semibold tracking-wide text-foreground uppercase">
+                    {STATUS_LABEL[status]}
+                  </h2>
+                  <span className="tabular text-xs text-muted-foreground">{columnTickets.length}</span>
                 </header>
                 <KanbanColumnContent
                   value={status}
-                  className="flex max-h-[min(70vh,36rem)] flex-col gap-3 overflow-y-auto p-2"
+                  className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-1.5"
                 >
-                  {columnTickets.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 px-1 py-8 text-center">
-                      <IconTile variant="frame" size="sm">
-                        <Inbox />
-                      </IconTile>
-                      <p className="text-sm text-muted-foreground">Nenhum chamado</p>
-                    </div>
-                  ) : (
-                    columnTickets.map((ticket) => (
-                      <KanbanItem key={ticket.id} value={ticket.id} disabled={movingId === ticket.id}>
-                        <TicketCard
-                          ticket={ticket}
-                          expanded={expandedByColumn[status] === ticket.id}
-                          moving={movingId === ticket.id}
-                          handle={
-                            <KanbanItemHandle className="text-muted-foreground">
-                              <GripVertical className="size-4" />
+                  {columnTickets.map((ticket) => (
+                    <KanbanItem
+                      key={ticket.id}
+                      value={ticket.id}
+                      disabled={movingId === ticket.id || !dragEnabled}
+                    >
+                      <TicketCard
+                        ticket={ticket}
+                        moving={movingId === ticket.id}
+                        showHandle={dragEnabled}
+                        handle={
+                          dragEnabled ? (
+                            <KanbanItemHandle className="hidden rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground md:inline-flex">
+                              <GripVertical className="size-3.5" />
                               <span className="sr-only">Arrastar</span>
                             </KanbanItemHandle>
-                          }
-                          onToggle={() =>
-                            setExpandedByColumn((prev) => ({
-                              ...prev,
-                              [status]: prev[status] === ticket.id ? null : ticket.id,
-                            }))
-                          }
-                          onMove={(next) => onMove(ticket.id, next)}
-                        />
-                      </KanbanItem>
-                    ))
-                  )}
+                          ) : undefined
+                        }
+                        onMove={(next) => onMove(ticket.id, next)}
+                      />
+                    </KanbanItem>
+                  ))}
                 </KanbanColumnContent>
               </div>
             </KanbanColumn>
@@ -123,9 +121,9 @@ export function KanbanBoard({
       </ReuiKanbanBoard>
       <KanbanOverlay>
         {activeTicket ? (
-          <TicketCard ticket={activeTicket} expanded={false} moving onToggle={() => undefined} onMove={() => undefined} />
+          <TicketCard ticket={activeTicket} moving showHandle={false} onMove={() => undefined} />
         ) : (
-          <div className="size-full min-h-16 rounded-md bg-muted" />
+          <div className={cn("size-full min-h-12 rounded-md bg-muted")} />
         )}
       </KanbanOverlay>
     </Kanban>

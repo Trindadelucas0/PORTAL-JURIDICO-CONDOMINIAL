@@ -158,7 +158,7 @@ export const whatsappService = {
     };
   },
 
-  async qr(id: string) {
+  async qr(id: string, opts?: { fresh?: boolean }) {
     const row = await prisma.channelConnection.findFirst({ where: { id } });
     if (!row) throw notFound("Conexão não encontrada");
     if (row.type !== "evolution_baileys") {
@@ -168,8 +168,11 @@ export const whatsappService = {
     if (!provider.isConfigured()) {
       throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
     }
-    await provider.ensureInstance();
-    const qr = await provider.getQr();
+    // Fresh poll skips ensure (instance already exists while pairing); first connect still ensures.
+    if (!opts?.fresh) {
+      await provider.ensureInstance();
+    }
+    const qr = await provider.getQr(opts);
     if (qr.qr || qr.pairingCode) {
       await syncConnectionStatus(row.id, "connecting");
     }
@@ -233,6 +236,7 @@ export const whatsappService = {
           fromPhone: item.fromPhone,
           waLid: item.waLid,
           body: item.body,
+          peerDisplayName: item.pushName,
           connectionType: "evolution_baileys",
         }),
       );

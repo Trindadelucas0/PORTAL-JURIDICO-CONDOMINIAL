@@ -2,13 +2,23 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { GripVertical } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useRouter } from "next/navigation";
+import { GripVertical, MoreHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PRIORITY_TONE, STATUS_LABEL, TICKET_STATUSES, formatAge, formatDue, isOverdue } from "@/lib/ui-labels";
 import { PriorityIndicator } from "@/components/ui/status-badge";
-import { CATEGORY_LABEL, PRIORITY_TONE, STATUS_LABEL, TICKET_STATUSES, initials } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
+
+export type NextDeadline = {
+  dueAt: string;
+  title: string;
+  doneAt: string | null;
+};
 
 export type KanbanTicket = {
   id: string;
@@ -17,102 +27,99 @@ export type KanbanTicket = {
   status: string;
   priority: string;
   category: string;
-  assignedTo: { email: string; nome?: string } | null;
-  condominium: { nome: string };
+  updatedAt?: string;
+  createdAt?: string;
+  assignedTo: { id?: string; email: string; nome?: string } | null;
+  condominium: { id?: string; nome: string };
   contact: { nome: string };
+  nextDeadline?: NextDeadline | null;
+  _count?: { documents?: number; messages?: number };
 };
 
 export function TicketCard({
   ticket,
-  expanded,
-  onToggle,
   onMove,
   moving,
   handle,
+  showHandle = true,
 }: {
   ticket: KanbanTicket;
-  expanded: boolean;
-  onToggle: () => void;
   onMove: (status: string) => void;
   moving?: boolean;
   handle?: ReactNode;
+  showHandle?: boolean;
 }) {
-  const assignee = ticket.assignedTo?.nome || ticket.assignedTo?.email || "Sem responsável";
+  const router = useRouter();
+  const assignee = ticket.assignedTo?.nome || ticket.assignedTo?.email || "—";
+  const age = formatAge(ticket.updatedAt || ticket.createdAt);
   const priorityBar = PRIORITY_TONE[ticket.priority]?.bar ?? PRIORITY_TONE.media.bar;
 
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-[12px] border border-border bg-card p-3 pl-4 text-left shadow-[var(--shadow-sm)] transition-shadow hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)]",
+        "group relative overflow-hidden rounded-md border border-border/80 bg-card text-left transition-colors duration-[var(--motion-fast)] hover:bg-muted/40",
         moving && "opacity-60",
       )}
     >
-      <span className={cn("absolute inset-y-0 left-0 w-[3px]", priorityBar)} aria-hidden />
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-medium tabular">#{ticket.protocol}</p>
-        {handle ?? (
-          <span className="text-muted-foreground" aria-hidden title="Arrastar">
-            <GripVertical className="size-4" />
-          </span>
-        )}
-      </div>
-      <p className="mt-1 line-clamp-2 text-sm font-medium">{ticket.title}</p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-          {CATEGORY_LABEL[ticket.category] || ticket.category}
-        </span>
-        <PriorityIndicator priority={ticket.priority} />
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2">
-        <p className="min-w-0 truncate text-xs text-muted-foreground">{ticket.condominium.nome}</p>
-        <Avatar className="size-6" title={assignee}>
-          <AvatarFallback className="bg-primary text-[9px] text-primary-foreground">{initials(assignee)}</AvatarFallback>
-        </Avatar>
-      </div>
-      <button type="button" className="mt-2 text-sm text-primary" aria-expanded={expanded} onClick={onToggle}>
-        {expanded ? "Recolher" : "Detalhes"}
-      </button>
-      {expanded ? (
-        <div className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
-          <p>
-            <span className="text-muted-foreground">Categoria: </span>
-            {CATEGORY_LABEL[ticket.category] || ticket.category}
+      <span className={cn("absolute inset-y-0 left-0 w-0.5", priorityBar)} aria-hidden />
+      <div className="flex items-start gap-0.5 py-1.5 pr-1 pl-2.5">
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={() => router.push(`/chamados/${ticket.id}`)}
+        >
+          <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase tabular">
+            #{ticket.protocol}
+            {age ? <span className="ml-1.5 font-normal normal-case">{age}</span> : null}
           </p>
-          <p>
-            <span className="text-muted-foreground">Contato: </span>
-            {ticket.contact.nome}
+          <p className="mt-0.5 line-clamp-1 text-sm leading-snug font-medium text-foreground">{ticket.title}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{ticket.condominium.nome}</p>
+          <p className="mt-0.5 flex items-center gap-2">
+            <PriorityIndicator priority={ticket.priority} />
+            <span className="truncate text-[11px] text-muted-foreground">{assignee}</span>
           </p>
-          <p>
-            <span className="text-muted-foreground">Responsável: </span>
-            {assignee}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Status: </span>
-            {STATUS_LABEL[ticket.status] || ticket.status}
-          </p>
-          <label className="block">
-            <span className="text-xs text-muted-foreground">Mover para</span>
-            <Select
-              className="mt-1"
-              aria-label="Mover para"
-              value={ticket.status}
-              disabled={moving}
-              onChange={(e) => {
-                if (e.target.value !== ticket.status) onMove(e.target.value);
-              }}
+          {ticket.nextDeadline ? (
+            <p
+              className={cn(
+                "truncate text-[11px] tabular",
+                isOverdue(ticket.nextDeadline.dueAt, ticket.nextDeadline.doneAt)
+                  ? "text-[var(--danger)]"
+                  : "text-muted-foreground",
+              )}
             >
-              {TICKET_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </option>
+              Prazo {formatDue(ticket.nextDeadline.dueAt)}
+            </p>
+          ) : null}
+        </button>
+        <div className="flex shrink-0 flex-col items-center gap-0.5 opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
+          {showHandle ? (
+            handle ?? (
+              <span className="hidden text-muted-foreground md:inline" aria-hidden>
+                <GripVertical className="size-3.5" />
+              </span>
+            )
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Ações do chamado #{ticket.protocol}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {TICKET_STATUSES.filter((s) => s !== ticket.status).map((s) => (
+                <DropdownMenuItem key={s} disabled={moving} onClick={() => onMove(s)}>
+                  Mover para {STATUS_LABEL[s]}
+                </DropdownMenuItem>
               ))}
-            </Select>
-          </label>
-          <Link href={`/chamados/${ticket.id}`} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "w-full")}>
-            Abrir ficha
-          </Link>
+              <DropdownMenuItem onClick={() => router.push(`/chamados/${ticket.id}`)}>
+                Abrir ficha
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      ) : null}
+      </div>
+      <Link href={`/chamados/${ticket.id}`} className="sr-only">
+        Abrir #{ticket.protocol}
+      </Link>
     </article>
   );
 }

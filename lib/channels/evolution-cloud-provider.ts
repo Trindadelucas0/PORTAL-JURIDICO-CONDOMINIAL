@@ -28,7 +28,7 @@ export class EvolutionCloudProvider implements WhatsAppProvider {
     throw unprocessable("WhatsApp Cloud não está configurado. Não use Baileys como canal oficial.");
   }
 
-  async getQr(): Promise<QrResult> {
+  async getQr(_opts?: { fresh?: boolean }): Promise<QrResult> {
     return { qr: null, pairingCode: null, status: "not_configured" };
   }
 

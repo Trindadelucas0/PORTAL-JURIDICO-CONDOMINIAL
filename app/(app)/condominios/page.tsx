@@ -10,8 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Drawer } from "@/components/ui/drawer";
 import { PageHeader } from "@/components/ui/page-header";
-import { Frame, FramePanel } from "@/components/reui/frame";
 import { api } from "@/lib/client/api";
+import { formatWhatsAppPeer } from "@/lib/phone/display";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { PeerAvatar } from "@/components/atendimento/peer-avatar";
+import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -20,7 +23,14 @@ type Detail = {
   id: string;
   nome: string;
   cidadeUf: string | null;
-  contacts: Array<{ id: string; nome: string; phoneE164: string; cargo: string | null; email?: string | null }>;
+  contacts: Array<{
+    id: string;
+    nome: string;
+    phoneE164: string;
+    cargo: string | null;
+    email?: string | null;
+    avatarKey?: string | null;
+  }>;
 };
 
 export default function CondominiosPage() {
@@ -35,6 +45,8 @@ export default function CondominiosPage() {
   const [phone, setPhone] = useState("");
   const [cargo, setCargo] = useState("");
   const [email, setEmail] = useState("");
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ user: { role: string } }>("/api/auth/me") });
+  const admin = me.data?.data.user.role === "admin";
   const condos = useQuery({ queryKey: ["condominiums"], queryFn: () => api<Condo[]>("/api/condominiums") });
   const detail = useQuery({
     queryKey: ["condominium", selected],
@@ -87,35 +99,37 @@ export default function CondominiosPage() {
       <PageHeader
         title="Condomínios"
         action={
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            Novo condomínio
-          </Button>
+          admin ? (
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              Novo condomínio
+            </Button>
+          ) : undefined
         }
       />
       {condos.isError ? <ErrorBanner message="Falha ao carregar condomínios." onRetry={() => condos.refetch()} /> : null}
-      <Frame>
-        <FramePanel>
-          <div className="grid min-h-[60vh] overflow-hidden lg:grid-cols-[18rem_minmax(0,1fr)]">
-            <aside className="border-b border-border bg-[var(--surface-2)] p-4 lg:border-b-0 lg:border-r">
-              <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar condomínio" />
+      <div className="grid min-h-[60vh] overflow-hidden border-t border-border lg:grid-cols-[18rem_minmax(0,1fr)]">
+            <aside className="border-b border-border p-3 lg:border-b-0 lg:border-r">
+              <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar condomínio" className="h-8" />
               {condos.isLoading ? (
                 <Skeleton className="mt-3 h-24" />
               ) : items.length === 0 ? (
-                <EmptyState title="Nenhum condomínio" />
+                <EmptyState title="Tudo limpo" />
               ) : (
-                <ul className="mt-3 space-y-1">
+                <ul className="mt-2">
                   {items.map((c) => (
                     <li key={c.id}>
                       <button
                         type="button"
                         className={cn(
-                          "w-full rounded-[10px] px-3 py-2.5 text-left text-sm",
-                          selected === c.id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-card/80",
+                          "w-full border-l-2 px-2.5 py-2 text-left text-sm transition-colors duration-[var(--motion-fast)]",
+                          selected === c.id
+                            ? "border-l-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
+                            : "border-l-transparent hover:bg-muted/50",
                         )}
                         onClick={() => setSelected(c.id)}
                       >
                         <span className="font-medium">{c.nome}</span>
-                        <span className={cn("mt-0.5 block text-xs", selected === c.id ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
                           {c._count?.contacts ?? 0} contatos · {c._count?.documents ?? 0} docs
                         </span>
                       </button>
@@ -124,48 +138,51 @@ export default function CondominiosPage() {
                 </ul>
               )}
             </aside>
-            <section className="p-6">
+            <section className="p-4">
               {!selected ? (
                 <p className="text-sm text-muted-foreground">Selecione um condomínio</p>
               ) : detail.isLoading || !current ? (
                 <Skeleton className="h-32" />
               ) : (
                 <div>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
                     <div>
-                      <h2 className="text-xl font-semibold">{current.nome}</h2>
+                      <h2 className="text-base font-semibold">{current.nome}</h2>
                       <p className="text-sm text-muted-foreground">{current.cidadeUf || "—"}</p>
                     </div>
                     <Link href={`/condominios/${current.id}`} className="text-sm text-primary">
                       Editar cadastro
                     </Link>
                   </div>
-                  <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Contatos</h3>
+                  <h3 className="mt-4 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Contatos</h3>
                   {current.contacts.length === 0 ? (
                     <p className="mt-2 text-sm text-muted-foreground">Nenhum contato.</p>
                   ) : (
-                    <ul className="mt-3 space-y-2">
+                    <ul className="mt-2 divide-y divide-border">
                       {current.contacts.map((ct) => (
-                        <li key={ct.id} className="flex justify-between gap-2 rounded-[10px] border border-border bg-[var(--surface-2)] px-3 py-2 text-sm">
-                          <span>
-                            {ct.nome}
-                            {ct.cargo ? <span className="text-muted-foreground"> · {ct.cargo}</span> : null}
-                            {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
+                        <li key={ct.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <PeerAvatar name={ct.nome} avatarUrl={peerAvatarPublicUrl(ct.avatarKey)} className="size-7" />
+                            <span className="min-w-0">
+                              {ct.nome}
+                              {ct.cargo ? <span className="text-muted-foreground"> · {ct.cargo}</span> : null}
+                              {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
+                            </span>
                           </span>
-                          <span className="text-muted-foreground">{ct.phoneE164}</span>
+                          <span className="shrink-0 text-muted-foreground">{formatWhatsAppPeer(ct.phoneE164)}</span>
                         </li>
                       ))}
                     </ul>
                   )}
-                  <Button className="mt-4" type="button" variant="secondary" onClick={() => setContactOpen(true)}>
-                    Adicionar contato
-                  </Button>
+                  {admin ? (
+                    <Button className="mt-4" type="button" variant="secondary" onClick={() => setContactOpen(true)}>
+                      Adicionar contato
+                    </Button>
+                  ) : null}
                 </div>
               )}
             </section>
           </div>
-        </FramePanel>
-      </Frame>
       <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Novo condomínio">
         <form
           className="space-y-3"
@@ -192,8 +209,7 @@ export default function CondominiosPage() {
         >
           <Label htmlFor="cn">Nome</Label>
           <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
-          <Label htmlFor="ph">Telefone</Label>
-          <Input id="ph" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <PhoneInput id="ph" label="Telefone" required value={phone} onChange={setPhone} />
           <Label htmlFor="cg">Cargo</Label>
           <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
           <Label htmlFor="em">E-mail</Label>

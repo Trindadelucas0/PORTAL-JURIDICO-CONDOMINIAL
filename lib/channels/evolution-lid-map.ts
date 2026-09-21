@@ -4,6 +4,12 @@ import { isLidPeer } from "@/lib/phone/identity";
 export type EvolutionChatLidRow = {
   remoteJid?: string;
   pushName?: string;
+  remoteJidAlt?: string;
+  remote_jid_alt?: string;
+  senderPn?: string;
+  sender_pn?: string;
+  participantPn?: string;
+  pn?: string;
 };
 
 export function normalizePersonName(value: string): string {
@@ -41,7 +47,7 @@ export function pickUniqueLidPlaceholder(chats: EvolutionChatLidRow[], contactNo
   return [...lids][0] ?? null;
 }
 
-function chatRows(json: unknown): EvolutionChatLidRow[] {
+export function chatRows(json: unknown): EvolutionChatLidRow[] {
   if (Array.isArray(json)) return json.filter((row): row is EvolutionChatLidRow => Boolean(row) && typeof row === "object");
   if (json && typeof json === "object") {
     const record = json as Record<string, unknown>;
@@ -62,7 +68,7 @@ export function lidJidsMatchingPlaceholder(chats: EvolutionChatLidRow[], placeho
   return [...new Set(hits)];
 }
 
-async function fetchEvolutionChatRows(): Promise<EvolutionChatLidRow[] | null> {
+export async function fetchEvolutionChatRows(): Promise<EvolutionChatLidRow[] | null> {
   if (process.env.VITEST) return null;
   const base = process.env.EVOLUTION_API_URL?.replace(/\/$/, "") || "";
   const key = process.env.EVOLUTION_APIKEY || "";

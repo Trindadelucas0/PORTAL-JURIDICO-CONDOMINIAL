@@ -42,8 +42,10 @@ export type TicketListFilters = {
   q?: string;
   status?: z.infer<typeof ticketStatusSchema>;
   category?: z.infer<typeof ticketCategorySchema>;
+  priority?: z.infer<typeof ticketPrioritySchema>;
   assignedToId?: string;
   unassigned?: boolean;
+  condominiumId?: string;
 };
 
 const include = {
@@ -52,6 +54,13 @@ const include = {
   assignedTo: { select: { id: true, email: true, nome: true, role: true } },
   createdBy: { select: { id: true, email: true, nome: true, role: true } },
   triageItem: { select: { id: true, status: true } },
+  deadlines: {
+    where: { doneAt: null },
+    orderBy: { dueAt: "asc" as const },
+    take: 1,
+    select: { dueAt: true, title: true, doneAt: true },
+  },
+  _count: { select: { documents: true, messages: true } },
 } as const;
 
 async function nextProtocol(tx: Prisma.TransactionClient) {
@@ -91,12 +100,14 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
       }
       if (filters.status) extra.push({ status: filters.status });
       if (filters.category) extra.push({ category: filters.category });
+      if (filters.priority) extra.push({ priority: filters.priority });
       if (isAdmin(user)) {
         if (filters.unassigned) extra.push({ assignedToId: null });
         else if (filters.assignedToId) extra.push({ assignedToId: filters.assignedToId });
       }
+      if (filters.condominiumId) extra.push({ condominiumId: filters.condominiumId });
       const where: Prisma.TicketWhereInput = extra.length ? { AND: [access, ...extra] } : access;
-      const [total, items] = await Promise.all([
+      const [total, rows] = await Promise.all([
         db.ticket.count({ where }),
         db.ticket.findMany({
           where,
@@ -106,6 +117,16 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
           include,
         }),
       ]);
+      const items = rows.map(({ deadlines, ...ticket }) => ({
+        ...ticket,
+        nextDeadline: deadlines[0]
+          ? {
+              dueAt: deadlines[0].dueAt,
+              title: deadlines[0].title,
+              doneAt: deadlines[0].doneAt,
+            }
+          : null,
+      }));
       return { items, total, page, pageSize };
     },
 

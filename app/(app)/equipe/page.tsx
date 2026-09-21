@@ -28,7 +28,15 @@ type Member = {
   ativo: boolean;
   podeResponderCliente: boolean;
   apenasRascunho: boolean;
+  openTickets?: number;
 };
+
+function accessLabel(m: Member) {
+  if (m.role === "admin") return "Administrador";
+  if (m.apenasRascunho) return "Rascunho / aprovação";
+  if (m.podeResponderCliente) return "Pode enviar WhatsApp";
+  return "Restrito";
+}
 
 export default function EquipePage() {
   const qc = useQueryClient();
@@ -96,7 +104,7 @@ export default function EquipePage() {
     <div>
       <PageHeader
         title="Equipe"
-        description={`${q.data?.data?.length ?? 0} usuários · senha gerada no servidor, exibida uma vez`}
+        description={`${q.data?.data?.length ?? 0} pessoas · chamados abertos são os atribuídos e não resolvidos`}
         action={
           <Button type="button" onClick={() => setCreateOpen(true)}>
             Novo usuário
@@ -119,10 +127,11 @@ export default function EquipePage() {
         <DataTable>
           <thead>
             <tr>
-              <Th>Usuário</Th>
-              <Th>Perfil</Th>
+              <Th>Pessoa</Th>
+              <Th>Função</Th>
               <Th>Acesso</Th>
               <Th>Status</Th>
+              <Th>Chamados</Th>
             </tr>
           </thead>
           <tbody>
@@ -142,10 +151,11 @@ export default function EquipePage() {
                 <Td>
                   <Badge tone={m.role === "admin" ? "dev" : "muted"}>{m.role === "admin" ? "Administrador" : "Funcionário"}</Badge>
                 </Td>
-                <Td>{m.apenasRascunho ? "Sem WhatsApp" : m.podeResponderCliente ? "Pode enviar" : "Restrito"}</Td>
+                <Td>{accessLabel(m)}</Td>
                 <Td>
                   <Badge tone={m.ativo ? "ok" : "muted"}>{m.ativo ? "Ativo" : "Inativo"}</Badge>
                 </Td>
+                <Td className="tabular">{m.openTickets ?? 0}</Td>
               </tr>
             ))}
           </tbody>

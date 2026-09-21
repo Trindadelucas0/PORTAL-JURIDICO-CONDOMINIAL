@@ -191,15 +191,14 @@ describe("escritorio operacional", () => {
       data: { connectionId: mock.id, unidentified: false, contactId: contact.id },
     });
     await db.ticket.update({ where: { id: ticket.id }, data: { assignedToId: blocked.id } });
-    try {
-      await atendimento.postMessage(blocked, ticket.conversationId!, {
-        body: "nao pode",
-        visibility: "publica",
-      });
-      throw new Error("expected forbidden");
-    } catch (e) {
-      expect((e as AppError).status).toBe(403);
-    }
+    const draft = await atendimento.postMessage(blocked, ticket.conversationId!, {
+      body: "rascunho para aprovacao",
+      visibility: "publica",
+    });
+    expect(draft.sentToWhatsApp).toBe(false);
+    expect(draft.awaitingApproval).toBe(true);
+    expect(draft.message.sendStatus).toBe("draft");
+    expect(draft.message.visibility).toBe("publica");
     await db.ticket.update({ where: { id: ticket.id }, data: { assignedToId: staff.id } });
     const adminSend = await atendimento.postMessage(admin, ticket.conversationId!, {
       body: "admin direto",
@@ -258,6 +257,54 @@ describe("escritorio operacional", () => {
     }
     const listed = await tickets.list(admin, 1, 20, { unassigned: true });
     expect(listed.items.some((row) => row.id === ticket.id)).toBe(true);
+  });
+
+  it("ticket list includes nextDeadline; team lists open ticket load", async () => {
+    const { createDeadlineService } = await import("@/lib/services/deadline-service");
+    const { createTeamService } = await import("@/lib/services/team-service");
+    const deadlines = createDeadlineService(db);
+    const team = createTeamService(db);
+    const suffix = `${Date.now()}-deadline`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-dl-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `staff-dl-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `DL ${suffix}` } });
+    const contact = await db.contact.create({
+      data: { nome: "DL C", phoneE164: `+55114${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
+    });
+    const ticket = await tickets.createManual(admin, {
+      title: "Com prazo",
+      category: "outro",
+      priority: "alta",
+      condominiumId: condo.id,
+      contactId: contact.id,
+      assignedToId: staff.id,
+    });
+    const dueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await deadlines.create(admin, {
+      ticketId: ticket.id,
+      title: "Retorno ao síndico",
+      dueAt,
+      kind: "atendimento",
+    });
+    const listed = await tickets.list(admin, 1, 20, { condominiumId: condo.id });
+    const row = listed.items.find((item) => item.id === ticket.id);
+    expect(row?.nextDeadline?.title).toBe("Retorno ao síndico");
+    expect(row?.nextDeadline?.dueAt).toBeTruthy();
+    const members = await team.list();
+    const staffRow = members.find((m) => m.id === staff.id);
+    expect(staffRow?.openTickets).toBeGreaterThanOrEqual(1);
   });
 
   it("audit helper strips passwordHash", async () => {
@@ -368,5 +415,92 @@ describe("document index port", () => {
     const res = await noopDocumentIndex.enqueue({ documentId: "x", storageKey: "k" });
     expect(res.queued).toBe(false);
     expect(res.reason).toBe("noop");
+  });
+});
+
+describe("documentos ficha", () => {
+  beforeAll(async () => {
+    await db.$connect();
+    await assertNotOfficeDatabase(db);
+  });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+
+  it("summary lists condominiums with count 0; ficha required; staff needs ticket", async () => {
+    const { ZodError } = await import("zod");
+    const { createDocumentService } = await import("@/lib/services/document-service");
+    const docs = createDocumentService(db);
+    const suffix = `${Date.now()}`;
+    const admin = await db.user.upsert({
+      where: { email: `admin-doc-${suffix}@juricon.local` },
+      update: {},
+      create: {
+        email: `admin-doc-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `func-doc-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+        podeResponderCliente: true,
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Condo Doc ${suffix}` } });
+
+    const summaryEmpty = await docs.summaryByCondominium(admin);
+    const folder = summaryEmpty.find((s) => s.condominiumId === condo.id);
+    expect(folder).toBeTruthy();
+    expect(folder!.count).toBe(0);
+
+    try {
+      await docs.upload(admin, {
+        kind: "ata_assembleia",
+        title: "Ata",
+        purpose: "curto",
+        condominiumId: condo.id,
+        file: { buffer: Buffer.from("%PDF-1.4"), name: "ata.pdf", mime: "application/pdf" },
+      });
+      throw new Error("expected validation");
+    } catch (e) {
+      expect(e instanceof ZodError).toBe(true);
+    }
+
+    try {
+      await docs.upload(staff, {
+        kind: "ata_assembleia",
+        title: "Ata assembleia",
+        purpose: "Para aprovar contas do condominio",
+        condominiumId: condo.id,
+        file: { buffer: Buffer.from("%PDF-1.4"), name: "ata.pdf", mime: "application/pdf" },
+      });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+
+    const created = await docs.upload(admin, {
+      kind: "ata_assembleia",
+      title: "Assembleia 12/03",
+      purpose: "Aprovar contas e eleicao do sindico",
+      condominiumId: condo.id,
+      file: { buffer: Buffer.from("%PDF-1.4-ok"), name: "ata.pdf", mime: "application/pdf" },
+    });
+    expect(created.kind).toBe("ata_assembleia");
+    expect(created.title).toBe("Assembleia 12/03");
+    expect(created.purpose).toContain("Aprovar");
+
+    const summaryAfter = await docs.summaryByCondominium(admin);
+    const folderAfter = summaryAfter.find((s) => s.condominiumId === condo.id);
+    expect(folderAfter!.count).toBeGreaterThanOrEqual(1);
+
+    const audit = await db.auditEvent.findFirst({
+      where: { entityId: created.id, action: "document.create" },
+    });
+    expect(audit).toBeTruthy();
   });
 });

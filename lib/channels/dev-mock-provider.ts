@@ -31,7 +31,7 @@ export class DevMockProvider implements WhatsAppProvider {
     };
   }
 
-  async getQr(): Promise<QrResult> {
+  async getQr(_opts?: { fresh?: boolean }): Promise<QrResult> {
     return { qr: null, pairingCode: null, status: "not_applicable" };
   }
 

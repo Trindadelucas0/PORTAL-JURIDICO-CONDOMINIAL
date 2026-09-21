@@ -4,11 +4,12 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-const frameVariants = cva("relative flex flex-col gap-0 rounded-[var(--frame-radius,10px)]", {
+const frameVariants = cva("relative flex flex-col gap-0 rounded-[var(--frame-radius,8px)]", {
   variants: {
     variant: {
-      default: "border border-border bg-card shadow-[var(--shadow-sm)]",
+      default: "border-0 bg-transparent p-0 shadow-none",
       ghost: "border-0 bg-transparent p-0 shadow-none",
+      bordered: "border border-border bg-card shadow-none",
     },
     dense: {
       true: "gap-0 p-0",
@@ -31,7 +32,7 @@ function FramePanel({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="frame-panel"
-      className={cn("grow overflow-hidden rounded-[var(--frame-radius,10px)] bg-card", className)}
+      className={cn("grow overflow-hidden rounded-[var(--frame-radius,8px)] bg-transparent", className)}
       {...props}
     />
   );

@@ -34,6 +34,30 @@ export function evolutionLogoutAlreadyOff(status: number): boolean {
   return status === 400 || status === 404;
 }
 
+export const EVOLUTION_UNREACHABLE_MESSAGE =
+  "Evolution API não está no ar. No notebook: docker compose up -d na pasta do portal e tente Conectar de novo.";
+
+export function isEvolutionUnreachable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  const cause =
+    "cause" in error ? (error as { cause?: { code?: string; message?: string } }).cause : undefined;
+  const causeCode = (cause?.code || "").toLowerCase();
+  const causeMsg = (cause?.message || "").toLowerCase();
+  return (
+    msg.includes("fetch failed") ||
+    msg.includes("econnrefused") ||
+    msg.includes("econnreset") ||
+    msg.includes("etimedout") ||
+    msg.includes("und_err_connect_timeout") ||
+    causeCode === "econnrefused" ||
+    causeCode === "etimedout" ||
+    causeCode === "econnreset" ||
+    causeCode === "und_err_connect_timeout" ||
+    causeMsg.includes("econnrefused")
+  );
+}
+
 function flattenEvolutionField(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (Array.isArray(value)) {
