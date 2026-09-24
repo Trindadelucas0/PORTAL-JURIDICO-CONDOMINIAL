@@ -11,6 +11,8 @@ import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
 import { mergeConversations } from "@/lib/services/conversation-merge";
+import { interpretEvolutionMessageRows } from "@/lib/channels/evolution-webhook";
+import { fetchEvolutionMessages } from "@/lib/channels/evolution-lid-map";
 import {
   inFlowConversationWhere,
   isInOperationalFlow,
@@ -21,6 +23,7 @@ import {
   peerAvatarPublicUrl,
   schedulePeerProfileEnrichment,
 } from "@/lib/services/peer-avatar-service";
+import { messageWindow } from "@/lib/api/pagination";
 
 export type InboundPayload = {
   waMessageId: string;
@@ -54,10 +57,11 @@ async function promoteLidPeerToPhone(
   phone: string,
 ): Promise<Conversation> {
   if (!isLidPeer(conversation.peerPhoneE164) || isLidPeer(phone)) return conversation;
+  const peerLid = conversation.peerLid || conversation.peerPhoneE164;
   try {
     return await db.conversation.update({
       where: { id: conversation.id },
-      data: { peerPhoneE164: phone },
+      data: { peerPhoneE164: phone, peerLid },
     });
   } catch (error) {
     if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -65,6 +69,9 @@ async function promoteLidPeerToPhone(
         where: { connectionId: conversation.connectionId, peerPhoneE164: phone },
       });
       if (other && other.id !== conversation.id) {
+        if (peerLid && !other.peerLid) {
+          await db.conversation.update({ where: { id: other.id }, data: { peerLid } });
+        }
         await mergeConversations(db, other.id, conversation.id);
         return (await db.conversation.findFirst({ where: { id: other.id } })) ?? other;
       }
@@ -73,6 +80,17 @@ async function promoteLidPeerToPhone(
     }
   }
   return conversation;
+}
+
+const OWN_SYNC_COOLDOWN_MS = 120_000; // 2 minutos
+const OWN_SYNC_LIMIT = 50;
+const ownSyncCooldown = new Map<string, number>();
+
+function peerToRemoteJid(peerPhoneE164: string): string | null {
+  if (isLidPeer(peerPhoneE164)) return null;
+  const digits = peerPhoneE164.replace(/\D/g, "");
+  if (digits.length < 8) return null;
+  return `${digits}@s.whatsapp.net`;
 }
 
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
@@ -107,7 +125,11 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       if (!connection) throw unprocessable("Nenhuma conexão disponível para ingestão");
 
       const contact = await findContactByPhones(db, lookupKeys);
-      const or: Prisma.ConversationWhereInput[] = [{ peerPhoneE164: { in: lookupKeys } }];
+      const lidValue = (waLid && isLidPeer(waLid) ? waLid : null) || (isLidPeer(phone) ? phone : null);
+      const or: Prisma.ConversationWhereInput[] = [
+        { peerPhoneE164: { in: lookupKeys } },
+        { peerLid: { in: lookupKeys } },
+      ];
       if (contact) or.push({ contactId: contact.id });
       let matches = await db.conversation.findMany({
         where: { connectionId: connection.id, OR: or },
@@ -135,6 +157,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
               condominiumId: contact?.condominiumId ?? null,
               unidentified: !contact,
               peerPhoneE164: peerKey,
+              peerLid: lidValue,
               peerDisplayName,
             },
           });
@@ -150,10 +173,17 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       }
       if (!conversation) throw unprocessable("Não foi possível abrir a conversa");
 
+      const peerPatch: Prisma.ConversationUpdateInput = {};
       if (peerDisplayName && conversation.peerDisplayName !== peerDisplayName) {
+        peerPatch.peerDisplayName = peerDisplayName;
+      }
+      if (lidValue && !conversation.peerLid) {
+        peerPatch.peerLid = lidValue;
+      }
+      if (Object.keys(peerPatch).length > 0) {
         conversation = await db.conversation.update({
           where: { id: conversation.id },
-          data: { peerDisplayName },
+          data: peerPatch,
         });
       }
 
@@ -214,7 +244,10 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         triageId = triage.id;
       }
 
-      schedulePeerProfileEnrichment(conversation.id);
+      schedulePeerProfileEnrichment(conversation.id, {
+        waMessageId: payload.waMessageId,
+        forceAvatar: !conversation.peerAvatarKey,
+      });
 
       return {
         created: true,
@@ -229,8 +262,16 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
     /** Lazy PN + avatar (thread open / Vincular). Safe to call repeatedly. */
     async enrichPeerProfile(user: User, conversationId: string) {
       await this.getConversationForUser(user, conversationId);
+      const lastInbound = await db.message.findFirst({
+        where: { conversationId, direction: "in", waMessageId: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { waMessageId: true },
+      });
       const { enrichConversationPeerProfile } = await import("@/lib/services/peer-avatar-service");
-      const result = await enrichConversationPeerProfile(conversationId, db);
+      const result = await enrichConversationPeerProfile(conversationId, db, {
+        deep: true,
+        waMessageId: lastInbound?.waMessageId ?? undefined,
+      });
       const row = await this.getConversationForUser(user, result.conversationId);
       return {
         ...row,
@@ -281,7 +322,8 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             triageItem: true,
             tickets: {
               where: isAdmin(user) ? undefined : { assignedToId: user.id },
-              select: { id: true, protocol: true, assignedToId: true, status: true },
+              select: { id: true, protocol: true, assignedToId: true, status: true, updatedAt: true },
+              orderBy: { updatedAt: "desc" },
               take: 5,
             },
             messages: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -319,6 +361,32 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       });
     },
 
+    async removeFromSystem(user: User, conversationId: string) {
+      const row = await this.getConversationForUser(user, conversationId);
+      await db.$transaction(async (tx) => {
+        await tx.message.updateMany({
+          where: { conversationId },
+          data: { replyToId: null },
+        });
+        await tx.ticket.updateMany({
+          where: { conversationId },
+          data: { conversationId: null },
+        });
+        await tx.conversation.delete({ where: { id: conversationId } });
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "conversation.removed_from_system",
+        entityType: "conversation",
+        entityId: conversationId,
+        before: {
+          peerPhoneE164: row.peerPhoneE164,
+          ticketIds: row.tickets.map((t) => t.id),
+        },
+      });
+      return { id: conversationId };
+    },
+
     async getConversationForUser(user: User, id: string) {
       const row = await db.conversation.findFirst({
         where: { id },
@@ -340,20 +408,21 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
 
     async listMessages(user: User, conversationId: string, page: number, pageSize: number) {
       await this.getConversationForUser(user, conversationId);
-      schedulePeerProfileEnrichment(conversationId);
-      const [total, items] = await Promise.all([
-        db.message.count({ where: { conversationId } }),
-        db.message.findMany({
-          where: { conversationId },
-          orderBy: { createdAt: "asc" },
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-          include: {
-            attachments: true,
-            replyTo: { select: { id: true, body: true, direction: true } },
-          },
-        }),
-      ]);
+      const total = await db.message.count({ where: { conversationId } });
+      const { start, take } = messageWindow(total, page, pageSize);
+      const items =
+        take === 0
+          ? []
+          : await db.message.findMany({
+              where: { conversationId },
+              orderBy: { createdAt: "asc" },
+              skip: start,
+              take,
+              include: {
+                attachments: true,
+                replyTo: { select: { id: true, body: true, direction: true } },
+              },
+            });
       return { items, total, page, pageSize };
     },
 
@@ -592,6 +661,119 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         altaUrgente,
         rascunhos,
       };
+    },
+
+    async ingestOwnOutbound(payload: any) {
+      const connectionId = payload.connectionId || (await db.channelConnection.findFirst({ where: { type: payload.connectionType } }))?.id;
+      if (!connectionId) return { created: false, conversationId: null, messageId: null };
+
+      const conversation = await db.conversation.findFirst({
+        where: { connectionId, peerPhoneE164: payload.fromPhone },
+      });
+
+      if (!conversation) return { created: false, conversationId: null, messageId: null };
+
+      try {
+        const message = await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: "out",
+            visibility: "publica",
+            waMessageId: payload.waMessageId,
+            sendStatus: "sent",
+            body: payload.body.slice(0, 8000),
+          },
+        });
+        return { created: true, conversationId: conversation.id, messageId: message.id };
+      } catch (error) {
+        if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
+          const existing = await db.message.findFirst({ where: { waMessageId: payload.waMessageId } });
+          if (existing) return { created: false, conversationId: existing.conversationId, messageId: existing.id };
+        }
+        throw error;
+      }
+    },
+
+    async syncOwnOutboundMessages(user: User, conversationId: string) {
+      // Valida que o usuário pode ver a conversa
+      await this.getConversationForUser(user, conversationId);
+
+      const conversation = await db.conversation.findFirst({
+        where: { id: conversationId },
+      });
+      if (!conversation) return { synced: 0 };
+
+      // Cooldown de 2 minutos por conversa
+      const now = Date.now();
+      const lastSync = ownSyncCooldown.get(conversationId);
+      if (lastSync && now - lastSync < OWN_SYNC_COOLDOWN_MS) {
+        return { synced: 0 };
+      }
+      ownSyncCooldown.set(conversationId, now);
+
+      // Prepara o JID remoto para consultar a Evolution
+      let remoteJid: string | null = null;
+      if (isLidPeer(conversation.peerPhoneE164)) {
+        // Para LID, usar o mesmo placeholder
+        remoteJid = null; // fetchEvolutionMessages com LID não funciona bem; pular sync
+      } else {
+        remoteJid = peerToRemoteJid(conversation.peerPhoneE164);
+      }
+
+      if (!remoteJid) {
+        return { synced: 0 };
+      }
+
+      // Busca até 50 mensagens fromMe da Evolution
+      let rows: unknown[] | null = null;
+      try {
+        rows = await fetchEvolutionMessages({
+          remoteJid,
+          limit: OWN_SYNC_LIMIT,
+        });
+      } catch {
+        // Evolution offline ou erro — continuar sem sincronizar
+        return { synced: 0 };
+      }
+
+      if (!rows || rows.length === 0) {
+        return { synced: 0 };
+      }
+
+      // Interpreta como webhook
+      const parsed = interpretEvolutionMessageRows(rows);
+      if (parsed.kind !== "messages") {
+        return { synced: 0 };
+      }
+
+      // Filtra só fromMe
+      const ownMessages = parsed.items.filter((item) => item.fromMe);
+      if (ownMessages.length === 0) {
+        return { synced: 0 };
+      }
+
+      // Importa as que ainda não estão no banco
+      let synced = 0;
+      for (const item of ownMessages) {
+        const existing = await db.message.findFirst({
+          where: { waMessageId: item.waMessageId },
+        });
+        if (existing) continue;
+
+        const result = await this.ingestOwnOutbound({
+          waMessageId: item.waMessageId,
+          fromPhone: item.fromPhone,
+          waLid: item.waLid,
+          body: item.body,
+          sentAt: item.sentAt,
+          connectionId: conversation.connectionId,
+        });
+        if (result.created || (result.messageId && !result.created)) {
+          synced++;
+        }
+      }
+
+      return { synced };
     },
   };
 }

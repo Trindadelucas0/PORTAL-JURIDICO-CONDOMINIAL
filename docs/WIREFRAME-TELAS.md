@@ -2,8 +2,8 @@
 
 | Item | Valor |
 |------|--------|
-| Versão do sistema | 0.9.2 — Workspace operacional UX |
-| Data deste catálogo | 21/09/2026 |
+| Versão do sistema | 0.9.8 — Card fila Não vinculados |
+| Data deste catálogo | 22/09/2026 |
 | Escopo | Pasta `PORTAL JURIDICO CONDOMINIAL` (app operacional) |
 | Natureza | **As-is** do código — não é redesign nem fonte de regras |
 | Fonte de comportamento | [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) |
@@ -99,8 +99,8 @@ flowchart TD
 |-------|------------------|
 | urgente | `#dc2626` |
 | alta | `#ea580c` |
-| media | `#475569` (pill: `bg-slate-800 text-white`) |
-| baixa | `#94a3b8` (pill: borda slate, fundo branco) |
+| media | `#475569` (pill: fundo slate-100, borda slate-200) |
+| baixa | `#94a3b8` (pill: fundo branco, borda slate-200) |
 
 ### 1.2 Tipografia e densidade
 
@@ -120,7 +120,7 @@ flowchart TD
 
 | Variant | Aparência | Quando |
 |---------|-----------|--------|
-| `default` / `primary` | navy `#1b3a4b` + texto `#f7f5ef`, hover 80% | CTA principal |
+| `default` / `primary` | navy `#1b3a4b` + texto `#f7f5ef`, hover `#2a4f63` | CTA principal |
 | `secondary` | fundo `#eef0f4` + texto navy | ação secundária |
 | `outline` | borda `--border`, fundo branco | contorno |
 | `ghost` | transparente, hover muted | ações leves / Arquivar |
@@ -128,7 +128,7 @@ flowchart TD
 | `danger` | sólido `#dc2626` + branco | ConfirmDialog destrutivo |
 | `link` | texto primary + underline | links estilo botão |
 
-**Sizes:** `default` h-8 · `xs` h-6 · `sm` h-7 · `lg` h-9 · `icon` / `icon-sm` / `icon-xs` / `icon-lg`
+**Sizes:** `default` `h-[36px]` (a raiz é 14px, então `h-9` ficaria 31,5px) · `xs` h-6 · `sm` h-7 · `lg` h-9 · `icon` / `icon-sm` / `icon-xs` / `icon-lg`
 
 **Ícones em botão:** SVG default `size-4` (16px); xs/sm 12–14px.
 
@@ -138,7 +138,7 @@ flowchart TD
 |----------|------------------|
 | Sidebar | ~14rem (shadcn sidebar) |
 | Header sticky | `h-12`, `px-3`, `gap-3`, `border-b` |
-| Main full-bleed | `p-0` em `/`, `/atendimento`, `/triagem`, `/nao-vinculados`, `/chamados`, `/prazos` (+ deep links) |
+| Main operacional | `/` sem padding (faixa branca + canvas `#f5f6f8`). Demais full-bleed: `p-3 lg:p-4`. Cartão branco, borda `#e3e6ec`, raio 8px |
 | Main padded | `px-5 py-5 md:px-6 md:py-6`, max 1440px |
 | Bottom nav mobile | `fixed`, `grid-cols-4`, `border-t`, `pb-16` no main |
 | Item lista ativo | `border-l-2` brand + `bg color-mix(brand 6%, white)` |
@@ -165,7 +165,7 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │ (Fraunces 15px) ├──────────────────────────────────────────────────┤
 │                 │                                                  │
 │ OPERAÇÃO        │  MAIN                                            │
-│  ▸ Visão        │  full-bleed p-0  OU  px-5 py-5 (max 1440)        │
+│  ▸ Visão        │  p-3/p-4 (operação) OU px-5 py-5 (max 1440)     │
 │  Atendimento    │                                                  │
 │  Triagem * [n]  │                                                  │
 │  Não vinc. *[n] │                                                  │
@@ -277,45 +277,41 @@ Sidebar = Sheet offcanvas ao tocar ☰
 
 ## 4. 2. Visão `/`
 
-**Arquivo:** `app/(app)/page.tsx` + `attention-strip.tsx` + `activity-row.tsx`  
-**Full-bleed.** Admin vs funcionário mudam KPIs AGORA.
+**Arquivo:** `app/(app)/page.tsx` + `metric-card.tsx` + `attention-strip.tsx` + `activity-row.tsx`  
+**Faixa branca + canvas `#f5f6f8`.** Os quatro KPIs ficam sempre, inclusive com zero. Funcionário não recebe link em Triagem nem Não vinculados.
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│ Visão geral                              ● CONECTADO → WA   │
-│ O que precisa de ação agora · {data}                        │
-├─────────────────────────────────────────────────────────────┤
-│ AGORA                                                       │
-│ [n Não vinc.] [n Triagem] [n Não lidas] [n Abertos]         │
-│  Vincular →    Analisar →   Atender →     Operar →          │
-│ (funcionário: Meus / Andamento / Aguardando / Abertos)      │
-├────────────────────────────┬────────────────────────────────┤
-│ ATENÇÃO                    │ MINHA OPERAÇÃO    Chamados →   │
-│ n  label                   │ #PROT · contato  [Status] idade│
-│    detail               →  │ …                              │
-│ (ou Empty “Tudo limpo”)    │ (ou “Nenhum chamado…”)         │
-├────────────────────────────┴────────────────────────────────┤
-│ ATIVIDADE                                                   │
-│ hora  Contato · condo                          Inbox →      │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Visão geral                    [CONECTADO → WA] [Atualizar]  │
+│ O que precisa de ação agora · {data}                         │
+│ AGORA · FILA OPERACIONAL                                     │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│ │rótulo  ícone│ rótulo ícone│ rótulo ícone│ rótulo ícone│    │
+│ │ 0        │ │ 0        │ │ 0        │ │ 0        │          │
+│ │ selo  →  │ │ selo  →  │ │ selo  →  │ │ selo  →  │          │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+│ ATENÇÃO (cartão faixa)     │ MINHA OPERAÇÃO (tabela)         │
+│ número + rótulo + ação     │ protocolo contato status prio   │
+│ ATIVIDADE  [hora] ícone evento                    Atendimento│
+└──────────────────────────────────────────────────────────────┘
 ```
 
 | Rótulo | Ícone | Visual | Função |
 |--------|-------|--------|--------|
-| KPI AGORA (4) | — | Link · valor `text-xl` · verbo brand | Navega href do KPI |
-| WA status header | dot 8px | Link uppercase xs | `/conexoes` |
-| Itens Atenção | — | Link row + `→` brand | href dinâmico |
-| Chamados → | — | Link brand xs | `/chamados` |
-| Linha chamado | StatusBadge | Link | `/chamados/[id]` |
-| ActivityRow Inbox → | — | Link log | `/atendimento` |
+| Cartão (4) | UserRoundX, ListChecks, MessageSquare, Ticket | Branco, número 28px, selo, ação navy | Navega a fila. Zero permanece |
+| WA status | dot 8px | Pill azul se conectado | Estado real da sessão |
+| Atualizar | RefreshCw | Botão navy h-8 | Refaz `GET /api/dashboard` |
+| Itens Atenção | — | Cartão com faixa esquerda (vermelho/âmbar/azul/cinza) | Só se count > 0 |
+| Tabela | StatusBadge + PriorityIndicator | Cabeçalho `#eef0f4` | `/chamados/[id]` |
+| ActivityRow | MessageSquare | Hora em selo + link Atendimento | `/atendimento` |
 
-**Sem `<Button>`.** Loading: Skeleton. Empty: “Tudo limpo” / textos muted. Error: ErrorBanner + ForbiddenState 403.
+**Sem `<Button>` na Visão.** Sem rótulo “SLA”, sem “2 horas”, sem cobrança. Loading: 4 skeletons. Empty da tabela: “Nenhum chamado em aberto.” Atenção vazia: “Nada exige atenção agora.” Error: ErrorBanner + ForbiddenState 403.
 
 ### Checklist auditoria — Visão
 
-- [ ] Faixa AGORA: densidade vs opacidade quando value=0
-- [ ] Divisores `border-b` / grid 2 cols
-- [ ] StatusBadge alinhado com idade tabular
+- [ ] Quatro cartões visíveis com zero
+- [ ] Atenção omitida quando todas as contagens são 0
+- [ ] Tabela no desktop, lista no celular
 - [ ] Dot WA vs texto uppercase
 
 ---
@@ -323,12 +319,12 @@ Sidebar = Sheet offcanvas ao tocar ☰
 ## 5. 3. Inbox `/atendimento`
 
 **Arquivos:** `app/(app)/atendimento/page.tsx` · `thread-panel.tsx` · `workspace-shell.tsx`  
-**Full-bleed · h = `100dvh - 3rem` · grid 240 / 1fr / 220.**
+**Full-bleed · h = `100dvh - 3rem` · grid 240 / 1fr / 220 (abaixo de lg: restante / 200).**
 
 ```text
 ┌─ Inbox ── [Todas] [Não lidas] [Triagem] ────────────────────┐
 ├─ 240px ──────┬─ thread 1fr ──────────────┬─ 220px contexto ─┤
-│ Buscar…      │ ← Conversas (mobile)      │ Contexto / Recolh│
+│ Buscar…      │ ← Conversas (mobile)      │ Contexto         │
 │              │ Nome contato              │ Analisar → triagem│
 │ ● Nome       │ condo · canal             │ #PROT → chamado  │
 │   preview    │                           │ Accordion info   │
@@ -338,7 +334,7 @@ Sidebar = Sheet offcanvas ao tocar ☰
 │              │ [msg…] [file] [Áudio]     │                  │
 │              │              [Enviar]     │                  │
 └──────────────┴───────────────────────────┴──────────────────┘
-MOBILE: list | thread | context  (um por vez)
+MOBILE: (lista | thread) à esquerda + contexto fixo à direita
 ```
 
 | Rótulo | Ícone | Variant | Função |
@@ -346,7 +342,6 @@ MOBILE: list | thread | context  (um por vez)
 | Todas / Não lidas / Triagem | — | FilterChip | Filtro lista |
 | Item conversa | Avatar iniciais | button row | Seleciona + mobile thread |
 | ← Conversas | — | link brand | Volta lista (mobile) |
-| Contexto | — | link brand | Abre painel contexto |
 | Analisar | — | Link brand | `/triagem/[id]` se triage |
 | #{protocol} | — | Link brand | `/chamados/[id]` |
 | Resposta | — | primary/secondary sm | mode `publica` |
@@ -439,31 +434,34 @@ MOBILE: lista OU análise (← Solicitações)
 ## 8. 6. Não vinculados `/nao-vinculados`
 
 **Arquivos:** `nao-vinculados/page.tsx` · `unlinked-queue.tsx` · `unlinked-identity-panel.tsx` · `thread-panel.tsx`  
-**Admin only · grid 280 / 1fr / 240.**
+**Admin only · grid fila 280 / conversa / Identidade 240 (abaixo de lg: restante / 200).**
 
 ```text
 ┌─ Não vinculados · N fora do fluxo… ─────────────────────────┐
-├─ fila 280 ───┬─ thread ─────────────┬─ Identidade 240 ──────┤
-│ Buscar…      │ (composer igual Inbox)│ 1.Msg 2.Identificar  │
-│ hora preview │                       │ 3.Vincular→triagem   │
-│ nome/Contato │                       │ Contato / Origem     │
-│ WhatsApp     │                       │ Condo                │
-│              │                       │ [Vincular ao fluxo]  │
-└──────────────┴───────────────────────┴──────────────────────┘
+├─ fila 280 ──────┬─ thread ───────────────┬─ Identidade 240 ─┤
+│ Buscar…         │ (composer igual Inbox) │ 1.Msg 2.Identificar│
+│ ┌─ card ───┐    │                        │ 3.Vincular→triagem │
+│ │█ [av]Nome│    │                        │ Contato / Origem   │
+│ │  tel·condo│   │                        │ Condo              │
+│ │  preview │    │                        │ [Vincular ao fluxo]│
+│ │  WhatsApp│    │                        │                    │
+│ └──────────┘    │                        │                    │
+└─────────────────┴────────────────────────┴────────────────────┘
 DRAWER: Vincular ao fluxo (form enroll)
-Telefone*  [+55 …]  [Puxar do WhatsApp]  ← só se WA open e sem PN
+Telefone*  [+55 …]  [Puxar do WhatsApp | Conectar WhatsApp]
 ```
 
+**Card da fila** = mesmo chrome de Atendimento (`rounded` + `border` + `border-l-2` primary quando selecionado). Hierarquia: nome/idade → telefone → preview → origem WhatsApp/DEV (sem protocolo).
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
-| Item fila | — | select | Abre thread |
-| ← Conversa | — | link brand | Mobile back Identity |
+| Item fila | — | select | Abre thread (coluna da esquerda no mobile; identidade permanece à direita) |
 | Vincular ao fluxo (painel) | — | default w-full | Abre Drawer |
 | Vincular ao fluxo (drawer) | — | default submit | POST enroll → `/triagem/[id]` |
-| Puxar do WhatsApp | — | secondary | POST enrich-peer; some se PN ou WA ≠ open |
-| (+ ThreadPanel) | — | — | Ver Inbox |
+| Puxar do WhatsApp | — | secondary | POST enrich-peer deep; só se PN livre e WA `open` |
+| Conectar WhatsApp | — | secondary | → `/conexoes` se WA ≠ `open` e sem PN |
+| (+ ThreadPanel) | — | — | Ver Inbox; sem botão Contexto nesta página |
 
-**Campos drawer:** Já cadastrado (Select) · Nome* · Telefone* (se sem E.164; + **Puxar do WhatsApp** se sessão `open`) · Papel radio (Síndico/Administrador/Outro) · Cargo livre · E-mail · Condomínio*.
+**Campos drawer:** Já cadastrado (Select) · Nome* · Telefone* (se sem E.164; **Puxar do WhatsApp** se sessão `open`, senão **Conectar WhatsApp**) · Papel radio (Síndico/Administrador/Outro) · Cargo livre · E-mail · Condomínio*.
 
 **Estados:** 403 · ErrorBanner · loading “Carregando fila…” · enrich “Puxando…” / “Consultando Evolution…” · toast se Evolution não liberar PN.
 
@@ -471,6 +469,7 @@ Telefone*  [+55 …]  [Puxar do WhatsApp]  ← só se WA open e sem PN
 
 - [ ] CTA único “Vincular ao fluxo” repetido painel/drawer
 - [ ] Stepper texto 1-2-3 vs espaço
+- [ ] Card da fila = mesmo chrome de Atendimento (borda/raio/barra)
 - [ ] Fila 280px densidade hora/preview
 
 ---
@@ -521,44 +520,49 @@ DRAWER: Novo chamado (título, condo, contato, responsável)
 
 ## 10. 8. Ficha do chamado `/chamados/[id]`
 
-**Arquivo:** `app/(app)/chamados/[id]/page.tsx`  
-**Full-bleed · dossiê 3 cols `1fr / 1fr / 240`.**
+**Arquivos:** `app/(app)/chamados/[id]/page.tsx` + `ticket-dossie-header` / `ticket-case-panel` / `ticket-edit-drawer` / `ticket-context-rail`  
+**Full-bleed · dossiê `1fr / 280px` (lg+).**
 
 ```text
-┌─ ← Chamados ────────────────────────────────────────────────┐
-│ #PROT  [StatusBadge]                                        │
-│ título · condomínio                                         │
-├─ Demanda/Contexto ─┬─ Atividades/Docs ─┬─ Notas/Ações 240 ─┤
-│ título             │ Timeline msgs+audit│ Metadados editáveis│
-│ cat · prioridade   │ Documentos lista   │ Título Prioridade  │
-│ status             │ Baixar / Enviar WA │ Categoria Status   │
-│ condo contato resp │ [Novo documento]   │ Responsável (admin)│
-│                    │                    │ [Salvar] secondary │
-│                    │                    │ ▸ Histórico técnico│
-│                    │                    │ WhatsApp|Nota int. │
-│                    │                    │ [msg][file][Enviar]│
-└────────────────────┴────────────────────┴────────────────────┘
-DIALOG: Novo documento (DocumentFichaForm)
+┌─ ← Chamados                                    [Detalhes*] [Editar dados] ─┐
+│ #PROT  [StatusBadge]  [Priority]                                           │
+│ título                                                                     │
+│ condo · contato · responsável · prazo …                                    │
+├─ [Caso|Linha do tempo|Docs n|Comunicação] ─┬─ Contexto 280px (lg+) ───────┤
+│ Caso: categoria · aberto em                │ Condo / Contato / Resp        │
+│ PRAZOS [Adicionar] · Concluir              │ Origem / Próximo prazo        │
+│ (sem selects)                              │ *Detalhes = mesmo em Drawer   │
+│ Linha do tempo: Timeline                   │                               │
+│ Docs: lista Baixar / WA · Novo documento   │                               │
+│ Comunicação: bolhas + composer             │                               │
+└────────────────────────────────────────────┴───────────────────────────────┘
+DRAWER Editar: Título Prioridade Categoria Status Responsável(admin) [Salvar]
+DIALOG: Novo documento | Adicionar prazo
 ```
 
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
 | ← Chamados | — | Link brand | Volta kanban |
+| Editar dados | — | secondary sm | Abre Drawer PATCH ticket |
+| Detalhes | — | ghost sm | Só `<lg`: Drawer com contexto |
 | Baixar | — | link primary | `/api/files/...` |
 | Enviar WhatsApp (doc) | — | link primary | POST send-draft |
 | Novo documento | — | secondary sm | Abre Dialog ficha |
-| Salvar (metadados) | — | secondary w-full | PATCH ticket |
-| Histórico técnico | — | Accordion | Audit events (admin) |
-| WhatsApp / Nota interna | — | primary/secondary sm | Toggle mode (`publica` / `interna`) — rótulos distintos do Inbox (“Resposta”) |
+| Adicionar prazo | — | secondary sm | Dialog prazo |
+| Concluir (prazo) | — | ghost sm | PATCH deadline done |
+| Salvar (Drawer) | — | default | PATCH ticket |
+| WhatsApp / Nota interna | — | primary/secondary sm | Toggle mode (`publica` / `interna`) |
 | Enviar / Salvar nota | — | default | POST `/api/tickets/{id}/messages` |
 | DocumentFicha Cancelar | — | secondary | Fecha modal |
 | Salvar documento / Salvando… | — | default | Upload + metadados (kind/title/purpose/file) |
 
-**Estados:** 403 · 404 · Skeleton · ErrorBanner · docs “Nenhum documento”.
+**Estados:** 403 · 404 · Skeleton · ErrorBanner · docs/prazos empty quietos.
 
 ### Checklist auditoria — Ficha chamado
 
-- [ ] 3 colunas vs scroll independente
+- [ ] Protocolo/status/prioridade uma vez no header
+- [ ] Caso sem selects; edição só no Drawer com Labels
+- [ ] Rail lg+ vs Detalhes Drawer mobile
 - [ ] Dual composer (ficha vs Inbox) — consistência
 - [ ] Labels uppercase 10px tracking
 - [ ] Ações doc inline Baixar/WA
@@ -570,32 +574,26 @@ DIALOG: Novo documento (DocumentFichaForm)
 **Arquivo:** `app/(app)/documentos/page.tsx`  
 **Padded (não full-bleed).**
 
-### Lista de pastas
+### Tabela + ficha
 
 ```text
-┌─ Documentos · N arquivos em M condomínios ──────────────────┐
-│ [Buscar condomínio…]                                        │
-│ 📁 Nome condo                              n · tamanho      │
-│ 📁 …                                                        │
+┌─ Documentos · [Novo documento] ─────────────────────────────┐
+│ [Buscar…] [Condomínio ▼] [Chamado ▼]                        │
+│ documento | tipo | finalidade | condomínio | chamado | data │
+│                                          ┌─ ficha ────────┐ │
+│                                          │ tipo · propósito│ │
+│                                          │ Baixar · WA     │ │
+│                                          └────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
+DIALOG: Novo documento | DRAWER (celular): mesma ficha
 ```
 
-### Dentro da pasta
-
-```text
-┌─ ← Documentos · Nome condo · [Novo documento] ──────────────┐
-│ [Buscar arquivo…] [Chamado ▼]                               │
-│ 📄/🖼/🎵 título · tipo · size     → preview drawer          │
-└─────────────────────────────────────────────────────────────┘
-DIALOG: Novo documento | DRAWER: preview + Baixar + WA
-```
+Sem selo ICP, páginas ou hash. Campos só os que a API devolve.
 
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
-| ← Documentos | — | link primary | Volta pastas |
 | Novo documento | — | default | Dialog ficha |
-| Pasta condomínio | FolderOpen 16px | button row | Entra pasta |
-| Linha arquivo | FileText / Image / Music | button | Abre preview |
+| Linha | FileText / Image / Music | button | Abre ficha |
 | Baixar | — | link primary | Download |
 | Enviar WhatsApp | — | link primary | send-draft (se ticket) |
 | Cancelar (ficha) | — | secondary | Fecha Dialog |
@@ -618,10 +616,15 @@ DIALOG: Novo documento | DRAWER: preview + Baixar + WA
 ```text
 ┌─ Condomínios · [Novo condomínio] (admin) ───────────────────┐
 │ [Buscar…]                                                   │
-├─ lista ──────┬─ detalhe ────────────────────────────────────┤
-│ Nome         │ Nome · Editar cadastro → /condominios/[id]   │
-│ (ativo brand)│ Contatos…                                    │
-│              │ [Adicionar contato] secondary                │
+├─ lista ──────┬─ detalhe (bg-background) ────────────────────┤
+│ Nome         │ ┌ card ficha · Editar cadastro ────────────┐ │
+│ (ativo brand)│ │ contagens Contatos / Documentos / Chamados│ │
+│              │ └───────────────────────────────────────────┘ │
+│              │ CONTATOS · [Adicionar contato] secondary     │
+│              │ ┌ card contato (avatar · nome · tel) ───────┐ │
+│              │ └───────────────────────────────────────────┘ │
+│              │ CHAMADOS · ┌ card link /chamados/[id] ──────┐ │
+│              │            └────────────────────────────────┘ │
 └──────────────┴──────────────────────────────────────────────┘
 DRAWERS: Novo condomínio | Novo contato
 ```
@@ -641,6 +644,7 @@ DRAWERS: Novo condomínio | Novo contato
 
 - [ ] Master-detail border-l ativo
 - [ ] CTA Novo vs Adicionar contato (hierarquia)
+- [ ] Painel direito cinza; ficha / contato / chamado em cards
 
 ---
 

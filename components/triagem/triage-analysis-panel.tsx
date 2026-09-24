@@ -2,21 +2,24 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
+import { useSyncOwnMessages } from "@/lib/client/sync-own-messages";
+import { useScrollThreadToEnd } from "@/lib/client/stick-thread-scroll";
 import { conversationPhoneLabel } from "@/lib/phone/display";
 import { CATEGORIES, CATEGORY_LABEL, PRIORITIES, PRIORITY_LABEL } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 type Item = {
   id: string;
@@ -33,6 +36,11 @@ type Item = {
 
 type Member = { id: string; email: string; nome?: string; role: string; ativo: boolean };
 
+function defaultTitle(contactName: string | undefined, category: string) {
+  const label = CATEGORY_LABEL[category] || category;
+  return contactName ? `${contactName} — ${label}` : label;
+}
+
 export function TriageAnalysisPanel({
   id,
   showThread = true,
@@ -48,6 +56,8 @@ export function TriageAnalysisPanel({
   const [category, setCategory] = useState("outro");
   const [priority, setPriority] = useState("media");
   const [assignedToId, setAssignedToId] = useState("");
+  const [title, setTitle] = useState("");
+  const [titleTouched, setTitleTouched] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   const itemQ = useQuery({
@@ -61,10 +71,12 @@ export function TriageAnalysisPanel({
     queryFn: () => api<MessageBubbleItem[]>(`/api/conversations/${conversationId}/messages?pageSize=50`),
     ...livePollQuery,
   });
+  useSyncOwnMessages(showThread ? conversationId : undefined);
   const team = useQuery({ queryKey: ["team"], queryFn: () => api<Member[]>("/api/team") });
   const patch = useMutation({
-    mutationFn: (body: unknown) => api(`/api/triage/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-    onSuccess: (_, body) => {
+    mutationFn: (body: unknown) =>
+      api<{ id: string }>(`/api/triage/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: (res, body) => {
       qc.invalidateQueries({ queryKey: ["triage"] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -73,13 +85,37 @@ export function TriageAnalysisPanel({
       if (action === "promote") {
         toast("Chamado criado");
         onDone?.();
-        router.push("/chamados");
+        router.push(`/chamados/${res.data.id}`);
       } else if (action === "archive") {
         toast("Solicitação arquivada");
         onDone?.();
         router.push("/triagem");
       }
     },
+  });
+
+  const item = itemQ.data?.data;
+  const contactName = item?.conversation.contact?.nome;
+
+  useEffect(() => {
+    setCategory("outro");
+    setPriority("media");
+    setAssignedToId("");
+    setTitleTouched(false);
+    setTitle(defaultTitle(contactName, "outro"));
+  }, [id, contactName]);
+
+  useEffect(() => {
+    if (titleTouched || !contactName) return;
+    setTitle(defaultTitle(contactName, category));
+  }, [category, contactName, titleTouched]);
+
+  const messages = messagesQ.data?.data ?? [];
+  const threadScrollRef = useRef<HTMLDivElement>(null);
+  const { onScroll: onThreadScroll } = useScrollThreadToEnd(threadScrollRef, {
+    conversationKey: conversationId,
+    lastMessageId: messages[messages.length - 1]?.id ?? null,
+    messageCount: messages.length,
   });
 
   if (itemQ.isLoading) return <Skeleton className="h-48 m-3" />;
@@ -91,39 +127,18 @@ export function TriageAnalysisPanel({
     );
   }
 
-  const item = itemQ.data?.data;
   if (!item) return <EmptyState title="Solicitação não encontrada" />;
 
   const members = (team.data?.data ?? []).filter((m) => m.ativo);
   const threadTitle = item.conversation.contact?.nome || "Solicitação";
   const threadSub = `${item.conversation.condominium?.nome || "sem condomínio"} · ${conversationPhoneLabel(item.conversation.contact?.phoneE164, item.conversation.peerPhoneE164)}`;
-  const messages = messagesQ.data?.data ?? [];
   const canPromote = Boolean(item.conversation.contact && item.conversation.condominium);
+  const titleOk = title.trim().length >= 3;
 
-  return (
-    <div className={showThread ? "grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_240px]" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
-      {showThread ? (
-        <section className="flex min-h-0 flex-col overflow-hidden border-r border-border" aria-label="Mensagens">
-          <div className="shrink-0 border-b border-border px-3 py-2">
-            <p className="font-medium">{threadTitle}</p>
-            <p className="truncate text-xs text-muted-foreground">{threadSub}</p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-            {messagesQ.isLoading ? <Skeleton className="h-20" /> : null}
-            {messagesQ.isError ? (
-              <ErrorBanner message="Falha ao carregar mensagens." onRetry={() => messagesQ.refetch()} />
-            ) : null}
-            {!messagesQ.isLoading && !messagesQ.isError && messages.length === 0 ? (
-              <EmptyState title="Sem mensagens ainda" hint="Quando o WhatsApp entregar texto, ele aparece aqui." />
-            ) : null}
-            {!messagesQ.isLoading && !messagesQ.isError && messages.length > 0 ? (
-              <MessageBubbles messages={messages} />
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-      <section className="min-h-0 space-y-3 overflow-y-auto p-3">
-        <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Análise</h2>
+  const classification = (
+    <section className="flex min-h-0 flex-col overflow-hidden bg-card">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <h2 className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Classificação</h2>
         <div className="flex items-center gap-3">
           <PeerAvatar
             name={item.conversation.contact?.nome || item.conversation.peerDisplayName || "Contato"}
@@ -141,6 +156,20 @@ export function TriageAnalysisPanel({
         <div>
           <p className="text-xs text-muted-foreground">Condomínio</p>
           <p>{item.conversation.condominium?.nome}</p>
+        </div>
+        <div>
+          <Label htmlFor={`title-${id}`}>Título</Label>
+          <Input
+            id={`title-${id}`}
+            required
+            minLength={3}
+            maxLength={200}
+            value={title}
+            onChange={(e) => {
+              setTitleTouched(true);
+              setTitle(e.target.value);
+            }}
+          />
         </div>
         <div>
           <Label htmlFor={`cat-${id}`}>Categoria</Label>
@@ -174,27 +203,80 @@ export function TriageAnalysisPanel({
           </Select>
         </div>
         {patch.isError ? <p className="text-sm text-[var(--danger)]">{(patch.error as Error).message}</p> : null}
-        <div className="flex flex-col gap-2 pt-2">
-          <Button
-            type="button"
-            className="w-full"
-            disabled={!canPromote || patch.isPending}
-            onClick={() =>
-              patch.mutate({
-                action: "promote",
-                category,
-                priority,
-                assignedToId: assignedToId || null,
-              })
-            }
-          >
-            Criar chamado
-          </Button>
-          <Button type="button" variant="ghost" className="w-full" onClick={() => setConfirmArchive(true)}>
-            Arquivar
-          </Button>
-        </div>
-      </section>
+      </div>
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border p-3">
+        <Button
+          type="button"
+          className="w-full"
+          disabled={!canPromote || !titleOk || patch.isPending}
+          onClick={() =>
+            patch.mutate({
+              action: "promote",
+              title: title.trim(),
+              category,
+              priority,
+              assignedToId: assignedToId || null,
+            })
+          }
+        >
+          Criar chamado
+        </Button>
+        <Button type="button" variant="ghost" className="w-full" onClick={() => setConfirmArchive(true)}>
+          Arquivar
+        </Button>
+      </div>
+    </section>
+  );
+
+  const thread = showThread ? (
+    <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Mensagens">
+      <div className="shrink-0 border-b border-border px-3 py-2">
+        <p className="font-medium">{threadTitle}</p>
+        <p className="truncate text-xs text-muted-foreground">{threadSub}</p>
+      </div>
+      <div
+        ref={threadScrollRef}
+        onScroll={onThreadScroll}
+        className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto px-3 py-3"
+      >
+        {messagesQ.isLoading ? <Skeleton className="h-20" /> : null}
+        {messagesQ.isError ? (
+          <ErrorBanner message="Falha ao carregar mensagens." onRetry={() => messagesQ.refetch()} />
+        ) : null}
+        {!messagesQ.isLoading && !messagesQ.isError && messages.length === 0 ? (
+          <EmptyState title="Sem mensagens ainda" hint="Quando o WhatsApp entregar texto, ele aparece aqui." />
+        ) : null}
+        {!messagesQ.isLoading && !messagesQ.isError && messages.length > 0 ? (
+          <div data-thread-scroll-content>
+            <MessageBubbles messages={messages} />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  ) : null;
+
+  return (
+    <>
+      <div
+        className={cn(
+          showThread
+            ? "grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px]"
+            : "flex min-h-0 flex-1 flex-col overflow-hidden",
+        )}
+      >
+        {showThread ? (
+          <>
+            <div className="order-1 min-h-0 overflow-hidden lg:order-2 lg:border-l lg:border-border">
+              {classification}
+            </div>
+            <div className="order-2 min-h-0 overflow-hidden border-t border-border lg:order-1 lg:border-t-0">
+              {thread}
+            </div>
+          </>
+        ) : (
+          classification
+        )}
+      </div>
       <ConfirmDialog
         open={confirmArchive}
         onClose={() => setConfirmArchive(false)}
@@ -204,6 +286,6 @@ export function TriageAnalysisPanel({
         danger
         onConfirm={() => patch.mutate({ action: "archive" })}
       />
-    </div>
+    </>
   );
 }

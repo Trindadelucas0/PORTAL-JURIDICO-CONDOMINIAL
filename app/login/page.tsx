@@ -53,7 +53,7 @@ function LoginForm() {
 
   return (
     <div className="grid min-h-dvh place-items-center bg-background px-4">
-      <div className="w-full max-w-sm border border-border bg-card px-6 py-8">
+      <div className="w-full max-w-sm rounded-[var(--radius)] border border-border bg-card px-6 py-8 shadow-[var(--shadow-sm)]">
         <header className="text-center">
           <p className="font-wordmark text-3xl text-foreground">Juricon</p>
           <h1 className="mt-2 text-sm font-medium text-foreground">Portal jurídico interno</h1>

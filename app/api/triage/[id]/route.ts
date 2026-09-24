@@ -14,6 +14,7 @@ const patchSchema = z.discriminatedUnion("action", [
     category: ticketCategorySchema,
     priority: ticketPrioritySchema,
     assignedToId: z.string().uuid().optional().nullable(),
+    title: z.string().min(3).max(200).optional(),
   }),
 ]);
 

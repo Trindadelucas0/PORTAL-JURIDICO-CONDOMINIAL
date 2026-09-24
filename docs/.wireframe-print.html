@@ -1,0 +1,2374 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Juricon — Wireframes UX/UI</title>
+  <style>
+:root {
+  --brand: #1b3a4b;
+  --page: #f5f6f8;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --border: #e3e6ec;
+}
+* { box-sizing: border-box; }
+html { font-size: 11pt; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, Segoe UI, sans-serif;
+  line-height: 1.45;
+}
+.cover {
+  padding: 2rem 0 1rem;
+  border-bottom: 3px solid var(--brand);
+  margin-bottom: 1.5rem;
+}
+.cover .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+.cover h1 {
+  font-family: Georgia, "Fraunces", serif;
+  font-weight: 400;
+  font-size: 2.2rem;
+  color: var(--brand);
+  margin: 0 0 0.35rem;
+}
+.cover .sub { color: var(--muted); margin: 0 0 1.25rem; }
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 0 0 1.25rem;
+}
+.meta-grid dt { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.meta-grid dd { margin: 0; font-weight: 600; }
+.swatch-row, .swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.75rem;
+}
+.swatch { display: flex; gap: 0.5rem; align-items: center; }
+.swatch .chip {
+  width: 2.25rem; height: 2.25rem; border-radius: 6px; flex-shrink: 0;
+}
+.swatch .meta { font-size: 0.7rem; }
+.swatch code { display: block; color: var(--muted); font-size: 0.65rem; }
+.status-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+}
+.status-pill .dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; }
+.status-pill code { font-weight: 400; font-size: 0.65rem; opacity: 0.85; }
+.prio-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+.prio { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
+.prio .bar { width: 0.35rem; height: 1.4rem; border-radius: 2px; }
+.prio code { color: var(--muted); font-size: 0.65rem; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.btn-demo {
+  padding: 0.35rem 0.75rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600;
+}
+.hint { color: var(--muted); font-size: 0.85rem; }
+.content h1 { font-size: 1.4rem; color: var(--brand); border-bottom: 2px solid var(--border); padding-bottom: 0.35rem; }
+.content h2 {
+  font-size: 1.15rem;
+  color: var(--brand);
+  margin-top: 1.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  page-break-before: always;
+}
+.content h2:first-child { page-break-before: auto; border-top: none; }
+.content h3 { font-size: 1rem; margin-top: 1.1rem; }
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin: 0.5rem 0 1rem;
+}
+.content th, .content td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.45rem;
+  text-align: left;
+  vertical-align: top;
+}
+.content th { background: var(--page); font-weight: 600; }
+.content pre {
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 0.58rem;
+  line-height: 1.25;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  page-break-inside: avoid;
+}
+.content code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
+  background: #eef0f4;
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+}
+.content pre code { background: transparent; padding: 0; }
+.content blockquote {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--brand);
+  background: var(--page);
+  color: var(--muted);
+}
+.content ul, .content ol { padding-left: 1.25rem; }
+.content a { color: var(--brand); text-decoration: none; }
+.content hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+.page-break { page-break-after: always; }
+@media print {
+  body { background: #fff; }
+  .content h2 { page-break-before: always; }
+  .content h2:first-of-type { page-break-before: auto; }
+}
+</style>
+</head>
+<body>
+  
+<section class="cover page-break">
+  <p class="eyebrow">Juricon · escritório interno</p>
+  <h1>Wireframes UX/UI</h1>
+  <p class="sub">Catálogo as-is · auditoria de telas, cores e botões</p>
+  <dl class="meta-grid">
+    <div><dt>Versão</dt><dd>0.9.8 — PN WhatsApp correto</dd></div>
+    <div><dt>Gerado em</dt><dd>21/09/2026</dd></div>
+    <div><dt>Fonte</dt><dd>docs/WIREFRAME-TELAS.md</dd></div>
+    <div><dt>Natureza</dt><dd>Não é redesign · não é fonte de regras</dd></div>
+  </dl>
+  <div class="swatch-row">
+    <div class="swatch">
+      <div class="chip" style="background:#f5f6f8;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>page / background</strong>
+        <code>#f5f6f8</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#ffffff;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>card / sidebar</strong>
+        <code>#ffffff</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#0f172a;"></div>
+      <div class="meta">
+        <strong>ink / foreground</strong>
+        <code>#0f172a</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#64748b;"></div>
+      <div class="meta">
+        <strong>muted</strong>
+        <code>#64748b</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#1b3a4b;"></div>
+      <div class="meta">
+        <strong>brand / primary</strong>
+        <code>#1b3a4b</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#f7f5ef;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>primary-foreground</strong>
+        <code>#f7f5ef</code>
+      </div>
+    </div></div>
+</section>
+
+<section class="palette page-break">
+  <h2>Paleta visual do sistema</h2>
+  <p class="hint">Tokens de <code>app/globals.css</code> — cores reais usadas no PDF.</p>
+  <h3>Tokens base</h3>
+  <div class="swatch-grid">
+    <div class="swatch">
+      <div class="chip" style="background:#f5f6f8;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>page / background</strong>
+        <code>#f5f6f8</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#ffffff;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>card / sidebar</strong>
+        <code>#ffffff</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#0f172a;"></div>
+      <div class="meta">
+        <strong>ink / foreground</strong>
+        <code>#0f172a</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#64748b;"></div>
+      <div class="meta">
+        <strong>muted</strong>
+        <code>#64748b</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#1b3a4b;"></div>
+      <div class="meta">
+        <strong>brand / primary</strong>
+        <code>#1b3a4b</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#f7f5ef;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>primary-foreground</strong>
+        <code>#f7f5ef</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#eef0f4;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>secondary / surface</strong>
+        <code>#eef0f4</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#e3e6ec;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>border</strong>
+        <code>#e3e6ec</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#cdd3dd;border:1px solid #cdd3dd;"></div>
+      <div class="meta">
+        <strong>input / border-strong</strong>
+        <code>#cdd3dd</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#b8a07a;"></div>
+      <div class="meta">
+        <strong>accent</strong>
+        <code>#b8a07a</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#059669;"></div>
+      <div class="meta">
+        <strong>ok / success</strong>
+        <code>#059669</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#d97706;"></div>
+      <div class="meta">
+        <strong>warn</strong>
+        <code>#d97706</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#dc2626;"></div>
+      <div class="meta">
+        <strong>danger</strong>
+        <code>#dc2626</code>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:#128c7e;"></div>
+      <div class="meta">
+        <strong>WhatsApp</strong>
+        <code>#128c7e</code>
+      </div>
+    </div></div>
+  <h3>Status de chamado</h3>
+  <div class="status-row">
+    <div class="status-pill" style="background:#eff6ff;color:#2563eb;border:1px solid #2563eb33;">
+      <span class="dot" style="background:#2563eb"></span>
+      aberto
+      <code>#2563eb</code>
+    </div>
+    <div class="status-pill" style="background:#fffbeb;color:#d97706;border:1px solid #d9770633;">
+      <span class="dot" style="background:#d97706"></span>
+      em_andamento
+      <code>#d97706</code>
+    </div>
+    <div class="status-pill" style="background:#f1f5f9;color:#475569;border:1px solid #47556933;">
+      <span class="dot" style="background:#475569"></span>
+      aguardando
+      <code>#475569</code>
+    </div>
+    <div class="status-pill" style="background:#ecfdf5;color:#059669;border:1px solid #05966933;">
+      <span class="dot" style="background:#059669"></span>
+      resolvido
+      <code>#059669</code>
+    </div>
+    <div class="status-pill" style="background:#f1f5f9;color:#64748b;border:1px solid #64748b33;">
+      <span class="dot" style="background:#64748b"></span>
+      arquivado
+      <code>#64748b</code>
+    </div></div>
+  <h3>Prioridade</h3>
+  <div class="prio-row">
+    <div class="prio">
+      <div class="bar" style="background:#dc2626"></div>
+      <span>urgente</span>
+      <code>#dc2626</code>
+    </div>
+    <div class="prio">
+      <div class="bar" style="background:#ea580c"></div>
+      <span>alta</span>
+      <code>#ea580c</code>
+    </div>
+    <div class="prio">
+      <div class="bar" style="background:#475569"></div>
+      <span>media</span>
+      <code>#475569</code>
+    </div>
+    <div class="prio">
+      <div class="bar" style="background:#94a3b8"></div>
+      <span>baixa</span>
+      <code>#94a3b8</code>
+    </div></div>
+  <h3>Variantes de botão</h3>
+  <div class="btn-row">
+    <div class="btn-demo" style="background:#1b3a4b;color:#f7f5ef;border:1px solid transparent;">
+      default / primary
+    </div>
+    <div class="btn-demo" style="background:#eef0f4;color:#1b3a4b;border:1px solid transparent;">
+      secondary
+    </div>
+    <div class="btn-demo" style="background:#ffffff;color:#0f172a;border:1px solid #e3e6ec;">
+      outline
+    </div>
+    <div class="btn-demo" style="background:transparent;color:#0f172a;border:1px solid #e3e6ec;">
+      ghost
+    </div>
+    <div class="btn-demo" style="background:rgba(220,38,38,0.1);color:#dc2626;border:1px solid transparent;">
+      destructive
+    </div>
+    <div class="btn-demo" style="background:#dc2626;color:#ffffff;border:1px solid transparent;">
+      danger
+    </div></div>
+</section>
+
+  <main class="content">
+    <h1>Juricon — Wireframe de telas (auditoria UX/UI)</h1>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Versão do sistema</td>
+<td>0.9.8 — PN WhatsApp correto</td>
+</tr>
+<tr>
+<td>Data deste catálogo</td>
+<td>21/09/2026</td>
+</tr>
+<tr>
+<td>Escopo</td>
+<td>Pasta <code>PORTAL JURIDICO CONDOMINIAL</code> (app operacional)</td>
+</tr>
+<tr>
+<td>Natureza</td>
+<td><strong>As-is</strong> do código — não é redesign nem fonte de regras</td>
+</tr>
+<tr>
+<td>Fonte de comportamento</td>
+<td><a href="../DOCUMENTACAO-SISTEMA.md"><code>DOCUMENTACAO-SISTEMA.md</code></a></td>
+</tr>
+<tr>
+<td>PDF (paleta + wireframes)</td>
+<td><a href="WIREFRAME-TELAS.pdf"><code>WIREFRAME-TELAS.pdf</code></a> — <code>pnpm docs:wireframe-pdf</code></td>
+</tr>
+<tr>
+<td>Onde olhar tokens</td>
+<td><a href="../app/globals.css"><code>app/globals.css</code></a></td>
+</tr>
+<tr>
+<td>Onde olhar shell</td>
+<td><a href="../components/layout/app-shell.tsx"><code>components/layout/app-shell.tsx</code></a></td>
+</tr>
+<tr>
+<td>Onde olhar botões</td>
+<td><a href="../components/ui/button.tsx"><code>components/ui/button.tsx</code></a></td>
+</tr>
+</tbody></table>
+<p><strong>Como usar este arquivo:</strong> auditar ícones, margens, divisores, hierarquia e CTAs. Cada ficha tem checklist em branco. Correções visuais são outra entrega.</p>
+<p><strong>Fora do escopo:</strong> protótipo da pasta pai (<code>condominio-advogada/app</code>), questionário <code>perguntas/</code>, rota <code>/sindico</code>, rota <code>/ia</code>.</p>
+<hr>
+<h2>Índice</h2>
+<ol>
+<li><a href="#1-sistema-visual">Sistema visual</a></li>
+<li><a href="#2-0-chrome--appshell">0. Chrome — AppShell</a></li>
+<li><a href="#3-1-login-login">1. Login <code>/login</code></a></li>
+<li><a href="#4-2-vis%C3%A3o-">2. Visão <code>/</code></a></li>
+<li><a href="#5-3-inbox-atendimento">3. Inbox <code>/atendimento</code></a></li>
+<li><a href="#6-4-triagem-triagem">4. Triagem <code>/triagem</code></a></li>
+<li><a href="#7-5-triagem-deep-link-triagemid">5. Triagem deep link <code>/triagem/[id]</code></a></li>
+<li><a href="#8-6-n%C3%A3o-vinculados-nao-vinculados">6. Não vinculados <code>/nao-vinculados</code></a></li>
+<li><a href="#9-7-chamados-chamados">7. Chamados <code>/chamados</code></a></li>
+<li><a href="#10-8-ficha-do-chamado-chamadosid">8. Ficha do chamado <code>/chamados/[id]</code></a></li>
+<li><a href="#11-9-documentos-documentos">9. Documentos <code>/documentos</code></a></li>
+<li><a href="#12-10-condom%C3%ADnios-condominios">10. Condomínios <code>/condominios</code></a></li>
+<li><a href="#13-11-ficha-do-condom%C3%ADnio-condominiosid">11. Ficha do condomínio <code>/condominios/[id]</code></a></li>
+<li><a href="#14-12-equipe-equipe">12. Equipe <code>/equipe</code></a></li>
+<li><a href="#15-13-conex%C3%B5es-conexoes">13. Conexões <code>/conexoes</code></a></li>
+<li><a href="#16-14-prazos-prazos">14. Prazos <code>/prazos</code></a></li>
+<li><a href="#17-overlays">Overlays</a></li>
+<li><a href="#18-ap%C3%AAndice-a--matriz-de-pap%C3%A9is">Apêndice A — Matriz de papéis</a></li>
+<li><a href="#19-ap%C3%AAndice-b--mapa-lucide">Apêndice B — Mapa Lucide</a></li>
+<li><a href="#20-ap%C3%AAndice-c--checklist-global">Apêndice C — Checklist global</a></li>
+</ol>
+<blockquote>
+<p><em>(Diagrama Mermaid omitido no PDF — ver o Markdown.)</em></p>
+</blockquote>
+<hr>
+<h2>1. Sistema visual</h2>
+<h3>1.1 Paleta (hex reais)</h3>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Hex</th>
+<th>Uso</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--page</code> / <code>--background</code></td>
+<td><code>#f5f6f8</code></td>
+<td>Fundo da página</td>
+</tr>
+<tr>
+<td><code>--card</code> / <code>--sidebar</code> / <code>--popover</code></td>
+<td><code>#ffffff</code></td>
+<td>Cards, sidebar, popovers</td>
+</tr>
+<tr>
+<td><code>--ink</code> / <code>--foreground</code></td>
+<td><code>#0f172a</code></td>
+<td>Texto principal</td>
+</tr>
+<tr>
+<td><code>--muted</code> / <code>--muted-foreground</code></td>
+<td><code>#64748b</code></td>
+<td>Texto secundário / meta</td>
+</tr>
+<tr>
+<td><code>--brand</code> / <code>--primary</code></td>
+<td><code>#1b3a4b</code></td>
+<td>Marca, links, botão primário, item ativo</td>
+</tr>
+<tr>
+<td><code>--brand-soft</code></td>
+<td><code>#2a4f63</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>--primary-foreground</code></td>
+<td><code>#f7f5ef</code></td>
+<td>Texto sobre navy</td>
+</tr>
+<tr>
+<td><code>--secondary</code> / <code>--muted-bg</code> / <code>--surface-2</code></td>
+<td><code>#eef0f4</code></td>
+<td>Superfície secundária, botão secondary</td>
+</tr>
+<tr>
+<td><code>--border</code> / <code>--sidebar-border</code></td>
+<td><code>#e3e6ec</code></td>
+<td>Bordas / divisores</td>
+</tr>
+<tr>
+<td><code>--border-strong</code> / <code>--input</code></td>
+<td><code>#cdd3dd</code></td>
+<td>Inputs, bordas fortes</td>
+</tr>
+<tr>
+<td><code>--accent</code></td>
+<td><code>#b8a07a</code></td>
+<td>Dourado decorativo</td>
+</tr>
+<tr>
+<td><code>--ok</code> / <code>--success</code></td>
+<td><code>#059669</code></td>
+<td>Sucesso / WA conectado</td>
+</tr>
+<tr>
+<td><code>--warn</code> / <code>--warning</code></td>
+<td><code>#d97706</code></td>
+<td>Aviso</td>
+</tr>
+<tr>
+<td><code>--danger</code> / <code>--destructive</code></td>
+<td><code>#dc2626</code></td>
+<td>Erro / destrutivo</td>
+</tr>
+<tr>
+<td><code>--channel-whatsapp</code></td>
+<td><code>#128c7e</code></td>
+<td>Canal WhatsApp</td>
+</tr>
+<tr>
+<td><code>--ring</code></td>
+<td><code>#1b3a4b</code></td>
+<td>Focus ring</td>
+</tr>
+</tbody></table>
+<p><strong>Status de chamado</strong></p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Texto</th>
+<th>Fundo</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>aberto</td>
+<td><code>#2563eb</code></td>
+<td><code>#eff6ff</code></td>
+</tr>
+<tr>
+<td>em_andamento</td>
+<td><code>#d97706</code></td>
+<td><code>#fffbeb</code></td>
+</tr>
+<tr>
+<td>aguardando</td>
+<td><code>#475569</code></td>
+<td><code>#f1f5f9</code></td>
+</tr>
+<tr>
+<td>resolvido</td>
+<td><code>#059669</code></td>
+<td><code>#ecfdf5</code></td>
+</tr>
+<tr>
+<td>arquivado</td>
+<td><code>#64748b</code></td>
+<td><code>#f1f5f9</code></td>
+</tr>
+</tbody></table>
+<p><strong>Prioridade</strong></p>
+<table>
+<thead>
+<tr>
+<th>Nível</th>
+<th>Cor barra / pill</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>urgente</td>
+<td><code>#dc2626</code></td>
+</tr>
+<tr>
+<td>alta</td>
+<td><code>#ea580c</code></td>
+</tr>
+<tr>
+<td>media</td>
+<td><code>#475569</code> (pill: <code>bg-slate-800 text-white</code>)</td>
+</tr>
+<tr>
+<td>baixa</td>
+<td><code>#94a3b8</code> (pill: borda slate, fundo branco)</td>
+</tr>
+</tbody></table>
+<h3>1.2 Tipografia e densidade</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Corpo</td>
+<td>Inter (<code>--font-inter</code>)</td>
+</tr>
+<tr>
+<td>Wordmark</td>
+<td>Fraunces (<code>.font-wordmark</code>)</td>
+</tr>
+<tr>
+<td>Base</td>
+<td><code>html { font-size: 14px }</code></td>
+</tr>
+<tr>
+<td>Títulos de seção</td>
+<td><code>text-[10–11px] tracking-[0.14em] uppercase</code> muted</td>
+</tr>
+<tr>
+<td>Radius base</td>
+<td><code>--radius: 8px</code></td>
+</tr>
+<tr>
+<td>Botão</td>
+<td><code>rounded-lg</code>, h-8 default</td>
+</tr>
+<tr>
+<td>Content max</td>
+<td><code>--content-max: 1440px</code></td>
+</tr>
+<tr>
+<td>Motion</td>
+<td>fast 150ms · normal 200ms</td>
+</tr>
+<tr>
+<td>Sombras</td>
+<td><code>--shadow-sm</code> / <code>--shadow-md</code> / <code>--shadow-lg</code> (rgba 15,23,42)</td>
+</tr>
+</tbody></table>
+<h3>1.3 Variantes de botão</h3>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>Aparência</th>
+<th>Quando</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>default</code> / <code>primary</code></td>
+<td>navy <code>#1b3a4b</code> + texto <code>#f7f5ef</code>, hover 80%</td>
+<td>CTA principal</td>
+</tr>
+<tr>
+<td><code>secondary</code></td>
+<td>fundo <code>#eef0f4</code> + texto navy</td>
+<td>ação secundária</td>
+</tr>
+<tr>
+<td><code>outline</code></td>
+<td>borda <code>--border</code>, fundo branco</td>
+<td>contorno</td>
+</tr>
+<tr>
+<td><code>ghost</code></td>
+<td>transparente, hover muted</td>
+<td>ações leves / Arquivar</td>
+</tr>
+<tr>
+<td><code>destructive</code></td>
+<td>fundo danger/10, texto <code>#dc2626</code></td>
+<td>aviso suave</td>
+</tr>
+<tr>
+<td><code>danger</code></td>
+<td>sólido <code>#dc2626</code> + branco</td>
+<td>ConfirmDialog destrutivo</td>
+</tr>
+<tr>
+<td><code>link</code></td>
+<td>texto primary + underline</td>
+<td>links estilo botão</td>
+</tr>
+</tbody></table>
+<p><strong>Sizes:</strong> <code>default</code> h-8 · <code>xs</code> h-6 · <code>sm</code> h-7 · <code>lg</code> h-9 · <code>icon</code> / <code>icon-sm</code> / <code>icon-xs</code> / <code>icon-lg</code></p>
+<p><strong>Ícones em botão:</strong> SVG default <code>size-4</code> (16px); xs/sm 12–14px.</p>
+<h3>1.4 Espaçamento do shell</h3>
+<table>
+<thead>
+<tr>
+<th>Contexto</th>
+<th>Classes / medida</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sidebar</td>
+<td>~14rem (shadcn sidebar)</td>
+</tr>
+<tr>
+<td>Header sticky</td>
+<td><code>h-12</code>, <code>px-3</code>, <code>gap-3</code>, <code>border-b</code></td>
+</tr>
+<tr>
+<td>Main full-bleed</td>
+<td><code>p-0</code> em <code>/</code>, <code>/atendimento</code>, <code>/triagem</code>, <code>/nao-vinculados</code>, <code>/chamados</code>, <code>/prazos</code> (+ deep links)</td>
+</tr>
+<tr>
+<td>Main padded</td>
+<td><code>px-5 py-5 md:px-6 md:py-6</code>, max 1440px</td>
+</tr>
+<tr>
+<td>Bottom nav mobile</td>
+<td><code>fixed</code>, <code>grid-cols-4</code>, <code>border-t</code>, <code>pb-16</code> no main</td>
+</tr>
+<tr>
+<td>Item lista ativo</td>
+<td><code>border-l-2</code> brand + <code>bg color-mix(brand 6%, white)</code></td>
+</tr>
+<tr>
+<td>Workspace Inbox</td>
+<td><code>240px / 1fr / 220px</code> (xl)</td>
+</tr>
+<tr>
+<td>Workspace Unlinked</td>
+<td><code>280px / 1fr / 240px</code> (xl)</td>
+</tr>
+<tr>
+<td>Workspace Triagem</td>
+<td><code>240–320px / 1fr</code> (lg)</td>
+</tr>
+</tbody></table>
+<h3>1.5 FilterChip</h3>
+<p>Ativo: <code>border-primary bg-primary text-primary-foreground</code> · pill <code>px-3 py-1.5 rounded-full</code>.</p>
+<hr>
+<h2>2. 0. Chrome — AppShell</h2>
+<p><strong>Arquivo:</strong> <code>components/layout/app-shell.tsx</code><br><strong>Quem vê:</strong> qualquer usuário autenticado (itens <code>admin: true</code> filtrados no menu).</p>
+<h3>Desktop</h3>
+<pre><code class="language-text">┌─ ~14rem ───────┬──────────────────────────────────────────────────┐
+│ [Ticket] Juricon│ [☰ lg:hidden]  [🔍 Buscar…]          (ml-auto)  │
+│ (Fraunces 15px) ├──────────────────────────────────────────────────┤
+│                 │                                                  │
+│ OPERAÇÃO        │  MAIN                                            │
+│  ▸ Visão        │  full-bleed p-0  OU  px-5 py-5 (max 1440)        │
+│  Atendimento    │                                                  │
+│  Triagem * [n]  │                                                  │
+│  Não vinc. *[n] │                                                  │
+│  Chamados [n]   │                                                  │
+│  Prazos [n]     │                                                  │
+│  Documentos     │                                                  │
+│  Condomínios    │                                                  │
+│ ADMINISTRAÇÃO * │                                                  │
+│  Equipe         │                                                  │
+│  Conexões       │                                                  │
+│ ─────────────── │                                                  │
+│ ● WA · status   │  (admin, link → /conexoes)                       │
+│ v0.9.0          │                                                  │
+│ [Avatar] Nome ▼ │  menu: e-mail + Sair (LogOut)                    │
+└─────────────────┴──────────────────────────────────────────────────┘
+* só admin   ativo: barra vertical brand 2px + bg brand 8% + aria-current
+</code></pre>
+<h3>Mobile</h3>
+<pre><code class="language-text">┌────────────────────────────────────┐
+│ ☰   (busca oculta)          ● WA   │  header h-12
+├────────────────────────────────────┤
+│ conteúdo (1 painel por vez)        │
+│ pb-16                              │
+├────────────────────────────────────┤
+│ Início  Inbox  Triagem|+  Mais     │  admin: Triagem no 3º slot
+│ Início  Inbox  Chamados  Mais      │  funcionário: Chamados no 3º
+└────────────────────────────────────┘
++ sheet: Chamados, Documentos, Condomínios, Prazos,
+  (Triagem/Não vinc. se admin e não no bottom), Equipe, Conexões, Sair
+Sidebar = Sheet offcanvas ao tocar ☰
+</code></pre>
+<h3>Botões / links do chrome</h3>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone Lucide</th>
+<th>Variant / visual</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Juricon (logo)</td>
+<td>Ticket (14px no tile navy)</td>
+<td>SidebarMenuButton → Link <code>/</code></td>
+<td>Home</td>
+</tr>
+<tr>
+<td>Visão</td>
+<td>LayoutDashboard</td>
+<td>nav Link <code>/</code></td>
+<td>Dashboard</td>
+</tr>
+<tr>
+<td>Atendimento</td>
+<td>Inbox</td>
+<td>nav Link <code>/atendimento</code></td>
+<td>Inbox</td>
+</tr>
+<tr>
+<td>Triagem</td>
+<td>ListChecks</td>
+<td>nav Link <code>/triagem</code> · badge se count&gt;0</td>
+<td>Fila triagem (admin)</td>
+</tr>
+<tr>
+<td>Não vinculados</td>
+<td>UserRoundX</td>
+<td>nav Link <code>/nao-vinculados</code> · badge</td>
+<td>Fila identidade (admin)</td>
+</tr>
+<tr>
+<td>Chamados</td>
+<td>Ticket</td>
+<td>nav Link <code>/chamados</code> · badge abertos</td>
+<td>Quadro/Lista</td>
+</tr>
+<tr>
+<td>Prazos</td>
+<td>CalendarClock</td>
+<td>nav Link <code>/prazos</code> · badge vencidos</td>
+<td>Deadlines</td>
+</tr>
+<tr>
+<td>Documentos</td>
+<td>FolderOpen</td>
+<td>nav Link <code>/documentos</code></td>
+<td>Lista operacional</td>
+</tr>
+<tr>
+<td>Condomínios</td>
+<td>Building2</td>
+<td>nav Link <code>/condominios</code></td>
+<td>Cadastro</td>
+</tr>
+<tr>
+<td>Equipe</td>
+<td>Users</td>
+<td>nav Link <code>/equipe</code></td>
+<td>Usuários (admin)</td>
+</tr>
+<tr>
+<td>Conexões</td>
+<td>Radio</td>
+<td>nav Link <code>/conexoes</code></td>
+<td>WhatsApp (admin)</td>
+</tr>
+<tr>
+<td>Buscar…</td>
+<td>Search (14px)</td>
+<td>Input h-8 muted/50</td>
+<td>Submit → <code>?q=</code> no módulo ativo</td>
+</tr>
+<tr>
+<td>WhatsApp · {status}</td>
+<td>dot 6px ok/warn/muted</td>
+<td>Link texto xs</td>
+<td><code>/conexoes</code> (admin)</td>
+</tr>
+<tr>
+<td>Sair</td>
+<td>LogOut</td>
+<td>DropdownMenuItem</td>
+<td>POST <code>/api/auth/logout</code> → <code>/login</code></td>
+</tr>
+<tr>
+<td>Início / Inbox / Triagem</td>
+<td>Chamados / Mais</td>
+<td>LayoutDashboard / Inbox / ListChecks</td>
+<td>Ticket / Plus 18px</td>
+</tr>
+<tr>
+<td>SidebarTrigger</td>
+<td>PanelLeft (shadcn)</td>
+<td>ghost icon</td>
+<td>Abre Sheet sidebar</td>
+</tr>
+</tbody></table>
+<p><strong>Busca contextual:</strong> <code>/chamados</code> → chamados; <code>/documentos</code> → docs; <code>/triagem</code> → triagem; <code>/nao-vinculados</code> → não vinc.; <code>/condominios</code> → condomínios; <code>/equipe</code> → equipe; senão → <code>/atendimento</code>.</p>
+<h3>Checklist auditoria — Chrome</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Ícones: tamanho/alinhamento consistente entre grupos</li>
+<li><input disabled="" type="checkbox"> Margens: gap entre grupos, padding header/footer</li>
+<li><input disabled="" type="checkbox"> Linhas: <code>border-b</code> header vs <code>border-t</code> footer — peso visual</li>
+<li><input disabled="" type="checkbox"> Contraste: item ativo brand vs muted labels uppercase</li>
+<li><input disabled="" type="checkbox"> Bottom nav: só 3 itens — descoberta de Triagem/Chamados no mobile</li>
+</ul>
+<hr>
+<h2>3. 1. Login <code>/login</code></h2>
+<p><strong>Arquivo:</strong> <code>app/login/page.tsx</code><br><strong>Papel:</strong> público (sem shell).</p>
+<pre><code class="language-text">┌────────────────────────────────────────┐
+│         (page #f5f6f8 full screen)     │
+│                                        │
+│     ┌──────────────────────────┐       │
+│     │      Juricon (Fraunces)  │       │
+│     │  Gestão jurídica interna │       │
+│     │                          │       │
+│     │  E-mail  [____________]  │       │
+│     │  Senha   [________] [👁] │       │
+│     │  (erro vermelho se falha)│       │
+│     │  [      Entrar         ] │       │
+│     │  Acesso restrito…        │       │
+│     └──────────────────────────┘       │
+│         Frame max-w-sm shadow-lg       │
+└────────────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mostrar/Ocultar senha</td>
+<td>Eye / EyeOff</td>
+<td>ghost icon-sm</td>
+<td>Toggle <code>type</code> password/text</td>
+</tr>
+<tr>
+<td>Entrar / Entrando…</td>
+<td>—</td>
+<td>default w-full</td>
+<td>POST <code>/api/auth/login</code> → <code>/</code></td>
+</tr>
+</tbody></table>
+<p><strong>Campos:</strong> E-mail (required) · Senha (required).</p>
+<p><strong>Estados:</strong> loading no botão · erro <code>text-destructive</code> · sem empty.</p>
+<h3>Checklist auditoria — Login</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Ícone olho alinhado no input (<code>right-1</code>)</li>
+<li><input disabled="" type="checkbox"> Margem <code>space-y-4</code> / padding Frame</li>
+<li><input disabled="" type="checkbox"> Hierarquia wordmark vs descrição</li>
+<li><input disabled="" type="checkbox"> Contraste tip “Acesso restrito”</li>
+</ul>
+<hr>
+<h2>4. 2. Visão <code>/</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/page.tsx</code> + <code>attention-strip.tsx</code> + <code>activity-row.tsx</code><br><strong>Full-bleed.</strong> Admin vs funcionário mudam KPIs AGORA.</p>
+<pre><code class="language-text">┌─────────────────────────────────────────────────────────────┐
+│ Visão geral                              ● CONECTADO → WA   │
+│ O que precisa de ação agora · {data}                        │
+├─────────────────────────────────────────────────────────────┤
+│ AGORA                                                       │
+│ [n Não vinc.] [n Triagem] [n Não lidas] [n Abertos]         │
+│  Vincular →    Analisar →   Atender →     Operar →          │
+│ (funcionário: Meus / Andamento / Aguardando / Abertos)      │
+├────────────────────────────┬────────────────────────────────┤
+│ ATENÇÃO                    │ MINHA OPERAÇÃO    Chamados →   │
+│ n  label                   │ #PROT · contato  [Status] idade│
+│    detail               →  │ …                              │
+│ (ou Empty “Tudo limpo”)    │ (ou “Nenhum chamado…”)         │
+├────────────────────────────┴────────────────────────────────┤
+│ ATIVIDADE                                                   │
+│ hora  Contato · condo                          Inbox →      │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Visual</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>KPI AGORA (4)</td>
+<td>—</td>
+<td>Link · valor <code>text-xl</code> · verbo brand</td>
+<td>Navega href do KPI</td>
+</tr>
+<tr>
+<td>WA status header</td>
+<td>dot 8px</td>
+<td>Link uppercase xs</td>
+<td><code>/conexoes</code></td>
+</tr>
+<tr>
+<td>Itens Atenção</td>
+<td>—</td>
+<td>Link row + <code>→</code> brand</td>
+<td>href dinâmico</td>
+</tr>
+<tr>
+<td>Chamados →</td>
+<td>—</td>
+<td>Link brand xs</td>
+<td><code>/chamados</code></td>
+</tr>
+<tr>
+<td>Linha chamado</td>
+<td>StatusBadge</td>
+<td>Link</td>
+<td><code>/chamados/[id]</code></td>
+</tr>
+<tr>
+<td>ActivityRow Inbox →</td>
+<td>—</td>
+<td>Link log</td>
+<td><code>/atendimento</code></td>
+</tr>
+</tbody></table>
+<p><strong>Sem <code>&lt;Button&gt;</code>.</strong> Loading: Skeleton. Empty: “Tudo limpo” / textos muted. Error: ErrorBanner + ForbiddenState 403.</p>
+<h3>Checklist auditoria — Visão</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Faixa AGORA: densidade vs opacidade quando value=0</li>
+<li><input disabled="" type="checkbox"> Divisores <code>border-b</code> / grid 2 cols</li>
+<li><input disabled="" type="checkbox"> StatusBadge alinhado com idade tabular</li>
+<li><input disabled="" type="checkbox"> Dot WA vs texto uppercase</li>
+</ul>
+<hr>
+<h2>5. 3. Inbox <code>/atendimento</code></h2>
+<p><strong>Arquivos:</strong> <code>app/(app)/atendimento/page.tsx</code> · <code>thread-panel.tsx</code> · <code>workspace-shell.tsx</code><br><strong>Full-bleed · h = <code>100dvh - 3rem</code> · grid 240 / 1fr / 220.</strong></p>
+<pre><code class="language-text">┌─ Inbox ── [Todas] [Não lidas] [Triagem] ────────────────────┐
+├─ 240px ──────┬─ thread 1fr ──────────────┬─ 220px contexto ─┤
+│ Buscar…      │ ← Conversas (mobile)      │ Contexto / Recolh│
+│              │ Nome contato              │ Analisar → triagem│
+│ ● Nome       │ condo · canal             │ #PROT → chamado  │
+│   preview    │                           │ Accordion info   │
+│ (ativo: barra│  [bolhas WhatsApp/nota]   │                  │
+│  brand)      │                           │                  │
+│              │ Resposta | Nota interna   │                  │
+│              │ [msg…] [file] [Áudio]     │                  │
+│              │              [Enviar]     │                  │
+└──────────────┴───────────────────────────┴──────────────────┘
+MOBILE: list | thread | context  (um por vez)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Todas / Não lidas / Triagem</td>
+<td>—</td>
+<td>FilterChip</td>
+<td>Filtro lista</td>
+</tr>
+<tr>
+<td>Item conversa</td>
+<td>Avatar iniciais</td>
+<td>button row</td>
+<td>Seleciona + mobile thread</td>
+</tr>
+<tr>
+<td>← Conversas</td>
+<td>—</td>
+<td>link brand</td>
+<td>Volta lista (mobile)</td>
+</tr>
+<tr>
+<td>Contexto</td>
+<td>—</td>
+<td>link brand</td>
+<td>Abre painel contexto</td>
+</tr>
+<tr>
+<td>Analisar</td>
+<td>—</td>
+<td>Link brand</td>
+<td><code>/triagem/[id]</code> se triage</td>
+</tr>
+<tr>
+<td>#{protocol}</td>
+<td>—</td>
+<td>Link brand</td>
+<td><code>/chamados/[id]</code></td>
+</tr>
+<tr>
+<td>Resposta</td>
+<td>—</td>
+<td>primary/secondary sm</td>
+<td>mode <code>publica</code></td>
+</tr>
+<tr>
+<td>Nota interna</td>
+<td>—</td>
+<td>primary/secondary sm</td>
+<td>mode <code>interna</code></td>
+</tr>
+<tr>
+<td>× (reply bar)</td>
+<td>—</td>
+<td>texto muted</td>
+<td>Limpa citação</td>
+</tr>
+<tr>
+<td>Áudio / Parar áudio</td>
+<td>—</td>
+<td>secondary sm</td>
+<td>MediaRecorder</td>
+</tr>
+<tr>
+<td>Cancelar (gravação)</td>
+<td>—</td>
+<td>ghost sm</td>
+<td>Cancela áudio</td>
+</tr>
+<tr>
+<td>Enviar</td>
+<td>—</td>
+<td>default</td>
+<td>POST messages (+ file/reply)</td>
+</tr>
+<tr>
+<td>Responder (bolha)</td>
+<td>—</td>
+<td>link</td>
+<td>Seta replyTo</td>
+</tr>
+<tr>
+<td>Reenviar (failed)</td>
+<td>—</td>
+<td>link</td>
+<td>POST <code>/api/messages/:id/approve</code></td>
+</tr>
+</tbody></table>
+<p><strong>Campos:</strong> busca conversas · mensagem · file (jpeg/png/pdf/audio).</p>
+<p><strong>Estados:</strong> Empty “Tudo limpo” · Skeleton · ErrorBanner · aviso “WhatsApp não está conectado” / “não pode mandar WhatsApp”.</p>
+<h3>Checklist auditoria — Inbox</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Larguras 240/220 vs conteúdo truncado</li>
+<li><input disabled="" type="checkbox"> Composer: wrap gap-2 vs overflow mobile</li>
+<li><input disabled="" type="checkbox"> Bolhas vs nota interna amber</li>
+<li><input disabled="" type="checkbox"> FilterChip ativo vs hierarquia título</li>
+</ul>
+<hr>
+<h2>6. 4. Triagem <code>/triagem</code></h2>
+<p><strong>Arquivos:</strong> <code>app/(app)/triagem/page.tsx</code> · <code>triage-analysis-panel.tsx</code><br><strong>Admin only · full-bleed · split 240–320 / 1fr.</strong></p>
+<pre><code class="language-text">┌─ Triagem · N aguardando classificação · [Buscar…] ──────────┐
+├─ lista ──────────┬─ análise (thread + form 240px) ──────────┤
+│ Nome             │ Contato / mensagens (bolhas, sem composer)│
+│ preview msg      │ │ Análise                                 │
+│ condo · quando   │ │ Contato (ro) Condo (ro)                 │
+│ telefone         │ │ Categoria ▼ Prioridade ▼ Responsável ▼  │
+│ (ativo brand)    │ │ [ Promover a chamado ]  default w-full  │
+│                  │ │ [ Arquivar ]            ghost w-full    │
+└──────────────────┴───────────────────────────────────────────┘
+MOBILE: lista OU análise (← Solicitações)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Item fila</td>
+<td>—</td>
+<td>button row</td>
+<td>Select + <code>?id=</code></td>
+</tr>
+<tr>
+<td>← Solicitações</td>
+<td>—</td>
+<td>link brand</td>
+<td>Mobile back</td>
+</tr>
+<tr>
+<td>Promover a chamado</td>
+<td>—</td>
+<td>default w-full</td>
+<td>PATCH action promote → <code>/chamados</code></td>
+</tr>
+<tr>
+<td>Arquivar</td>
+<td>—</td>
+<td>ghost w-full</td>
+<td>Abre ConfirmDialog</td>
+</tr>
+<tr>
+<td>Confirm Arquivar</td>
+<td>—</td>
+<td>danger</td>
+<td>PATCH action archive</td>
+</tr>
+<tr>
+<td>Confirm Cancelar</td>
+<td>—</td>
+<td>secondary</td>
+<td>Fecha dialog</td>
+</tr>
+</tbody></table>
+<p><strong>Campos análise:</strong> Categoria · Prioridade · Responsável (opcional). Promover exige contato+condo.</p>
+<p><strong>Estados:</strong> Forbidden 403 · Empty “Tudo limpo” / “Selecione…” · Skeleton · ErrorBanner.</p>
+<h3>Checklist auditoria — Triagem</h3>
+<ul>
+<li><input disabled="" type="checkbox"> CTA Promover vs Arquivar (hierarquia)</li>
+<li><input disabled="" type="checkbox"> Thread sem composer — clareza de que resposta é na Inbox</li>
+<li><input disabled="" type="checkbox"> Densidade lista py-2.5</li>
+</ul>
+<hr>
+<h2>7. 5. Triagem deep link <code>/triagem/[id]</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/triagem/[id]/page.tsx</code></p>
+<pre><code class="language-text">┌─ ← Triagem ─────────────────────────────────────────────────┐
+│ Analisar solicitação                                        │
+├─────────────────────────────────────────────────────────────┤
+│ (mesmo TriageAnalysisPanel: thread + Análise)               │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Visual</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>← Triagem</td>
+<td>—</td>
+<td>Link brand</td>
+<td><code>/triagem</code></td>
+</tr>
+<tr>
+<td>(+ painel triagem)</td>
+<td>—</td>
+<td>—</td>
+<td>Ver §4</td>
+</tr>
+</tbody></table>
+<p><strong>Estados:</strong> 403 · 404 Empty · Skeleton · ErrorBanner.</p>
+<h3>Checklist auditoria — Triagem/[id]</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Consistência header vs lista <code>/triagem</code></li>
+<li><input disabled="" type="checkbox"> Back link vs título</li>
+</ul>
+<hr>
+<h2>8. 6. Não vinculados <code>/nao-vinculados</code></h2>
+<p><strong>Arquivos:</strong> <code>nao-vinculados/page.tsx</code> · <code>unlinked-queue.tsx</code> · <code>unlinked-identity-panel.tsx</code> · <code>thread-panel.tsx</code><br><strong>Admin only · grid 280 / 1fr / 240.</strong></p>
+<pre><code class="language-text">┌─ Não vinculados · N fora do fluxo… ─────────────────────────┐
+├─ fila 280 ───┬─ thread ─────────────┬─ Identidade 240 ──────┤
+│ Buscar…      │ (composer igual Inbox)│ 1.Msg 2.Identificar  │
+│ hora preview │                       │ 3.Vincular→triagem   │
+│ nome/Contato │                       │ Contato / Origem     │
+│ WhatsApp     │                       │ Condo                │
+│              │                       │ [Vincular ao fluxo]  │
+└──────────────┴───────────────────────┴──────────────────────┘
+DRAWER: Vincular ao fluxo (form enroll)
+Telefone*  [+55 …]  [Puxar do WhatsApp]  ← só se WA open e sem PN
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Item fila</td>
+<td>—</td>
+<td>select</td>
+<td>Abre thread</td>
+</tr>
+<tr>
+<td>← Conversa</td>
+<td>—</td>
+<td>link brand</td>
+<td>Mobile back Identity</td>
+</tr>
+<tr>
+<td>Vincular ao fluxo (painel)</td>
+<td>—</td>
+<td>default w-full</td>
+<td>Abre Drawer</td>
+</tr>
+<tr>
+<td>Vincular ao fluxo (drawer)</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST enroll → <code>/triagem/[id]</code></td>
+</tr>
+<tr>
+<td>Puxar do WhatsApp</td>
+<td>—</td>
+<td>secondary</td>
+<td>POST enrich-peer; some se PN ou WA ≠ open</td>
+</tr>
+<tr>
+<td>(+ ThreadPanel)</td>
+<td>—</td>
+<td>—</td>
+<td>Ver Inbox</td>
+</tr>
+</tbody></table>
+<p><strong>Campos drawer:</strong> Já cadastrado (Select) · Nome* · Telefone* (se sem E.164; + <strong>Puxar do WhatsApp</strong> se sessão <code>open</code>) · Papel radio (Síndico/Administrador/Outro) · Cargo livre · E-mail · Condomínio*.</p>
+<p><strong>Estados:</strong> 403 · ErrorBanner · loading “Carregando fila…” · enrich “Puxando…” / “Consultando Evolution…” · toast se Evolution não liberar PN.</p>
+<h3>Checklist auditoria — Não vinculados</h3>
+<ul>
+<li><input disabled="" type="checkbox"> CTA único “Vincular ao fluxo” repetido painel/drawer</li>
+<li><input disabled="" type="checkbox"> Stepper texto 1-2-3 vs espaço</li>
+<li><input disabled="" type="checkbox"> Fila 280px densidade hora/preview</li>
+</ul>
+<hr>
+<h2>9. 7. Chamados <code>/chamados</code></h2>
+<p><strong>Arquivos:</strong> <code>chamados/page.tsx</code> · <code>kanban-board.tsx</code> · <code>ticket-card.tsx</code><br><strong>Full-bleed · <code>px-4 pt-3 pb-3</code> · h viewport.</strong></p>
+<pre><code class="language-text">┌─ Chamados · N no quadro · [Novo chamado] (admin) ───────────┐
+│ [Categoria▼] [Prioridade▼] [Responsável▼]  (+ busca mobile) │
+│ [Aberto n][Em andamento][Aguardando][Resolvido] (mobile)    │
+├──────────┬──────────┬──────────┬──────────┐                 │
+│ Aberto   │ Andamento│ Aguardando│ Resolvido│                 │
+│ ┌──────┐ │          │           │          │                 │
+│ │█ #PRT│ │  card: faixa prioridade 0.5 left│                 │
+│ │ título│ │  GripVertical + ⋯ MoreHorizontal│                │
+│ │ condo │ │  menu: Mover para… / Abrir ficha│                │
+│ └──────┘ │          │           │          │                 │
+└──────────┴──────────┴──────────┴──────────┘                 │
+DRAWER: Novo chamado (título, condo, contato, responsável)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Novo chamado</td>
+<td>—</td>
+<td>default</td>
+<td>Abre Drawer (admin)</td>
+</tr>
+<tr>
+<td>Criar</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST <code>/api/tickets</code></td>
+</tr>
+<tr>
+<td>Criar chamado (empty)</td>
+<td>—</td>
+<td>outline sm (EmptyState)</td>
+<td>Abre Drawer</td>
+</tr>
+<tr>
+<td>Clique no card</td>
+<td>—</td>
+<td>button</td>
+<td><code>/chamados/[id]</code></td>
+</tr>
+<tr>
+<td>⋯ Ações</td>
+<td>MoreHorizontal 14px</td>
+<td>DropdownTrigger</td>
+<td>Menu</td>
+</tr>
+<tr>
+<td>GripVertical</td>
+<td>GripVertical 14px</td>
+<td>handle DnD</td>
+<td>Arrastar (desktop)</td>
+</tr>
+<tr>
+<td>Mover para {status}</td>
+<td>—</td>
+<td>DropdownItem</td>
+<td>PATCH status</td>
+</tr>
+<tr>
+<td>Abrir ficha</td>
+<td>—</td>
+<td>DropdownItem</td>
+<td>Navega ficha</td>
+</tr>
+<tr>
+<td>FilterChip status</td>
+<td>—</td>
+<td>pill</td>
+<td>Coluna mobile</td>
+</tr>
+</tbody></table>
+<p><strong>Campos drawer:</strong> Título* · Condomínio* · Contato* · Responsável (opcional).<br><strong>Toolbar:</strong> Categoria · Prioridade · Responsável/Sem responsável (admin).</p>
+<h3>Checklist auditoria — Chamados</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Faixa prioridade 2px vs borda card</li>
+<li><input disabled="" type="checkbox"> Opacity menu só no hover desktop</li>
+<li><input disabled="" type="checkbox"> Empty vs 4 colunas vazias</li>
+<li><input disabled="" type="checkbox"> Truncate título line-clamp-1</li>
+</ul>
+<hr>
+<h2>10. 8. Ficha do chamado <code>/chamados/[id]</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/chamados/[id]/page.tsx</code><br><strong>Full-bleed · abas + rail contexto 240px (lg+).</strong></p>
+<pre><code class="language-text">┌─ ← Chamados ────────────────────────────────────────────────┐
+│ #PROT  [StatusBadge] [PriorityIndicator]                    │
+│ título · condo · contato · responsável · prazo              │
+├─ Resumo | Atividade | Documentos | Comunicação ─┬─ CONTEXTO ┤
+│ [tile] Categoria          Status [pill]         │ [B2] condo│
+│ PRAZOS                 [Adicionar prazo]        │ [AV] contato│
+│ [cal] empty + CTA  OU  lista com ícone          │ [AV] resp.│
+│ CADASTRO (Label + grid 2 col)                   │ [cal] prazo│
+│ Título / Prioridade / Categoria / Status        │ [MS] origem│
+│ [Salvar] secondary                              │            │
+└─────────────────────────────────────────────────┴────────────┘
+DIALOG: Novo documento · Adicionar prazo
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>← Chamados</td>
+<td>—</td>
+<td>Link brand</td>
+<td>Volta kanban</td>
+</tr>
+<tr>
+<td>Categoria (Resumo)</td>
+<td>Lucide por tipo</td>
+<td>IconTile soft sm</td>
+<td>Só leitura; mapa em <code>category-icon.tsx</code></td>
+</tr>
+<tr>
+<td>Status (Resumo)</td>
+<td>—</td>
+<td>StatusBadge</td>
+<td>Mesmo pill do header</td>
+</tr>
+<tr>
+<td>Empty prazos</td>
+<td>CalendarClock</td>
+<td>EmptyMedia icon</td>
+<td>CTA abre Dialog prazo</td>
+</tr>
+<tr>
+<td>Linha prazo</td>
+<td>CalendarClock 16px</td>
+<td>—</td>
+<td>Concluir = PATCH done</td>
+</tr>
+<tr>
+<td>Cadastro labels</td>
+<td>—</td>
+<td>Label + Select</td>
+<td>PATCH ticket</td>
+</tr>
+<tr>
+<td>Contexto condo</td>
+<td>Building2</td>
+<td>IconTile soft</td>
+<td>Link <code>/condominios/[id]</code></td>
+</tr>
+<tr>
+<td>Contato</td>
+<td>PeerAvatar</td>
+<td>—</td>
+<td>Foto WA ou iniciais</td>
+</tr>
+<tr>
+<td>Responsável</td>
+<td>Avatar / UserRound</td>
+<td>—</td>
+<td>Iniciais ou tile vazio</td>
+</tr>
+<tr>
+<td>Origem</td>
+<td>MessageSquare</td>
+<td>IconTile soft</td>
+<td>Label da conexão</td>
+</tr>
+<tr>
+<td>Baixar</td>
+<td>—</td>
+<td>link primary</td>
+<td><code>/api/files/...</code></td>
+</tr>
+<tr>
+<td>Enviar WhatsApp (doc)</td>
+<td>—</td>
+<td>link primary</td>
+<td>POST send-draft</td>
+</tr>
+<tr>
+<td>Novo documento</td>
+<td>—</td>
+<td>secondary sm</td>
+<td>Abre Dialog ficha</td>
+</tr>
+<tr>
+<td>Salvar (metadados)</td>
+<td>—</td>
+<td>secondary</td>
+<td>PATCH ticket</td>
+</tr>
+<tr>
+<td>WhatsApp / Nota interna</td>
+<td>—</td>
+<td>primary/secondary sm</td>
+<td>Toggle mode (<code>publica</code> / <code>interna</code>) — rótulos distintos do Inbox (“Resposta”)</td>
+</tr>
+<tr>
+<td>Enviar / Salvar nota</td>
+<td>—</td>
+<td>default</td>
+<td>POST <code>/api/tickets/{id}/messages</code></td>
+</tr>
+<tr>
+<td>DocumentFicha Cancelar</td>
+<td>—</td>
+<td>secondary</td>
+<td>Fecha modal</td>
+</tr>
+<tr>
+<td>Salvar documento / Salvando…</td>
+<td>—</td>
+<td>default</td>
+<td>Upload + metadados (kind/title/purpose/file)</td>
+</tr>
+</tbody></table>
+<p><strong>Estados:</strong> 403 · 404 · Skeleton · ErrorBanner · docs “Nenhum documento” · prazos empty com ícone+CTA.</p>
+<h3>Checklist auditoria — Ficha chamado</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Abas + rail 240px vs scroll independente</li>
+<li><input disabled="" type="checkbox"> Dual composer (ficha vs Inbox) — consistência</li>
+<li><input disabled="" type="checkbox"> Labels uppercase 10px tracking</li>
+<li><input disabled="" type="checkbox"> Ações doc inline Baixar/WA</li>
+<li><input disabled="" type="checkbox"> Resumo: IconTile categoria + StatusBadge (não texto solto)</li>
+<li><input disabled="" type="checkbox"> Empty prazos alinhado à esquerda (não herói)</li>
+<li><input disabled="" type="checkbox"> Cadastro com Label visível</li>
+<li><input disabled="" type="checkbox"> Contexto: tiles condomínio/origem; avatar responsável</li>
+</ul>
+<hr>
+<h2>11. 9. Documentos <code>/documentos</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/documentos/page.tsx</code><br><strong>Padded (não full-bleed).</strong></p>
+<h3>Lista de pastas</h3>
+<pre><code class="language-text">┌─ Documentos · N arquivos em M condomínios ──────────────────┐
+│ [Buscar condomínio…]                                        │
+│ 📁 Nome condo                              n · tamanho      │
+│ 📁 …                                                        │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3>Dentro da pasta</h3>
+<pre><code class="language-text">┌─ ← Documentos · Nome condo · [Novo documento] ──────────────┐
+│ [Buscar arquivo…] [Chamado ▼]                               │
+│ 📄/🖼/🎵 título · tipo · size     → preview drawer          │
+└─────────────────────────────────────────────────────────────┘
+DIALOG: Novo documento | DRAWER: preview + Baixar + WA
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>← Documentos</td>
+<td>—</td>
+<td>link primary</td>
+<td>Volta pastas</td>
+</tr>
+<tr>
+<td>Novo documento</td>
+<td>—</td>
+<td>default</td>
+<td>Dialog ficha</td>
+</tr>
+<tr>
+<td>Pasta condomínio</td>
+<td>FolderOpen 16px</td>
+<td>button row</td>
+<td>Entra pasta</td>
+</tr>
+<tr>
+<td>Linha arquivo</td>
+<td>FileText / Image / Music</td>
+<td>button</td>
+<td>Abre preview</td>
+</tr>
+<tr>
+<td>Baixar</td>
+<td>—</td>
+<td>link primary</td>
+<td>Download</td>
+</tr>
+<tr>
+<td>Enviar WhatsApp</td>
+<td>—</td>
+<td>link primary</td>
+<td>send-draft (se ticket)</td>
+</tr>
+<tr>
+<td>Cancelar (ficha)</td>
+<td>—</td>
+<td>secondary</td>
+<td>Fecha Dialog</td>
+</tr>
+<tr>
+<td>Salvar documento / Salvando…</td>
+<td>—</td>
+<td>default</td>
+<td>Upload ficha (kind*, title*, purpose*, file*; chamado opcional/obrigatório conforme tela)</td>
+</tr>
+</tbody></table>
+<p><strong>Estados:</strong> Empty pastas / empty pasta · Skeleton · ErrorBanner · botão Novo disabled se funcionário sem tickets.</p>
+<h3>Checklist auditoria — Documentos</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Lista densa <code>divide-y</code> vs padded page</li>
+<li><input disabled="" type="checkbox"> Ícones pasta/arquivo size-4 muted</li>
+<li><input disabled="" type="checkbox"> Preview drawer vs dialog ficha</li>
+</ul>
+<hr>
+<h2>12. 10. Condomínios <code>/condominios</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/condominios/page.tsx</code> · padded · master-detail.</p>
+<pre><code class="language-text">┌─ Condomínios · [Novo condomínio] (admin) ───────────────────┐
+│ [Buscar…]                                                   │
+├─ lista ──────┬─ detalhe ────────────────────────────────────┤
+│ Nome         │ Nome · Editar cadastro → /condominios/[id]   │
+│ (ativo brand)│ Contatos…                                    │
+│              │ [Adicionar contato] secondary                │
+└──────────────┴──────────────────────────────────────────────┘
+DRAWERS: Novo condomínio | Novo contato
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Novo condomínio</td>
+<td>—</td>
+<td>default</td>
+<td>Drawer create</td>
+</tr>
+<tr>
+<td>Salvar (condo)</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST condominiums</td>
+</tr>
+<tr>
+<td>Editar cadastro</td>
+<td>—</td>
+<td>link primary</td>
+<td><code>/condominios/[id]</code></td>
+</tr>
+<tr>
+<td>Adicionar contato</td>
+<td>—</td>
+<td>secondary</td>
+<td>Drawer contato</td>
+</tr>
+<tr>
+<td>Salvar contato</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST contact</td>
+</tr>
+<tr>
+<td>Item lista</td>
+<td>—</td>
+<td>button</td>
+<td>Seleciona detalhe</td>
+</tr>
+</tbody></table>
+<p><strong>Empty:</strong> “Tudo limpo”. Admin cria; funcionário leitura filtrada.</p>
+<h3>Checklist auditoria — Condomínios</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Master-detail border-l ativo</li>
+<li><input disabled="" type="checkbox"> CTA Novo vs Adicionar contato (hierarquia)</li>
+</ul>
+<hr>
+<h2>13. 11. Ficha do condomínio <code>/condominios/[id]</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/condominios/[id]/page.tsx</code></p>
+<pre><code class="language-text">┌─ ← Condomínios ─────────────────────┬─ Contatos 280px ──────┐
+│ CADASTRO (grid 2 col)               │ [Adicionar] secondary │
+│ Nome CNPJ Endereço Cidade/UF Obs    │ lista · Editar link   │
+│ [Salvar cadastro] (admin)           ├───────────────────────┤
+│ CHAMADOS #PROT →                    │ DOCUMENTOS · Baixar   │
+│ COMUNICAÇÕES (histórico)            │ ▸ Histórico Accordion │
+└─────────────────────────────────────┴───────────────────────┘
+DRAWER: Novo / Editar contato
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>← Condomínios</td>
+<td>—</td>
+<td>Link brand</td>
+<td>Lista</td>
+</tr>
+<tr>
+<td>Salvar cadastro</td>
+<td>—</td>
+<td>default</td>
+<td>PATCH (admin)</td>
+</tr>
+<tr>
+<td>Adicionar contato</td>
+<td>—</td>
+<td>secondary sm</td>
+<td>Drawer</td>
+</tr>
+<tr>
+<td>Editar (contato)</td>
+<td>—</td>
+<td>link primary</td>
+<td>Drawer edit</td>
+</tr>
+<tr>
+<td>Salvar contato</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST/PATCH</td>
+</tr>
+<tr>
+<td>#{protocol}</td>
+<td>—</td>
+<td>Link primary</td>
+<td><code>/chamados/[id]</code></td>
+</tr>
+<tr>
+<td>Baixar doc</td>
+<td>—</td>
+<td>link primary</td>
+<td>arquivo</td>
+</tr>
+</tbody></table>
+<p><strong>Campos cadastro:</strong> Nome, CNPJ, Endereço, Cidade/UF, Observação (disabled se não admin).</p>
+<h3>Checklist auditoria — Ficha condo</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Campos disabled vs botão Salvar</li>
+<li><input disabled="" type="checkbox"> Agrupamento Contatos / Chamados / Docs</li>
+</ul>
+<hr>
+<h2>14. 12. Equipe <code>/equipe</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/equipe/page.tsx</code> · <strong>admin only</strong> · padded.</p>
+<pre><code class="language-text">┌─ Equipe · N pessoas · [Novo usuário] ───────────────────────┐
+│ [Buscar…] [Todos/Ativos/Inativos ▼]                         │
+│ Pessoa | Função | Acesso | Status | Chamados                │
+│ Avatar Nome/email | Badge | rascunho/enviar | Ativo | N     │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Novo usuário</td>
+<td>—</td>
+<td>default</td>
+<td>Drawer create</td>
+</tr>
+<tr>
+<td>Criar</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST team</td>
+</tr>
+<tr>
+<td>Linha usuário</td>
+<td>Avatar</td>
+<td>button</td>
+<td>Abre edit</td>
+</tr>
+<tr>
+<td>Salvar</td>
+<td>—</td>
+<td>default</td>
+<td>PATCH</td>
+</tr>
+<tr>
+<td>Redefinir senha</td>
+<td>—</td>
+<td>secondary</td>
+<td>PATCH resetPassword → dialog</td>
+</tr>
+<tr>
+<td>Desativar / Reativar</td>
+<td>—</td>
+<td>ghost</td>
+<td>ConfirmDialog</td>
+</tr>
+<tr>
+<td>Ok, já copiei</td>
+<td>—</td>
+<td>secondary</td>
+<td>Fecha senha once</td>
+</tr>
+<tr>
+<td>Confirm Desativar</td>
+<td>—</td>
+<td>danger</td>
+<td>PATCH ativo=false</td>
+</tr>
+</tbody></table>
+<p><strong>Campos:</strong> Nome · Email · Perfil · checkbox “Não pode mandar WhatsApp”.<br><strong>Badges:</strong> Perfil admin=<code>dev</code> / func=<code>muted</code> · Status ok/muted.</p>
+<h3>Checklist auditoria — Equipe</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Tabela densidade vs DataTable</li>
+<li><input disabled="" type="checkbox"> Três botões no drawer edit (Salvar / Reset / Desativar)</li>
+<li><input disabled="" type="checkbox"> Dialog senha mono break-all</li>
+</ul>
+<hr>
+<h2>15. 13. Conexões <code>/conexoes</code></h2>
+<p><strong>Arquivos:</strong> <code>conexoes/page.tsx</code> · <code>whatsapp-session-card.tsx</code> · <strong>admin only</strong>.</p>
+<pre><code class="language-text">┌─ Conexões · Canais utilizados pelo escritório ──────────────┐
+│ ┌─ WhatsApp Web ─────────────────────────┐                  │
+│ │ ● CONECTADO / Desconectado             │                  │
+│ │ [Conectar WhatsApp] ou [Desconectar]   │                  │
+│ └────────────────────────────────────────┘                  │
+│ ▸ Desenvolvimento (Accordion)                               │
+│   Mock / Cloud / extras · Adicionar conexão · Injetar mock  │
+└─────────────────────────────────────────────────────────────┘
+DIALOG QR · CONFIRM Desconectar
+</code></pre>
+<pre><code class="language-text">┌──────────── Conectar WhatsApp ────────────┐
+│ Escaneie o QR Code                        │
+│ ┌──────────────────────────────────────┐  │
+│ │              [QR 208px]              │  │
+│ └──────────────────────────────────────┘  │
+│ O código atualiza sozinho a cada ~20s.    │
+│ Se o WhatsApp recusar, espere mudar       │
+│ ou toque em Atualizar QR.                 │
+│ WhatsApp → Aparelhos conectados → Escanear│
+│ [Atualizar QR]              [Cancelar]    │
+└───────────────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rótulo</th>
+<th>Ícone</th>
+<th>Variant</th>
+<th>Função</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Conectar WhatsApp / Gerando QR…</td>
+<td>—</td>
+<td>default</td>
+<td>Abre dialog + GET /qr; poll status 3s; poll QR fresh 15s</td>
+</tr>
+<tr>
+<td>Atualizar QR / Tentar de novo</td>
+<td>—</td>
+<td>default</td>
+<td>GET /qr?fresh=1 (ignora cache)</td>
+</tr>
+<tr>
+<td>Desconectar / Desconectando…</td>
+<td>—</td>
+<td>secondary</td>
+<td>Confirm → POST disconnect</td>
+</tr>
+<tr>
+<td>Cancelar (QR)</td>
+<td>—</td>
+<td>secondary</td>
+<td>Fecha dialog</td>
+</tr>
+<tr>
+<td>Confirm Desconectar</td>
+<td>—</td>
+<td>danger</td>
+<td>Confirma</td>
+</tr>
+<tr>
+<td>Adicionar (dev)</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST connections</td>
+</tr>
+<tr>
+<td>Injetar (dev)</td>
+<td>—</td>
+<td>default submit</td>
+<td>POST mock-inbound</td>
+</tr>
+</tbody></table>
+<p><strong>Campos DEV:</strong> Nome conexão · Tipo · Telefone · Mensagem.</p>
+<p><strong>Estados:</strong> 403 · Empty “Nenhum WhatsApp…” · ErrorBanner env · Skeleton · QR gerando · QR visível · 503 Evolution · expirado 60s.</p>
+<h3>Checklist auditoria — Conexões</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Status uppercase CONECTADO vs dot</li>
+<li><input disabled="" type="checkbox"> Accordion DEV vs card principal</li>
+<li><input disabled="" type="checkbox"> QR 208px (h-52) vs dialog padding</li>
+<li><input disabled="" type="checkbox"> Botão Atualizar QR visível com imagem</li>
+<li><input disabled="" type="checkbox"> Copy de atualização automática ~20s</li>
+</ul>
+<hr>
+<h2>16. 14. Prazos <code>/prazos</code></h2>
+<p><strong>Arquivo:</strong> <code>app/(app)/prazos/page.tsx</code> · full-bleed · GET <code>/api/deadlines</code>.</p>
+<pre><code class="language-text">┌─ Prazos · datas internas do chamado ── [Todos][Hoje][Próximos][Atrasados] ─┐
+│ vencimento | título                                                       │
+│            | #protocolo · chamado                    [Concluir]           │
+└───────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<p>Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.</p>
+<h3>Checklist auditoria — Prazos</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Chips vs FilterChip</li>
+<li><input disabled="" type="checkbox"> Overdue em danger</li>
+<li><input disabled="" type="checkbox"> Link para ficha do chamado</li>
+</ul>
+<hr>
+<h2>17. Overlays</h2>
+<h3>17.1 Drawers (Sheet direita)</h3>
+<table>
+<thead>
+<tr>
+<th>Overlay</th>
+<th>Tela</th>
+<th>Título</th>
+<th>Submit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Novo chamado</td>
+<td><code>/chamados</code></td>
+<td>Novo chamado</td>
+<td>Criar</td>
+</tr>
+<tr>
+<td>Novo condomínio</td>
+<td><code>/condominios</code></td>
+<td>Novo condomínio</td>
+<td>Salvar</td>
+</tr>
+<tr>
+<td>Novo contato</td>
+<td><code>/condominios</code>, <code>/[id]</code></td>
+<td>Novo contato</td>
+<td>Salvar</td>
+</tr>
+<tr>
+<td>Editar contato</td>
+<td><code>/condominios/[id]</code></td>
+<td>Editar contato</td>
+<td>Salvar</td>
+</tr>
+<tr>
+<td>Vincular ao fluxo</td>
+<td><code>/nao-vinculados</code></td>
+<td>Vincular ao fluxo</td>
+<td>Vincular ao fluxo</td>
+</tr>
+<tr>
+<td>Novo usuário</td>
+<td><code>/equipe</code></td>
+<td>Novo usuário</td>
+<td>Criar</td>
+</tr>
+<tr>
+<td>Editar usuário</td>
+<td><code>/equipe</code></td>
+<td>Usuário</td>
+<td>Salvar (+ Reset / Desativar)</td>
+</tr>
+<tr>
+<td>Preview documento</td>
+<td><code>/documentos</code></td>
+<td>título do doc</td>
+<td>Baixar / WA (links)</td>
+</tr>
+</tbody></table>
+<h3>17.2 Dialogs (centro)</h3>
+<table>
+<thead>
+<tr>
+<th>Overlay</th>
+<th>Tela</th>
+<th>Título</th>
+<th>Ações</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Ficha documento</td>
+<td><code>/documentos</code>, <code>/chamados/[id]</code></td>
+<td>Novo documento</td>
+<td>Cancelar secondary · Salvar documento default</td>
+</tr>
+<tr>
+<td>QR WhatsApp</td>
+<td><code>/conexoes</code></td>
+<td>Conectar WhatsApp</td>
+<td>Cancelar secondary</td>
+</tr>
+<tr>
+<td>Senha provisória</td>
+<td><code>/equipe</code></td>
+<td>Senha provisória</td>
+<td>Ok, já copiei secondary</td>
+</tr>
+</tbody></table>
+<h3>17.3 ConfirmDialog</h3>
+<table>
+<thead>
+<tr>
+<th>Overlay</th>
+<th>Tela</th>
+<th>Confirm</th>
+<th>Variant</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Arquivar solicitação</td>
+<td>Triagem</td>
+<td>Arquivar</td>
+<td>danger</td>
+</tr>
+<tr>
+<td>Desconectar WhatsApp</td>
+<td>Conexões</td>
+<td>Desconectar</td>
+<td>danger</td>
+</tr>
+<tr>
+<td>Desativar usuário</td>
+<td>Equipe</td>
+<td>Desativar</td>
+<td>danger</td>
+</tr>
+<tr>
+<td>Confirmar vínculo</td>
+<td>Não vinculados</td>
+<td>Confirmar vínculo</td>
+<td>primary</td>
+</tr>
+</tbody></table>
+<p><strong>Padrão ConfirmDialog:</strong> Cancelar = secondary · Confirm = danger ou primary.</p>
+<h3>Checklist auditoria — Overlays</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Largura drawer consistente</li>
+<li><input disabled="" type="checkbox"> Título drawer vs PageHeader</li>
+<li><input disabled="" type="checkbox"> Espaço entre campos <code>space-y-3</code></li>
+<li><input disabled="" type="checkbox"> Confirm danger vs ghost que abre</li>
+</ul>
+<hr>
+<h2>18. Apêndice A — Matriz de papéis</h2>
+<table>
+<thead>
+<tr>
+<th>Tela</th>
+<th>admin</th>
+<th>funcionario</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/login</code></td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>/</code> Visão</td>
+<td>KPIs operacionais</td>
+<td>KPIs “Meus chamados”</td>
+</tr>
+<tr>
+<td><code>/atendimento</code></td>
+<td>todas no fluxo</td>
+<td>só dos seus chamados</td>
+</tr>
+<tr>
+<td><code>/triagem</code></td>
+<td>✓</td>
+<td>403 · oculto menu</td>
+</tr>
+<tr>
+<td><code>/nao-vinculados</code></td>
+<td>✓</td>
+<td>403 · oculto</td>
+</tr>
+<tr>
+<td><code>/chamados</code></td>
+<td>todos + Novo</td>
+<td>só atribuídos · sem Novo</td>
+</tr>
+<tr>
+<td><code>/chamados/[id]</code></td>
+<td>✓</td>
+<td>se assignedTo = eu</td>
+</tr>
+<tr>
+<td><code>/prazos</code></td>
+<td>todos visíveis</td>
+<td>só dos seus chamados</td>
+</tr>
+<tr>
+<td><code>/documentos</code></td>
+<td>todos condomínios</td>
+<td>condomínios com ticket seu</td>
+</tr>
+<tr>
+<td><code>/condominios</code></td>
+<td>CRUD</td>
+<td>leitura filtrada</td>
+</tr>
+<tr>
+<td><code>/condominios/[id]</code></td>
+<td>PATCH</td>
+<td>leitura</td>
+</tr>
+<tr>
+<td><code>/equipe</code></td>
+<td>✓</td>
+<td>403</td>
+</tr>
+<tr>
+<td><code>/conexoes</code></td>
+<td>✓</td>
+<td>403</td>
+</tr>
+</tbody></table>
+<p>Síndico: <strong>sem login</strong> neste sistema.</p>
+<hr>
+<h2>19. Apêndice B — Mapa Lucide</h2>
+<table>
+<thead>
+<tr>
+<th>Ícone</th>
+<th>Onde</th>
+<th>Size típico</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Ticket</td>
+<td>Logo shell + nav Chamados</td>
+<td>14px tile / default nav</td>
+</tr>
+<tr>
+<td>LayoutDashboard</td>
+<td>Visão / Início mobile</td>
+<td>nav / 18px bottom</td>
+</tr>
+<tr>
+<td>Inbox</td>
+<td>Inbox / bottom</td>
+<td>nav / 18px</td>
+</tr>
+<tr>
+<td>ListChecks</td>
+<td>Triagem</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>UserRoundX</td>
+<td>Não vinculados</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>CalendarClock</td>
+<td>Prazos</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>FolderOpen</td>
+<td>Documentos</td>
+<td>nav / 16px</td>
+</tr>
+<tr>
+<td>Building2</td>
+<td>Condomínios</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>Users</td>
+<td>Equipe</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td>Conexões</td>
+<td>nav</td>
+</tr>
+<tr>
+<td>Search</td>
+<td>Header busca</td>
+<td>14px (<code>size-3.5</code>)</td>
+</tr>
+<tr>
+<td>LogOut</td>
+<td>Sair</td>
+<td>menu</td>
+</tr>
+<tr>
+<td>Eye / EyeOff</td>
+<td>Login senha</td>
+<td>icon-sm</td>
+</tr>
+<tr>
+<td>GripVertical</td>
+<td>Kanban drag</td>
+<td>14px</td>
+</tr>
+<tr>
+<td>MoreHorizontal</td>
+<td>Kanban menu</td>
+<td>14px</td>
+</tr>
+<tr>
+<td>FileText / Image / Music</td>
+<td>Lista docs</td>
+<td>16px</td>
+</tr>
+<tr>
+<td>Plus</td>
+<td>Mais (bottom)</td>
+<td>18px</td>
+</tr>
+</tbody></table>
+<p><strong>Regra Button:</strong> <code>[&amp;_svg:not([class*=&#39;size-&#39;])]:size-4</code>.</p>
+<hr>
+<h2>20. Apêndice C — Checklist global</h2>
+<p>Use ao auditar o produto inteiro (além dos checklists por tela).</p>
+<h3>Ícones</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Uma família Lucide — sem misturar stroke weights</li>
+<li><input disabled="" type="checkbox"> Nav: todos o mesmo optical size</li>
+<li><input disabled="" type="checkbox"> Botões icon-only ≥ 40×40 hit area</li>
+<li><input disabled="" type="checkbox"> Empty states: ícone presente? consistente?</li>
+</ul>
+<h3>Margens / ritmo</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Base 4/8px: evitar <code>py-2.5</code> + <code>py-3</code> aleatório na mesma família</li>
+<li><input disabled="" type="checkbox"> Full-bleed vs padded: transição ao mudar de rota</li>
+<li><input disabled="" type="checkbox"> PageHeader dense (<code>mb-3</code>) vs padrão (<code>mb-4</code>)</li>
+<li><input disabled="" type="checkbox"> Composer <code>p-3</code> alinhado entre Inbox / Não vinc. / Ficha</li>
+</ul>
+<h3>Linhas / divisores</h3>
+<ul>
+<li><input disabled="" type="checkbox"> <code>border-border</code> <code>#e3e6ec</code> — não “gritar” no squint test</li>
+<li><input disabled="" type="checkbox"> <code>divide-y</code> listas vs <code>border-b</code> seções</li>
+<li><input disabled="" type="checkbox"> Workspace <code>divide-x</code> — peso vs conteúdo</li>
+<li><input disabled="" type="checkbox"> Kanban card <code>border-border/80</code> vs faixa prioridade</li>
+</ul>
+<h3>Hierarquia / cor</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Um accent de ação (brand) — links <code>→</code> vs botões</li>
+<li><input disabled="" type="checkbox"> Status/prioridade semânticos — não decorativos</li>
+<li><input disabled="" type="checkbox"> Texto 4 níveis: ink / muted / uppercase section / disabled</li>
+<li><input disabled="" type="checkbox"> FilterChip ativo navy vs chips inativos</li>
+</ul>
+<h3>Estados</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Toda lista: DEFAULT · LOADING · EMPTY · ERROR · (403 se admin-only)</li>
+<li><input disabled="" type="checkbox"> Botão disabled opacity-50 + motivo (hint)</li>
+<li><input disabled="" type="checkbox"> Mobile pane: back link brand presente</li>
+</ul>
+<h3>Mobile</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Bottom nav vs rotas admin (descoberta)</li>
+<li><input disabled="" type="checkbox"> Kanban chips vs 4 colunas</li>
+<li><input disabled="" type="checkbox"> Workspace 1 coluna por vez — labels ← claros</li>
+</ul>
+<hr>
+<h2>Referência rápida de arquivos</h2>
+<table>
+<thead>
+<tr>
+<th>Rota</th>
+<th>page.tsx</th>
+<th>Componentes-chave</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/login</code></td>
+<td><code>app/login/page.tsx</code></td>
+<td>Frame (reui)</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>app/(app)/page.tsx</code></td>
+<td>AttentionStrip, ActivityRow</td>
+</tr>
+<tr>
+<td><code>/atendimento</code></td>
+<td><code>app/(app)/atendimento/page.tsx</code></td>
+<td>ThreadPanel, WorkspaceShell</td>
+</tr>
+<tr>
+<td><code>/triagem</code></td>
+<td><code>app/(app)/triagem/page.tsx</code></td>
+<td>TriageAnalysisPanel</td>
+</tr>
+<tr>
+<td><code>/triagem/[id]</code></td>
+<td><code>app/(app)/triagem/[id]/page.tsx</code></td>
+<td>TriageAnalysisPanel</td>
+</tr>
+<tr>
+<td><code>/nao-vinculados</code></td>
+<td><code>app/(app)/nao-vinculados/page.tsx</code></td>
+<td>UnlinkedQueue, UnlinkedIdentityPanel</td>
+</tr>
+<tr>
+<td><code>/chamados</code></td>
+<td><code>app/(app)/chamados/page.tsx</code></td>
+<td>KanbanBoard, TicketCard</td>
+</tr>
+<tr>
+<td><code>/chamados/[id]</code></td>
+<td><code>app/(app)/chamados/[id]/page.tsx</code></td>
+<td>Timeline, DocumentFichaForm</td>
+</tr>
+<tr>
+<td><code>/documentos</code></td>
+<td><code>app/(app)/documentos/page.tsx</code></td>
+<td>DocumentFichaForm</td>
+</tr>
+<tr>
+<td><code>/condominios</code></td>
+<td><code>app/(app)/condominios/page.tsx</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>/condominios/[id]</code></td>
+<td><code>app/(app)/condominios/[id]/page.tsx</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>/equipe</code></td>
+<td><code>app/(app)/equipe/page.tsx</code></td>
+<td>DataTable</td>
+</tr>
+<tr>
+<td><code>/conexoes</code></td>
+<td><code>app/(app)/conexoes/page.tsx</code></td>
+<td>WhatsappSessionCard</td>
+</tr>
+<tr>
+<td>Shell</td>
+<td>—</td>
+<td><code>components/layout/app-shell.tsx</code></td>
+</tr>
+</tbody></table>
+<hr>
+<p><em>Fim do catálogo as-is v0.8.0. Atualizar este arquivo quando layout, tokens ou CTAs mudarem; regras de negócio continuam em DOCUMENTACAO-SISTEMA.md.</em></p>
+
+  </main>
+</body>
+</html>

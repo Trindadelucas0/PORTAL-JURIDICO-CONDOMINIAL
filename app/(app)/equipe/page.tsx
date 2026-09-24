@@ -124,7 +124,8 @@ export default function EquipePage() {
       ) : items.length === 0 ? (
         <EmptyState title="Nenhum usuário" />
       ) : (
-        <DataTable>
+        <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
+        <DataTable className="border-t-0">
           <thead>
             <tr>
               <Th>Pessoa</Th>
@@ -160,6 +161,7 @@ export default function EquipePage() {
             ))}
           </tbody>
         </DataTable>
+        </div>
       )}
       {patch.isError ? <ErrorBanner message={(patch.error as Error).message} /> : null}
 

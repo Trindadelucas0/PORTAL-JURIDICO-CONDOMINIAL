@@ -6,7 +6,6 @@ import { conversationIdentityLabel, conversationPhoneLabel } from "@/lib/phone/d
 
 export function UnlinkedIdentityPanel({
   conversation,
-  onBack,
   onEnroll,
 }: {
   conversation?: {
@@ -17,7 +16,6 @@ export function UnlinkedIdentityPanel({
     condominium?: { nome: string } | null;
     connection: { label: string };
   } | null;
-  onBack: () => void;
   onEnroll: () => void;
 }) {
   const title = conversation ? conversationIdentityLabel(conversation) : null;
@@ -27,10 +25,7 @@ export function UnlinkedIdentityPanel({
 
   return (
     <aside className="min-h-0 flex-1 overflow-y-auto p-3 text-sm">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <button type="button" className="text-[var(--brand)] xl:hidden" onClick={onBack}>
-          ← Conversa
-        </button>
+      <div className="mb-3">
         <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
           Identidade
         </h2>

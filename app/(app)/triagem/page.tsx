@@ -67,10 +67,10 @@ export default function TriagemPage() {
   const currentId = selected || items[0]?.id;
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3">
         <div>
-          <h1 className="text-sm font-semibold">Triagem</h1>
+          <h1 className="text-base font-semibold tracking-tight">Triagem</h1>
           <p className="text-xs text-muted-foreground">
             <span className="tabular font-medium text-foreground">{list.data?.meta?.total ?? items.length}</span>{" "}
             aguardando classificação
@@ -94,16 +94,16 @@ export default function TriagemPage() {
       ) : (
         <WorkspaceShell cols="triage">
           <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
-            <ul className="min-h-0 flex-1 overflow-y-auto">
+            <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-background p-2">
               {items.map((item) => (
                 <li key={item.id}>
                   <button
                     type="button"
                     className={cn(
-                      "w-full border-l-2 px-3 py-2.5 text-left transition-colors duration-[var(--motion-fast)]",
+                      "w-full rounded-[var(--radius)] border border-border border-l-2 bg-card px-3 py-2.5 text-left transition-colors duration-[var(--motion-fast)]",
                       currentId === item.id
-                        ? "border-l-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
-                        : "border-l-transparent hover:bg-muted/50",
+                        ? "border-l-primary bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
+                        : "border-l-transparent hover:border-[var(--border-strong)]",
                     )}
                     onClick={() => {
                       setSelected(item.id);

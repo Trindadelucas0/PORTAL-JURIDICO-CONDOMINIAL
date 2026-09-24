@@ -1,8 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Suspense, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Pencil, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +19,14 @@ import { ExpandableRow } from "@/components/ui/expandable-row";
 import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
 import { formatAge, STATUS_LABEL } from "@/lib/ui-labels";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Button } from "@/components/ui/button";
+import { TicketEditDrawer, type EditTicketValues } from "@/components/chamados/ticket-edit-drawer";
 import Link from "next/link";
+
+type ConversationTicket = { id: string; protocol: string; status: string; updatedAt?: string };
 
 type Conversation = ThreadConversation & {
   unread?: boolean;
@@ -26,31 +34,37 @@ type Conversation = ThreadConversation & {
   peerAvatarUrl?: string | null;
   peerDisplayName?: string | null;
   triageItem: { id: string; status: string } | null;
-  tickets?: { id: string; protocol: string; status: string }[];
+  tickets?: ConversationTicket[];
   messages: { body: string }[];
+};
+
+type EditTicket = {
+  id: string;
+  title: string;
+  priority: string;
+  category: string;
+  status: string;
+  assignedTo: { id: string } | null;
 };
 
 type Filter = "all" | "unread" | "triage";
 
-function useNotebookCollapseDefault() {
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1439px)");
-    const apply = () => setOpen(!mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-  return [open, setOpen] as const;
+/** Mais recente não resolvido; se todos resolvidos, o mais recente. Lista já vem orderBy updatedAt desc. */
+function pickTicketForCard(tickets: ConversationTicket[] | undefined): ConversationTicket | undefined {
+  if (!tickets?.length) return undefined;
+  return tickets.find((t) => t.status !== "resolvido") ?? tickets[0];
 }
 
 function InboxInner() {
   const params = useSearchParams();
+  const qc = useQueryClient();
+  const toast = useToast();
   const [selected, setSelected] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
   const [q, setQ] = useState(params.get("q") || "");
   const [filter, setFilter] = useState<Filter>("all");
-  const [mobilePane, setMobilePane] = useState<"list" | "thread" | "context">("list");
-  const [contextOpen, setContextOpen] = useNotebookCollapseDefault();
+  const [mobilePane, setMobilePane] = useState<"list" | "thread">("list");
+  const [editTicketId, setEditTicketId] = useState<string | null>(null);
   const list = useQuery({
     queryKey: ["conversations", q, filter],
     queryFn: () => {
@@ -62,9 +76,67 @@ function InboxInner() {
     },
     ...livePollQuery,
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/conversations/${id}`, { method: "DELETE" }),
+    onSuccess: (_res, id) => {
+      if (selected === id) {
+        setSelected(null);
+        setMobilePane("list");
+      }
+      toast("Conversa excluída do sistema");
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["messages", id] });
+      qc.invalidateQueries({ queryKey: ["triage"] });
+    },
+    onError: (error) => {
+      toast((error as Error).message || "Não foi possível excluir a conversa");
+    },
+  });
   const items = list.data?.data ?? [];
   const current = items.find((c) => c.id === selected) || items[0];
   const currentId = selected || current?.id;
+  const currentTicket = pickTicketForCard(current?.tickets);
+
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api<{ user: { role: string } }>("/api/auth/me"),
+  });
+  const admin = me.data?.data.user.role === "admin";
+  const team = useQuery({
+    queryKey: ["team"],
+    queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
+    enabled: Boolean(admin && editTicketId),
+  });
+  const editTicket = useQuery({
+    queryKey: ["ticket", editTicketId],
+    enabled: Boolean(editTicketId),
+    queryFn: () => api<EditTicket>(`/api/tickets/${editTicketId}`),
+  });
+  const patchTicket = useMutation({
+    mutationFn: (values: EditTicketValues) => {
+      if (!editTicketId) throw new Error("Chamado não selecionado");
+      return api(`/api/tickets/${editTicketId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: values.status,
+          title: values.title,
+          priority: values.priority,
+          category: values.category,
+          assignedToId: values.assignedToId || null,
+        }),
+      });
+    },
+    onSuccess: () => {
+      const id = editTicketId;
+      toast("Chamado atualizado");
+      setEditTicketId(null);
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
+      if (id) qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
 
   if (list.isError) {
     return (
@@ -75,9 +147,12 @@ function InboxInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col lg:h-[calc(100dvh-3rem)]">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
-        <h1 className="text-sm font-semibold">Atendimento</h1>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Atendimento</h1>
+          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Fila de entrada</p>
+        </div>
         <FilterBar className="ml-auto sm:ml-0">
           <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
             Todas
@@ -90,12 +165,10 @@ function InboxInner() {
           </FilterChip>
         </FilterBar>
       </div>
-      <WorkspaceShell cols="inbox" contextOpen={contextOpen}>
-        <WorkspacePane
-          className={cn(mobilePane !== "list" && "hidden lg:flex")}
-          hidden={false}
-        >
+      <WorkspaceShell cols="inbox" contextOpen>
+        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <p className="mb-2 px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Conversas</p>
             <Input
               placeholder="Buscar…"
               value={q}
@@ -111,16 +184,19 @@ function InboxInner() {
             ) : items.length === 0 ? (
               <EmptyState title="Tudo limpo" hint="Nenhuma conversa no fluxo." />
             ) : (
-              <ul className="mt-1">
-                {items.map((c) => (
-                  <li key={c.id}>
+              <ul className="mt-2 space-y-1.5">
+                {items.map((c) => {
+                  const ticket = pickTicketForCard(c.tickets);
+                  const inTriage = c.triageItem?.status === "aberto";
+                  return (
+                  <li key={c.id} className="relative">
                     <button
                       type="button"
                       className={cn(
-                        "flex w-full items-start gap-2 border-l-2 px-2 py-2 text-left text-sm transition-colors duration-[var(--motion-fast)]",
+                        "flex w-full items-start gap-2 rounded-[var(--radius)] border border-border border-l-2 px-2 py-2 pr-9 text-left text-sm transition-colors duration-[var(--motion-fast)]",
                         currentId === c.id
-                          ? "border-l-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
-                          : "border-l-transparent hover:bg-muted/50",
+                          ? "border-l-primary bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
+                          : "border-l-transparent bg-card hover:border-[var(--border-strong)]",
                       )}
                       onClick={() => {
                         setSelected(c.id);
@@ -144,22 +220,44 @@ function InboxInner() {
                             {formatAge(c.updatedAt) ?? ""}
                           </span>
                         </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                          {conversationPhoneLabel(c.contact?.phoneE164, c.peerPhoneE164)}
+                          {c.condominium?.nome ? ` · ${c.condominium.nome}` : ""}
+                        </span>
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                           {c.messages[0]?.body || "—"}
                         </span>
-                        {c.triageItem?.status === "aberto" ? (
-                          <span className="mt-0.5 inline-block text-[10px] font-medium tracking-wide text-[var(--warn)] uppercase">
-                            Triagem
-                          </span>
-                        ) : c.tickets?.[0] ? (
-                          <span className="mt-0.5 inline-block text-[10px] font-medium tabular text-muted-foreground">
-                            #{c.tickets[0].protocol}
+                        {inTriage || ticket ? (
+                          <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            {inTriage ? (
+                              <span className="text-[10px] font-medium tracking-wide text-[var(--warn)] uppercase">
+                                Triagem
+                              </span>
+                            ) : null}
+                            {ticket ? (
+                              <>
+                                <span className="text-[10px] font-medium tabular text-muted-foreground">
+                                  #{ticket.protocol}
+                                </span>
+                                <StatusBadge status={ticket.status} />
+                              </>
+                            ) : null}
                           </span>
                         ) : null}
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      className="absolute top-1 right-0.5 inline-flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-[var(--danger)]"
+                      aria-label={`Excluir conversa de ${c.contact?.nome || c.peerDisplayName || conversationIdentityLabel(c)} só do sistema`}
+                      title="Excluir do sistema"
+                      onClick={() => setPendingDelete(c)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -169,10 +267,7 @@ function InboxInner() {
             conversation={current}
             hidden={mobilePane !== "thread"}
             onBack={() => setMobilePane("list")}
-            onContext={() => {
-              setContextOpen(true);
-              setMobilePane("context");
-            }}
+            showContext={false}
             title={
               current
                 ? current.contact?.nome || current.peerDisplayName || conversationIdentityLabel(current)
@@ -183,47 +278,70 @@ function InboxInner() {
                 ? `${conversationPhoneLabel(current.contact?.phoneE164, current.peerPhoneE164)} · ${current.condominium?.nome || "sem condomínio"} · ${current.connection.label}`
                 : undefined
             }
+            besideName={
+              currentTicket ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="shrink-0"
+                  onClick={() => setEditTicketId(currentTicket.id)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  Atualizar chamado
+                </Button>
+              ) : null
+            }
             allowPublicSend={Boolean(current && current.connection.status === "open")}
             publicBlockedHint={
               current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
             }
           />
         </WorkspacePane>
-        <WorkspacePane
-          className={cn(
-            !contextOpen && "xl:hidden",
-            mobilePane !== "context" && "hidden xl:flex",
-          )}
-        >
-          <ContextPane
-            conversation={current}
-            onToggle={() => setContextOpen((v) => !v)}
-            hidden={mobilePane !== "context"}
-            onBack={() => setMobilePane("thread")}
-          />
+        <WorkspacePane>
+          <ContextPane conversation={current} />
         </WorkspacePane>
       </WorkspaceShell>
+      <TicketEditDrawer
+        open={Boolean(editTicketId)}
+        onClose={() => setEditTicketId(null)}
+        ticket={editTicket.data?.data ?? null}
+        admin={Boolean(admin)}
+        team={team.data?.data ?? []}
+        pending={patchTicket.isPending || editTicket.isLoading}
+        errorMessage={
+          patchTicket.isError
+            ? (patchTicket.error as Error).message
+            : editTicket.isError
+              ? (editTicket.error as Error).message
+              : null
+        }
+        onSave={(values) => patchTicket.mutate(values)}
+      />
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        title="Excluir conversa do sistema"
+        message="Tira esta conversa só do Juricon. O WhatsApp no celular permanece. O chamado, se houver, permanece. As mensagens desta conversa saem da ficha do chamado."
+        confirmLabel="Excluir do sistema"
+        danger
+        pending={remove.isPending}
+        onConfirm={() => {
+          if (pendingDelete) remove.mutate(pendingDelete.id);
+        }}
+      />
     </div>
   );
 }
 
-function ContextPane({
-  conversation,
-  onToggle,
-  hidden,
-  onBack,
-}: {
-  conversation?: Conversation;
-  onToggle: () => void;
-  hidden: boolean;
-  onBack: () => void;
-}) {
+function ContextPane({ conversation }: { conversation?: Conversation }) {
   return (
-    <ContextSummary hidden={hidden} onBack={onBack} onCollapse={onToggle}>
+    <ContextSummary>
       {!conversation ? (
         <p className="text-muted-foreground">Selecione uma conversa.</p>
       ) : (
         <div className="space-y-4">
+          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Contexto do contato</p>
           <div className="flex items-center gap-3">
             <PeerAvatar
               name={conversation.contact?.nome || conversation.peerDisplayName || "Contato"}

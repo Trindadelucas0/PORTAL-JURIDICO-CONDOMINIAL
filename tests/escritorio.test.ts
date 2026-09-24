@@ -78,6 +78,7 @@ describe("escritorio operacional", () => {
     });
     expect(ticket.protocol).toMatch(/^\d{4}-\d{4}$/);
     expect(ticket.assignedToId).toBe(staff.id);
+    expect(ticket.title).toBe("Sindico Teste — Assembleia");
 
     const afterInbound = await atendimento.ingestInbound({
       waMessageId: `promote-2-${suffix}`,
@@ -86,6 +87,40 @@ describe("escritorio operacional", () => {
       connectionType: "dev_mock",
     });
     expect(afterInbound.ticketCreated).toBe(false);
+  });
+
+  it("createManual rejects contact from another condominium", async () => {
+    const suffix = `${Date.now()}-condo-mismatch`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-mismatch-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const condoA = await db.condominium.create({ data: { nome: `Condo A ${suffix}` } });
+    const condoB = await db.condominium.create({ data: { nome: `Condo B ${suffix}` } });
+    const contactB = await db.contact.create({
+      data: {
+        nome: "Contato B",
+        phoneE164: `+55117${String(Date.now()).slice(-8)}`,
+        condominiumId: condoB.id,
+      },
+    });
+    try {
+      await tickets.createManual(admin, {
+        title: "Chamado errado",
+        category: "outro",
+        priority: "media",
+        condominiumId: condoA.id,
+        contactId: contactB.id,
+        assignedToId: null,
+      });
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AppError);
+      expect((e as AppError).status).toBe(422);
+    }
   });
 
   it("IDOR: funcionario gets 403 on foreign ticket, 404 when missing", async () => {

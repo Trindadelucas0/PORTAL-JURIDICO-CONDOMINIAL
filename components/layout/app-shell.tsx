@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Plus,
   Radio,
   Search,
   Ticket,
@@ -19,16 +20,9 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { PublicUser } from "@/lib/auth/session";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -47,6 +41,7 @@ import {
 } from "@/components/ui/sidebar";
 import { MoreSheet } from "@/components/layout/more-sheet";
 import { api } from "@/lib/client/api";
+import { livePollQuery } from "@/lib/client/live-poll";
 import { humanSessionStatus } from "@/components/conexoes/whatsapp-session-card";
 import { initials } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -116,7 +111,7 @@ function ShellSearch() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar…"
           aria-label="Buscar no módulo"
-          className="h-8 border-transparent bg-muted/50 pl-8 shadow-none focus-visible:border-border"
+          className="h-8 border-input bg-card pl-8 shadow-none"
         />
       </div>
     </form>
@@ -133,13 +128,15 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
       api<{
         triagem: number;
         naoVinculados?: number;
+        naoLidas?: number;
         abertos?: number;
         prazosVencidos?: number;
         conexao: { status: string; type: string; label: string } | null;
       }>("/api/dashboard"),
-    staleTime: 20_000,
+    ...livePollQuery,
   });
   const triagemCount = admin ? dash.data?.data.triagem ?? 0 : 0;
+  const unreadCount = dash.data?.data.naoLidas ?? 0;
   const unlinkedCount = admin ? dash.data?.data.naoVinculados ?? 0 : 0;
   const chamadosCount = dash.data?.data.abertos ?? 0;
   const prazosCount = dash.data?.data.prazosVencidos ?? 0;
@@ -153,11 +150,21 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
   }
 
   function badgeFor(href: string): number | null {
+    if (href === "/atendimento" && unreadCount > 0) return unreadCount;
     if (href === "/triagem" && triagemCount > 0) return triagemCount;
     if (href === "/nao-vinculados" && unlinkedCount > 0) return unlinkedCount;
     if (href === "/chamados" && chamadosCount > 0) return chamadosCount;
     if (href === "/prazos" && prazosCount > 0) return prazosCount;
     return null;
+  }
+
+  function badgeClass(href: string) {
+    if (href === "/atendimento") return "rounded-full bg-red-100 text-red-700";
+    if (href === "/triagem") return "rounded-full bg-secondary text-secondary-foreground";
+    if (href === "/nao-vinculados") return "rounded-full bg-secondary text-muted-foreground";
+    if (href === "/chamados") return "rounded-full bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]";
+    if (href === "/prazos") return "rounded-full bg-[var(--danger)] text-white";
+    return "";
   }
 
   const bottomItems = admin
@@ -173,19 +180,18 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
       ];
 
   return (
-    <SidebarProvider className="min-h-svh bg-background">
+    <SidebarProvider className="h-dvh overflow-hidden bg-background">
       <Sidebar collapsible="offcanvas">
-        <SidebarHeader className="border-b border-sidebar-border/80 py-2">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" render={<Link href="/" />} className="gap-2.5">
-                <span className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Ticket className="size-3.5" />
-                </span>
-                <span className="font-wordmark text-[15px]">Juricon</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+        <SidebarHeader className="h-12 justify-center border-b border-sidebar-border px-3 py-0">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-md border-b-2 border-b-[var(--accent)] bg-primary text-primary-foreground">
+                <Ticket className="size-3.5" />
+              </span>
+              <span className="font-wordmark text-base font-semibold text-primary">Juricon</span>
+            </Link>
+            <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">v0.9.5</span>
+          </div>
         </SidebarHeader>
         <SidebarContent className="gap-1 py-2">
           {NAV.map((group) => {
@@ -197,7 +203,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                   {group.group}
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>
+                  <SidebarMenu className="gap-1 px-2">
                     {items.map((item) => {
                       const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                       const Icon = item.icon;
@@ -222,7 +228,9 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                             <Icon />
                             <span>{item.label}</span>
                           </SidebarMenuButton>
-                          {badge != null ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
+                          {badge != null ? (
+                            <SidebarMenuBadge className={badgeClass(item.href)}>{badge}</SidebarMenuBadge>
+                          ) : null}
                         </SidebarMenuItem>
                       );
                     })}
@@ -232,97 +240,116 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
             );
           })}
         </SidebarContent>
-        <SidebarFooter className="gap-2 border-t border-sidebar-border/80 p-2">
+        <SidebarFooter className="gap-2 border-t border-sidebar-border bg-card p-2.5">
           {wa ? (
             admin ? (
               <Link
                 href="/conexoes"
-                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors duration-[var(--motion-fast)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="flex items-center gap-2 rounded-md bg-secondary px-2 py-1 text-xs text-foreground"
                 aria-label={`WhatsApp ${wa.label}`}
               >
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    "size-2 shrink-0 rounded-full",
                     wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
                   )}
                 />
-                <span className="truncate">WhatsApp · {wa.label}</span>
+                <span className="truncate font-semibold">WA · {wa.label}</span>
               </Link>
             ) : (
-              <p className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground" aria-label={`WhatsApp ${wa.label}`}>
+              <p className="flex items-center gap-2 rounded-md bg-secondary px-2 py-1 text-xs text-foreground" aria-label={`WhatsApp ${wa.label}`}>
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    "size-2 shrink-0 rounded-full",
                     wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
                   )}
                 />
-                <span className="truncate">WhatsApp · {wa.label}</span>
+                <span className="truncate font-semibold">WA · {wa.label}</span>
               </p>
             )
           ) : null}
-          <p className="px-2 text-[10px] text-muted-foreground">v0.9.2</p>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton size="lg" className="h-10 aria-expanded:bg-sidebar-accent" />
-                  }
-                >
-                  <Avatar className="size-7">
-                    <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
-                      {initials(user.nome || user.email)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="min-w-0 flex-1 truncate text-left text-sm">{user.nome || user.email}</span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-52">
-                  <DropdownMenuLabel className="font-normal">
-                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout}>
-                    <LogOut /> Sair
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <Avatar className="size-7">
+                <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
+                  {initials(user.nome || user.email)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-foreground">{user.nome || user.email}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              title="Sair"
+              aria-label="Sair"
+              className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-[var(--danger)]"
+            >
+              <LogOut className="size-[18px]" />
+            </button>
+          </div>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="min-w-0">
-        <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-card px-3">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+        <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-card px-4">
           <SidebarTrigger className="lg:hidden" />
           <Suspense fallback={null}>
             <ShellSearch />
           </Suspense>
-          <div className="ml-auto flex items-center gap-2 text-sm lg:hidden">
+          <div className="ml-auto flex items-center gap-3">
             {wa ? (
               admin ? (
-                <Link href="/conexoes" className="flex items-center gap-1.5" aria-label={`WhatsApp ${wa.label}`}>
+                <Link
+                  href="/conexoes"
+                  className="hidden items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground sm:inline-flex"
+                  aria-label={`WhatsApp ${wa.label}`}
+                >
                   <span
                     className={cn(
-                      "h-2 w-2 rounded-full",
+                      "size-1.5 rounded-full",
                       wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
                     )}
                   />
+                  WhatsApp {wa.label}
                 </Link>
               ) : (
                 <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
-                  )}
+                  className="hidden items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground sm:inline-flex"
                   aria-label={`WhatsApp ${wa.label}`}
-                />
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
+                    )}
+                  />
+                  WhatsApp {wa.label}
+                </span>
               )
             ) : null}
+            {admin ? (
+              <Link href="/chamados?novo=1" className={cn(buttonVariants(), "bg-primary text-primary-foreground hover:bg-[var(--brand-soft)]")}>
+                <Plus className="size-4" />
+                <span className="hidden md:inline">Novo Chamado</span>
+              </Link>
+            ) : null}
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-primary text-[11px] text-primary-foreground">
+                {initials(user.nome || user.email)}
+              </AvatarFallback>
+            </Avatar>
           </div>
         </header>
         <main
           className={cn(
-            "min-w-0 flex-1 pb-16 lg:pb-0",
-            fullBleed ? "p-0" : "px-5 py-5 md:px-6 md:py-6",
+            "flex min-h-0 min-w-0 flex-1 flex-col bg-background",
+            pathname === "/"
+              ? "overflow-hidden p-0 pb-16 lg:pb-0"
+              : fullBleed
+                ? "overflow-hidden p-3 pb-16 lg:p-4 lg:pb-4"
+                : "overflow-auto px-5 py-5 pb-16 md:px-6 md:py-6 lg:pb-6",
           )}
         >
           {fullBleed ? (

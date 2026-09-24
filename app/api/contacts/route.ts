@@ -8,7 +8,13 @@ export async function GET(request: Request) {
   try {
     await requireSession();
     const { page, pageSize } = parsePage(request);
-    const result = await cadastroService.listContacts(page, pageSize);
+    const url = new URL(request.url);
+    const condominiumRaw = url.searchParams.get("condominiumId");
+    const condominiumId =
+      condominiumRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(condominiumRaw)
+        ? condominiumRaw
+        : undefined;
+    const result = await cadastroService.listContacts(page, pageSize, { condominiumId });
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,

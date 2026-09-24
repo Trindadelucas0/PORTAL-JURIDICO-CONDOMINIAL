@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppError, unavailable } from "@/lib/api/errors";
 import { assertAdmin } from "@/lib/auth/guards";
 import { hashPassword, verifyPassword } from "@/lib/auth/session";
@@ -24,8 +24,15 @@ import { conversationIdentityLabel, conversationPhoneLabel, formatWhatsAppPeer, 
 import { formatPhoneInput, toE164FromMasked, e164ToMaskedInput } from "@/lib/phone/mask";
 import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 import { isInOperationalFlow } from "@/lib/services/operational-flow";
-import { contactNameMatchesPushName, lidJidsMatchingPlaceholder, pickUniqueLidPlaceholder } from "@/lib/channels/evolution-lid-map";
-import { resolvePhoneFromLidChats } from "@/lib/channels/evolution-peer-profile";
+import { contactNameMatchesPushName, lidJidsMatchingPlaceholder, messageRows, pickUniqueLidPlaceholder } from "@/lib/channels/evolution-lid-map";
+import {
+  evolutionPeerHint,
+  evolutionProfilePictureRequest,
+  phoneFromMessageRow,
+  resolvePhoneFromContacts,
+  resolvePhoneFromLidChats,
+  resolvePhoneFromMessages,
+} from "@/lib/channels/evolution-peer-profile";
 import { phoneFromWhatsAppLid } from "@/lib/channels/evolution-webhook";
 
 describe("login primitives", () => {
@@ -208,6 +215,140 @@ describe("evolution send errors", () => {
     ).toBeNull();
   });
 
+  it("resolves PN from Evolution findMessages key.remoteJidAlt", () => {
+    const lid = phoneFromWhatsAppLid("142112045666497@lid");
+    const lidJid = "142112045666497@lid";
+    expect(
+      phoneFromMessageRow({
+        key: {
+          id: "MSG1",
+          remoteJid: lidJid,
+          remoteJidAlt: "5511977770000@s.whatsapp.net",
+        },
+      }),
+    ).toBe("+5511977770000");
+    expect(
+      resolvePhoneFromMessages(
+        [
+          {
+            key: {
+              id: "MSG1",
+              remoteJid: lidJid,
+              remoteJidAlt: "5511977770000@s.whatsapp.net",
+            },
+          },
+        ],
+        lid!,
+        { waMessageId: "MSG1", lidJid },
+      ),
+    ).toBe("+5511977770000");
+    expect(
+      resolvePhoneFromMessages(
+        [{ key: { id: "MSG1", remoteJid: lidJid } }],
+        lid!,
+        { waMessageId: "MSG1", lidJid },
+      ),
+    ).toBeNull();
+  });
+
+  it("unwraps Evolution 2.2 findMessages shape messages.records", () => {
+    const rows = messageRows({
+      messages: {
+        total: 1,
+        pages: 1,
+        currentPage: 1,
+        records: [
+          {
+            key: {
+              id: "ABC",
+              remoteJid: "142112045666497@lid",
+              remoteJidAlt: "5511966660000@s.whatsapp.net",
+            },
+          },
+        ],
+      },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.key?.id).toBe("ABC");
+    expect(phoneFromMessageRow(rows[0]!)).toBe("+5511966660000");
+  });
+
+  it("resolves PN from unique Evolution contact by pushName", () => {
+    expect(
+      resolvePhoneFromContacts(
+        [
+          { remoteJid: "5511988880000@s.whatsapp.net", pushName: "Samuel Sousa" },
+          { remoteJid: "5511977770000@s.whatsapp.net", pushName: "Ezequiel" },
+        ],
+        "Samuel Sousa",
+      ),
+    ).toBe("+5511988880000");
+    expect(
+      resolvePhoneFromContacts(
+        [
+          { remoteJid: "5511988880000@s.whatsapp.net", pushName: "Samuel Sousa" },
+          { remoteJid: "5511977770000@s.whatsapp.net", pushName: "Samuel Sousa" },
+        ],
+        "Samuel Sousa",
+      ),
+    ).toBeNull();
+    expect(
+      resolvePhoneFromContacts(
+        [{ remoteJid: "142112045666497@lid", pushName: "Samuel Sousa" }],
+        "Samuel Sousa",
+      ),
+    ).toBeNull();
+    expect(resolvePhoneFromContacts([], "Samuel Sousa")).toBeNull();
+    expect(
+      resolvePhoneFromContacts(
+        [
+          { remoteJid: "5511988880000@s.whatsapp.net", pushName: "Nome Ambiguo" },
+          { remoteJid: "5511977770000@s.whatsapp.net", pushName: "Nome Ambiguo" },
+          { remoteJid: "199999000000001@lid", pushName: "Nome Ambiguo" },
+        ],
+        "Nome Ambiguo",
+      ),
+    ).toBeNull();
+  });
+
+  it("reads Evolution name and picture from the contact JID and posts the picture route", () => {
+    const lid = phoneFromWhatsAppLid("142112045666497@lid");
+    expect(
+      evolutionPeerHint(
+        lid!,
+        [{ remoteJid: "142112045666497@lid", pushName: "Ana Clara", profilePicUrl: "https://cdn.example/a.jpg" }],
+        [],
+      ),
+    ).toEqual({
+      jid: "142112045666497@lid",
+      pushName: "Ana Clara",
+      profilePicUrl: "https://cdn.example/a.jpg",
+    });
+    expect(
+      evolutionPeerHint(
+        lid!,
+        [
+          { remoteJid: "111142112045666497@lid", pushName: "Ana" },
+          { remoteJid: "999142112045666497@lid", pushName: "Ana" },
+        ],
+        [],
+      ).jid,
+    ).toBeNull();
+    expect(
+      evolutionPeerHint("+5511988880000", [{ remoteJid: "5511988880000@s.whatsapp.net", pushName: "Bruno" }], []).jid,
+    ).toBe("5511988880000@s.whatsapp.net");
+
+    expect(evolutionProfilePictureRequest("142112045666497@lid")).toEqual({
+      method: "POST",
+      body: { number: "142112045666497@lid" },
+    });
+    const src = readFileSync(path.join(process.cwd(), "lib/channels/evolution-peer-profile.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export async function fetchEvolutionProfilePictureUrl"));
+    expect(fn).toContain('method: request.method');
+    expect(fn).not.toContain('method: "GET"');
+    expect(fn).not.toContain("?number=");
+  });
+
   it("builds authenticated avatar file URL", () => {
     expect(peerAvatarPublicUrl("avatars/abc.jpg")).toBe("/api/files/avatars/abc.jpg");
     expect(peerAvatarPublicUrl("../secret")).toBeNull();
@@ -290,11 +431,68 @@ describe("evolution send errors", () => {
 });
 
 describe("live poll", () => {
-  it("refetches every 3s only while the tab is focused", async () => {
+  it("refetches every 3s even while the tab is in the background", async () => {
     const { LIVE_POLL_MS, livePollQuery } = await import("@/lib/client/live-poll");
     expect(LIVE_POLL_MS).toBe(3000);
+    expect(livePollQuery.staleTime).toBe(0);
     expect(livePollQuery.refetchInterval).toBe(3000);
-    expect(livePollQuery.refetchIntervalInBackground).toBe(false);
+    expect(livePollQuery.refetchIntervalInBackground).toBe(true);
+  });
+});
+
+describe("messageWindow", () => {
+  it("returns empty when total is 0", async () => {
+    const { messageWindow } = await import("@/lib/api/pagination");
+    expect(messageWindow(0, 1, 50)).toEqual({ start: 0, take: 0 });
+  });
+
+  it("returns the whole conversation when total fits in one page", async () => {
+    const { messageWindow } = await import("@/lib/api/pagination");
+    expect(messageWindow(10, 1, 50)).toEqual({ start: 0, take: 10 });
+    expect(messageWindow(50, 1, 50)).toEqual({ start: 0, take: 50 });
+  });
+
+  it("page 1 is the newest window for a long thread", async () => {
+    const { messageWindow } = await import("@/lib/api/pagination");
+    expect(messageWindow(104, 1, 50)).toEqual({ start: 54, take: 50 });
+  });
+
+  it("page 2 is the block immediately before page 1", async () => {
+    const { messageWindow } = await import("@/lib/api/pagination");
+    expect(messageWindow(104, 2, 50)).toEqual({ start: 4, take: 50 });
+  });
+
+  it("page past the end returns empty take", async () => {
+    const { messageWindow } = await import("@/lib/api/pagination");
+    expect(messageWindow(104, 4, 50)).toEqual({ start: 0, take: 0 });
+  });
+});
+
+describe("groupMessagesByDayAndSender", () => {
+  it("puts Ontem before Hoje even if the array arrives out of order", async () => {
+    const { groupMessagesByDayAndSender } = await import("@/lib/ui/message-groups");
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const todayIso = today.toISOString();
+    const yesterdayIso = yesterday.toISOString();
+    const days = groupMessagesByDayAndSender([
+      {
+        id: "2",
+        direction: "in" as const,
+        visibility: "publica" as const,
+        createdAt: todayIso,
+      },
+      {
+        id: "1",
+        direction: "in" as const,
+        visibility: "publica" as const,
+        createdAt: yesterdayIso,
+      },
+    ]);
+    expect(days.map((d) => d.label)).toEqual(["Ontem", "Hoje"]);
+    expect(days[0].clusters[0].items[0].id).toBe("1");
+    expect(days[1].clusters[0].items[0].id).toBe("2");
   });
 });
 

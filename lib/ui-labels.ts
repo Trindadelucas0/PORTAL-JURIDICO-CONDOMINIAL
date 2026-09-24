@@ -9,7 +9,7 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export const PRIORITY_LABEL: Record<string, string> = {
   baixa: "Baixa",
-  media: "Normal",
+  media: "Média",
   alta: "Alta",
   urgente: "Urgente",
 };
@@ -30,28 +30,28 @@ export const TICKET_STATUSES = ["aberto", "em_andamento", "aguardando", "resolvi
 export const STATUS_TONE: Record<string, { bar: string; pill: string; header: string; count: string; column: string }> = {
   aberto: {
     bar: "bg-[var(--status-aberto)]",
-    pill: "bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]",
+    pill: "border border-[#bfdbfe] bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]",
     header: "bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]",
     count: "bg-[var(--status-aberto)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-aberto)_8%,white)]",
   },
   em_andamento: {
     bar: "bg-[var(--status-andamento)]",
-    pill: "bg-[var(--status-andamento-bg)] text-[var(--status-andamento)]",
+    pill: "border border-[#fde68a] bg-[var(--status-andamento-bg)] text-[var(--status-andamento)]",
     header: "bg-[var(--status-andamento-bg)] text-[var(--status-andamento)]",
     count: "bg-[var(--status-andamento)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-andamento)_8%,white)]",
   },
   aguardando: {
     bar: "bg-[var(--status-aguardando)]",
-    pill: "bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
+    pill: "border border-[#e2e8f0] bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
     header: "bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
     count: "bg-[var(--status-aguardando)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-aguardando)_8%,white)]",
   },
   resolvido: {
     bar: "bg-[var(--status-resolvido)]",
-    pill: "bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
+    pill: "border border-[#a7f3d0] bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
     header: "bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
     count: "bg-[var(--status-resolvido)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-resolvido)_8%,white)]",
@@ -68,19 +68,19 @@ export const STATUS_TONE: Record<string, { bar: string; pill: string; header: st
 export const PRIORITY_TONE: Record<string, { bar: string; pill: string }> = {
   urgente: {
     bar: "bg-[var(--priority-urgente)]",
-    pill: "bg-[var(--priority-urgente)] text-white",
+    pill: "border border-red-200 bg-red-50 text-[var(--priority-urgente)]",
   },
   alta: {
     bar: "bg-[var(--priority-alta)]",
-    pill: "bg-[var(--priority-alta)] text-white",
+    pill: "border border-orange-200 bg-orange-50 text-[var(--priority-alta)]",
   },
   media: {
     bar: "bg-[var(--priority-media)]",
-    pill: "bg-slate-800 text-white",
+    pill: "border border-slate-200 bg-slate-100 text-[var(--priority-media)]",
   },
   baixa: {
     bar: "bg-[var(--priority-baixa)]",
-    pill: "border border-slate-400 bg-white text-slate-600",
+    pill: "border border-slate-200 bg-white text-[var(--priority-baixa)]",
   },
 };
 

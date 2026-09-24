@@ -1,6 +1,7 @@
 export async function api<T>(path: string, init?: RequestInit): Promise<{ data: T; meta?: Record<string, number> }> {
   const res = await fetch(path, {
     ...init,
+    cache: "no-store",
     credentials: "include",
     headers: {
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),

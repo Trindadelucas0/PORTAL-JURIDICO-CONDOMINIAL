@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -13,6 +14,8 @@ import { findContactByPhones, upsertContactIdentities } from "@/lib/services/con
 import { mergeConversations } from "@/lib/services/conversation-merge";
 import { inFlowConversationWhere, isInOperationalFlow } from "@/lib/services/operational-flow";
 import { resolveUniqueLidPlaceholderForContact } from "@/lib/channels/evolution-lid-map";
+
+type Db = typeof prisma | Prisma.TransactionClient;
 
 const cnpjSchema = z
   .string()
@@ -39,6 +42,7 @@ export const contactCreate = z.object({
   email: z.string().email().optional().or(z.literal("")),
   cargo: z.string().max(80).optional(),
   condominiumId: z.string().uuid().optional().nullable(),
+  condominiumIds: z.array(z.string().uuid()).optional(),
 });
 
 export const contactPatch = z.object({
@@ -47,60 +51,182 @@ export const contactPatch = z.object({
   email: z.string().email().optional().or(z.literal("")).nullable(),
   cargo: z.string().max(80).optional().nullable(),
   condominiumId: z.string().uuid().optional().nullable(),
+  condominiumIds: z.array(z.string().uuid()).optional(),
 });
 
 export const enrollConversationSchema = z.object({
   nome: z.string().min(2).max(120),
   condominiumId: z.string().uuid(),
+  condominiumIds: z.array(z.string().uuid()).optional(),
   phone: z.string().min(8).max(32).optional(),
   email: z.string().email().optional().or(z.literal("")),
   cargo: z.string().max(80).optional(),
 });
 
-async function openTriageForConversation(conversationId: string) {
-  const existing = await prisma.triageItem.findUnique({ where: { conversationId } });
+const contactWithMemberships = {
+  condominium: true,
+  memberships: {
+    include: { condominium: { select: { id: true, nome: true } } },
+    orderBy: { createdAt: "asc" as const },
+  },
+} as const;
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+async function assertCondominiumsExist(db: Db, ids: string[]) {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return;
+  const found = await db.condominium.findMany({
+    where: { id: { in: unique }, deletedAt: null },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) throw notFound("Condomínio não encontrado");
+}
+
+/** Resolve principal + lista de vínculos. create/patch: replace=true. enroll: replace=false (só soma). */
+function resolveMembershipInput(opts: {
+  existingPrimary: string | null;
+  existingIds: string[];
+  condominiumId?: string | null;
+  condominiumIds?: string[];
+  replace: boolean;
+}): { primary: string | null; ids: string[] } {
+  const hasPrimary = opts.condominiumId !== undefined;
+  const hasList = opts.condominiumIds !== undefined;
+
+  if (!hasPrimary && !hasList) {
+    return { primary: opts.existingPrimary, ids: opts.existingIds };
+  }
+
+  let ids: string[];
+  if (hasList) {
+    ids = [...new Set(opts.condominiumIds!)];
+  } else if (opts.replace) {
+    ids = opts.condominiumId ? [opts.condominiumId] : [];
+  } else {
+    ids = [...new Set([...opts.existingIds, ...(opts.condominiumId ? [opts.condominiumId] : [])])];
+  }
+
+  let primary: string | null;
+  if (hasPrimary) {
+    primary = opts.condominiumId ?? null;
+  } else if (opts.existingPrimary && ids.includes(opts.existingPrimary)) {
+    primary = opts.existingPrimary;
+  } else {
+    primary = ids[0] ?? null;
+  }
+
+  if (primary && !ids.includes(primary)) {
+    throw unprocessable("O condomínio principal precisa estar na lista de vínculos");
+  }
+  if (!primary && ids.length > 0) {
+    throw unprocessable("Escolha o condomínio principal");
+  }
+
+  return { primary, ids };
+}
+
+async function syncContactMemberships(
+  db: Db,
+  contactId: string,
+  membership: { primary: string | null; ids: string[] },
+  opts: { replace: boolean },
+) {
+  await assertCondominiumsExist(db, membership.ids);
+  if (opts.replace) {
+    await db.contactCondominium.deleteMany({
+      where: {
+        contactId,
+        ...(membership.ids.length ? { condominiumId: { notIn: membership.ids } } : {}),
+      },
+    });
+  }
+  for (const condominiumId of membership.ids) {
+    await db.contactCondominium.upsert({
+      where: { contactId_condominiumId: { contactId, condominiumId } },
+      create: { contactId, condominiumId },
+      update: {},
+    });
+  }
+}
+
+async function openTriageForConversation(db: Db, conversationId: string) {
+  const existing = await db.triageItem.findUnique({ where: { conversationId } });
   if (!existing) {
-    return prisma.triageItem.create({ data: { conversationId, status: "aberto" } });
+    return db.triageItem.create({ data: { conversationId, status: "aberto" } });
   }
   if (existing.status === "arquivado") {
-    return prisma.triageItem.update({ where: { id: existing.id }, data: { status: "aberto" } });
+    return db.triageItem.update({ where: { id: existing.id }, data: { status: "aberto" } });
   }
   return existing;
 }
 
-async function rememberWhatsAppLidIdentity(contactId: string, nome: string) {
+async function rememberWhatsAppLidIdentity(db: Db, contactId: string, nome: string) {
   const lid = await resolveUniqueLidPlaceholderForContact(nome);
-  if (lid) await upsertContactIdentities(prisma, contactId, [lid]);
+  if (lid) await upsertContactIdentities(db, contactId, [lid]);
 }
 
-async function attachContactToMatchingConversations(contact: {
-  id: string;
-  phoneE164: string;
-  condominiumId: string | null;
-}) {
-  if (!isInOperationalFlow(contact)) return;
-  const identities = await prisma.contactIdentity.findMany({ where: { contactId: contact.id } });
+async function attachContactToMatchingConversations(
+  db: Db,
+  contact: { id: string; phoneE164: string; condominiumId: string | null },
+) {
+  if (!isInOperationalFlow(contact)) {
+    await db.conversation.updateMany({
+      where: { contactId: contact.id },
+      data: { condominiumId: null },
+    });
+    return;
+  }
+  const identities = await db.contactIdentity.findMany({ where: { contactId: contact.id } });
   const keys = uniquePhones(
     contact.phoneE164,
     ...e164LookupValues(contact.phoneE164),
     ...identities.map((identity) => identity.value),
   );
-  const convs = await prisma.conversation.findMany({
-    where: { OR: [{ contactId: contact.id }, { peerPhoneE164: { in: keys } }] },
+  const convs = await db.conversation.findMany({
+    where: {
+      OR: [{ contactId: contact.id }, { peerPhoneE164: { in: keys } }, { peerLid: { in: keys } }],
+    },
   });
   for (const conv of convs) {
-    await prisma.conversation.update({
-      where: { id: conv.id },
-      data: {
-        contactId: contact.id,
-        condominiumId: contact.condominiumId,
-        unidentified: false,
-        ...(isLidPeer(conv.peerPhoneE164) && !isLidPeer(contact.phoneE164)
-          ? { peerPhoneE164: contact.phoneE164 }
-          : {}),
-      },
-    });
-    await openTriageForConversation(conv.id);
+    const promote = isLidPeer(conv.peerPhoneE164) && !isLidPeer(contact.phoneE164);
+    try {
+      await db.conversation.update({
+        where: { id: conv.id },
+        data: {
+          contactId: contact.id,
+          condominiumId: contact.condominiumId,
+          unidentified: false,
+          ...(promote
+            ? { peerPhoneE164: contact.phoneE164, peerLid: conv.peerLid ?? conv.peerPhoneE164 }
+            : {}),
+        },
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const rival = await db.conversation.findFirst({
+        where: {
+          connectionId: conv.connectionId,
+          peerPhoneE164: contact.phoneE164,
+          id: { not: conv.id },
+        },
+      });
+      if (!rival) throw conflict("Já existe conversa com este telefone nesta conexão");
+      await mergeConversations(db, rival.id, conv.id);
+      await db.conversation.update({
+        where: { id: rival.id },
+        data: {
+          contactId: contact.id,
+          condominiumId: contact.condominiumId,
+          unidentified: false,
+        },
+      });
+      await openTriageForConversation(db, rival.id);
+      continue;
+    }
+    await openTriageForConversation(db, conv.id);
   }
 }
 
@@ -114,20 +240,44 @@ export const cadastroService = {
         orderBy: { nome: "asc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { _count: { select: { contacts: true, documents: true } } },
+        include: { _count: { select: { memberships: true, documents: true } } },
       }),
     ]);
-    return { items, total, page, pageSize };
+    return {
+      items: items.map((row) => ({
+        ...row,
+        _count: { contacts: row._count.memberships, documents: row._count.documents },
+      })),
+      total,
+      page,
+      pageSize,
+    };
   },
 
   async getCondominium(user: User, id: string) {
     const condo = await prisma.condominium.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        contacts: { where: { deletedAt: null }, orderBy: { nome: "asc" } },
-      },
     });
     if (!condo) throw notFound("Condomínio não encontrado");
+
+    const contacts = await prisma.contact.findMany({
+      where: {
+        deletedAt: null,
+        OR: [{ condominiumId: id }, { memberships: { some: { condominiumId: id } } }],
+      },
+      orderBy: { nome: "asc" },
+      include: {
+        memberships: {
+          include: { condominium: { select: { id: true, nome: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+    const contactsWithCount = contacts.map((ct) => ({
+      ...ct,
+      membershipCount: Math.max(ct.memberships.length, ct.condominiumId ? 1 : 0),
+    }));
+
     const ticketWhere = { condominiumId: id, ...ticketListWhere(user) };
     const [tickets, documents, conversations] = await Promise.all([
       prisma.ticket.findMany({
@@ -179,7 +329,7 @@ export const cadastroService = {
         },
       }),
     ]);
-    return { ...condo, tickets, documents, conversations };
+    return { ...condo, contacts: contactsWithCount, tickets, documents, conversations };
   },
 
   async createCondominium(actorId: string, input: unknown) {
@@ -223,8 +373,18 @@ export const cadastroService = {
     return row;
   },
 
-  async listContacts(page: number, pageSize: number) {
-    const where = { deletedAt: null };
+  async listContacts(page: number, pageSize: number, filters: { condominiumId?: string } = {}) {
+    const where = {
+      deletedAt: null,
+      ...(filters.condominiumId
+        ? {
+            OR: [
+              { condominiumId: filters.condominiumId },
+              { memberships: { some: { condominiumId: filters.condominiumId } } },
+            ],
+          }
+        : {}),
+    };
     const [total, items] = await Promise.all([
       prisma.contact.count({ where }),
       prisma.contact.findMany({
@@ -232,7 +392,7 @@ export const cadastroService = {
         orderBy: { nome: "asc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { condominium: true },
+        include: contactWithMemberships,
       }),
     ]);
     return { items, total, page, pageSize };
@@ -244,25 +404,43 @@ export const cadastroService = {
     if (!phoneE164) throw unprocessable("Telefone deve ser E.164 válido");
     const exists = await prisma.contact.findFirst({ where: { phoneE164 } });
     if (exists && !exists.deletedAt) throw conflict("Já existe contato com este telefone");
-    const row = await prisma.contact.create({
-      data: {
-        nome: data.nome,
-        phoneE164,
-        email: data.email || null,
-        cargo: data.cargo || null,
-        condominiumId: data.condominiumId || null,
-      },
-      include: { condominium: true },
+
+    const membership = resolveMembershipInput({
+      existingPrimary: null,
+      existingIds: [],
+      condominiumId: data.condominiumId,
+      condominiumIds: data.condominiumIds,
+      replace: true,
     });
-    await upsertContactIdentities(prisma, row.id, [phoneE164, ...e164LookupValues(phoneE164)]);
-    await rememberWhatsAppLidIdentity(row.id, row.nome);
-    await attachContactToMatchingConversations(row);
+
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.contact.create({
+        data: {
+          nome: data.nome,
+          phoneE164,
+          email: data.email || null,
+          cargo: data.cargo || null,
+          condominiumId: membership.primary,
+        },
+      });
+      await syncContactMemberships(tx, created.id, membership, { replace: true });
+      await upsertContactIdentities(tx, created.id, [phoneE164, ...e164LookupValues(phoneE164)]);
+      await rememberWhatsAppLidIdentity(tx, created.id, created.nome);
+      await attachContactToMatchingConversations(tx, created);
+      return tx.contact.findFirstOrThrow({
+        where: { id: created.id },
+        include: contactWithMemberships,
+      });
+    });
     return row;
   },
 
   async patchContact(user: User, id: string, input: unknown) {
     if (!isAdmin(user)) throw forbidden("Somente administradores editam contato");
-    const existing = await prisma.contact.findFirst({ where: { id, deletedAt: null } });
+    const existing = await prisma.contact.findFirst({
+      where: { id, deletedAt: null },
+      include: { memberships: true },
+    });
     if (!existing) throw notFound("Contato não encontrado");
     const data = contactPatch.parse(input);
     let phoneE164 = existing.phoneE164;
@@ -275,26 +453,45 @@ export const cadastroService = {
       }
       phoneE164 = next;
     }
-    const row = await prisma.contact.update({
-      where: { id },
-      data: {
-        nome: data.nome,
-        phoneE164,
-        email: data.email === undefined ? undefined : data.email || null,
-        cargo: data.cargo === undefined ? undefined : data.cargo,
-        condominiumId: data.condominiumId === undefined ? undefined : data.condominiumId,
-      },
-      include: { condominium: true },
+
+    const membershipTouched = data.condominiumId !== undefined || data.condominiumIds !== undefined;
+    const membership = resolveMembershipInput({
+      existingPrimary: existing.condominiumId,
+      existingIds: existing.memberships.map((m) => m.condominiumId),
+      condominiumId: data.condominiumId,
+      condominiumIds: data.condominiumIds,
+      replace: true,
     });
-    await upsertContactIdentities(prisma, id, [phoneE164, ...e164LookupValues(phoneE164)]);
-    await rememberWhatsAppLidIdentity(id, row.nome);
-    if (data.condominiumId !== undefined || data.phone || data.nome) {
-      await prisma.conversation.updateMany({
-        where: { contactId: id },
-        data: { condominiumId: row.condominiumId },
+
+    const row = await prisma.$transaction(async (tx) => {
+      const updated = await tx.contact.update({
+        where: { id },
+        data: {
+          nome: data.nome,
+          phoneE164,
+          email: data.email === undefined ? undefined : data.email || null,
+          cargo: data.cargo === undefined ? undefined : data.cargo,
+          ...(membershipTouched ? { condominiumId: membership.primary } : {}),
+        },
       });
-      await attachContactToMatchingConversations(row);
-    }
+      if (membershipTouched) {
+        await syncContactMemberships(tx, id, membership, { replace: true });
+      }
+      await upsertContactIdentities(tx, id, [phoneE164, ...e164LookupValues(phoneE164)]);
+      await rememberWhatsAppLidIdentity(tx, id, updated.nome);
+      if (membershipTouched || data.phone || data.nome) {
+        await tx.conversation.updateMany({
+          where: { contactId: id },
+          data: { condominiumId: updated.condominiumId },
+        });
+        await attachContactToMatchingConversations(tx, updated);
+      }
+      return tx.contact.findFirstOrThrow({
+        where: { id },
+        include: contactWithMemberships,
+      });
+    });
+
     await writeAudit(prisma, {
       actorId: user.id,
       action: "contact.patch",
@@ -423,92 +620,169 @@ export const cadastroService = {
     }
 
     const lookup = uniquePhones(phoneE164, conversation.peerPhoneE164, ...e164LookupValues(phoneE164));
-    let contact = await findContactByPhones(prisma, lookup);
-    if (contact) {
-      const previousPhone = contact.phoneE164;
-      contact = await prisma.contact.update({
-        where: { id: contact.id },
-        data: {
-          nome: data.nome,
-          phoneE164,
-          email: data.email ? data.email : undefined,
-          cargo: data.cargo ? data.cargo : undefined,
+    const conversationIdFixed = conversation.id;
+    const connectionId = conversation.connectionId;
+    const peerLid = conversation.peerLid;
+    const wasLidPeer = isLidPeer(conversation.peerPhoneE164);
+    const peerAvatarKey = conversation.peerAvatarKey;
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        let contact = await findContactByPhones(tx, lookup);
+        if (contact) {
+          const previousPhone = contact.phoneE164;
+          const existingMemberships = await tx.contactCondominium.findMany({ where: { contactId: contact.id } });
+          const membership = resolveMembershipInput({
+            existingPrimary: contact.condominiumId,
+            existingIds: existingMemberships.map((m) => m.condominiumId),
+            condominiumId: data.condominiumId,
+            condominiumIds: data.condominiumIds,
+            replace: false,
+          });
+          contact = await tx.contact.update({
+            where: { id: contact.id },
+            data: {
+              nome: data.nome,
+              phoneE164,
+              email: data.email ? data.email : undefined,
+              cargo: data.cargo ? data.cargo : undefined,
+              condominiumId: membership.primary,
+              avatarKey: peerAvatarKey || contact.avatarKey,
+            },
+          });
+          await syncContactMemberships(tx, contact.id, membership, { replace: false });
+          await upsertContactIdentities(
+            tx,
+            contact.id,
+            uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+          );
+        } else {
+          const taken = await tx.contact.findFirst({ where: { phoneE164, deletedAt: null } });
+          if (taken) {
+            const previousPhone = taken.phoneE164;
+            const existingMemberships = await tx.contactCondominium.findMany({ where: { contactId: taken.id } });
+            const membership = resolveMembershipInput({
+              existingPrimary: taken.condominiumId,
+              existingIds: existingMemberships.map((m) => m.condominiumId),
+              condominiumId: data.condominiumId,
+              condominiumIds: data.condominiumIds,
+              replace: false,
+            });
+            contact = await tx.contact.update({
+              where: { id: taken.id },
+              data: {
+                nome: data.nome,
+                phoneE164,
+                email: data.email ? data.email : undefined,
+                cargo: data.cargo ? data.cargo : undefined,
+                condominiumId: membership.primary,
+                avatarKey: peerAvatarKey || taken.avatarKey,
+              },
+            });
+            await syncContactMemberships(tx, contact.id, membership, { replace: false });
+            await upsertContactIdentities(
+              tx,
+              contact.id,
+              uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+            );
+          } else {
+            const membership = resolveMembershipInput({
+              existingPrimary: null,
+              existingIds: [],
+              condominiumId: data.condominiumId,
+              condominiumIds: data.condominiumIds,
+              replace: true,
+            });
+            contact = await tx.contact.create({
+              data: {
+                nome: data.nome,
+                phoneE164,
+                email: data.email || null,
+                cargo: data.cargo || null,
+                condominiumId: membership.primary,
+                avatarKey: peerAvatarKey || null,
+              },
+            });
+            await syncContactMemberships(tx, contact.id, membership, { replace: true });
+            await upsertContactIdentities(tx, contact.id, lookup);
+          }
+        }
+
+        await rememberWhatsAppLidIdentity(tx, contact.id, contact.nome);
+        const identities = await tx.contactIdentity.findMany({ where: { contactId: contact.id } });
+        const mergeKeys = uniquePhones(...lookup, ...identities.map((identity) => identity.value));
+        const others = await tx.conversation.findMany({
+          where: {
+            connectionId,
+            id: { not: conversationIdFixed },
+            OR: [{ contactId: contact.id }, { peerPhoneE164: { in: mergeKeys } }, { peerLid: { in: mergeKeys } }],
+          },
+        });
+        let keeperId = conversationIdFixed;
+        for (const extra of others) {
+          keeperId = await mergeConversations(tx, keeperId, extra.id);
+        }
+
+        let updated;
+        try {
+          updated = await tx.conversation.update({
+            where: { id: keeperId },
+            data: {
+              contactId: contact.id,
+              condominiumId: condo.id,
+              unidentified: false,
+              ...(wasLidPeer
+                ? { peerPhoneE164: phoneE164, peerLid: peerLid ?? conversation.peerPhoneE164 }
+                : {}),
+            },
+            include: { contact: true, condominium: true },
+          });
+        } catch (error) {
+          if (!isUniqueViolation(error)) throw error;
+          const rival = await tx.conversation.findFirst({
+            where: {
+              connectionId,
+              peerPhoneE164: phoneE164,
+              id: { not: keeperId },
+            },
+          });
+          if (!rival) {
+            throw conflict("Já existe conversa com este telefone nesta conexão");
+          }
+          keeperId = await mergeConversations(tx, rival.id, keeperId);
+          updated = await tx.conversation.update({
+            where: { id: keeperId },
+            data: {
+              contactId: contact.id,
+              condominiumId: condo.id,
+              unidentified: false,
+            },
+            include: { contact: true, condominium: true },
+          });
+        }
+
+        const triage = await openTriageForConversation(tx, keeperId);
+        return { conversation: updated, contact, triage };
+      });
+
+      await writeAudit(prisma, {
+        actorId: actor.id,
+        action: "conversation.enroll",
+        entityType: "conversation",
+        entityId: result.conversation.id,
+        after: {
+          contactId: result.contact.id,
           condominiumId: condo.id,
-          avatarKey: conversation.peerAvatarKey || contact.avatarKey,
+          triageId: result.triage.id,
         },
       });
-      await upsertContactIdentities(
-        prisma,
-        contact.id,
-        uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
-      );
-    } else {
-      const taken = await prisma.contact.findFirst({ where: { phoneE164, deletedAt: null } });
-      if (taken) {
-        const previousPhone = taken.phoneE164;
-        contact = await prisma.contact.update({
-          where: { id: taken.id },
-          data: {
-            nome: data.nome,
-            phoneE164,
-            email: data.email ? data.email : undefined,
-            cargo: data.cargo ? data.cargo : undefined,
-            condominiumId: condo.id,
-            avatarKey: conversation.peerAvatarKey || taken.avatarKey,
-          },
-        });
-        await upsertContactIdentities(
-          prisma,
-          contact.id,
-          uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
-        );
-      } else {
-        contact = await prisma.contact.create({
-          data: {
-            nome: data.nome,
-            phoneE164,
-            email: data.email || null,
-            cargo: data.cargo || null,
-            condominiumId: condo.id,
-            avatarKey: conversation.peerAvatarKey || null,
-          },
-        });
-        await upsertContactIdentities(prisma, contact.id, lookup);
+      return result;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw conflict("Já existe conversa ou contato com este telefone");
       }
+      throw error;
     }
-
-    await rememberWhatsAppLidIdentity(contact.id, contact.nome);
-    const identities = await prisma.contactIdentity.findMany({ where: { contactId: contact.id } });
-    const mergeKeys = uniquePhones(...lookup, ...identities.map((identity) => identity.value));
-    const others = await prisma.conversation.findMany({
-      where: {
-        connectionId: conversation.connectionId,
-        id: { not: conversation.id },
-        OR: [{ contactId: contact.id }, { peerPhoneE164: { in: mergeKeys } }],
-      },
-    });
-    for (const extra of others) {
-      await mergeConversations(prisma, conversation.id, extra.id);
-    }
-    const updated = await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: {
-        contactId: contact.id,
-        condominiumId: condo.id,
-        unidentified: false,
-        ...(isLidPeer(conversation.peerPhoneE164) ? { peerPhoneE164: phoneE164 } : {}),
-      },
-      include: { contact: true, condominium: true },
-    });
-    const triage = await openTriageForConversation(conversation.id);
-    await writeAudit(prisma, {
-      actorId: actor.id,
-      action: "conversation.enroll",
-      entityType: "conversation",
-      entityId: conversation.id,
-      after: { contactId: contact.id, condominiumId: condo.id, triageId: triage.id },
-    });
-    return { conversation: updated, contact, triage };
   },
 
   async relinkWhatsAppLidsForInFlowContacts() {
@@ -516,8 +790,8 @@ export const cadastroService = {
       where: { deletedAt: null, condominiumId: { not: null } },
     });
     for (const contact of contacts) {
-      await rememberWhatsAppLidIdentity(contact.id, contact.nome);
-      await attachContactToMatchingConversations(contact);
+      await rememberWhatsAppLidIdentity(prisma, contact.id, contact.nome);
+      await attachContactToMatchingConversations(prisma, contact);
     }
     return { scanned: contacts.length };
   },

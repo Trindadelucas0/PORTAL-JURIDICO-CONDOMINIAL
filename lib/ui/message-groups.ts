@@ -40,18 +40,23 @@ function sideOf(m: MessageLike): "in" | "out" | "interna" | "draft" | "failed" {
   return m.direction === "out" ? "out" : "in";
 }
 
-/** Groups messages by calendar day, then consecutive same-side sender. */
+/** Groups messages by calendar day (oldest day first), then consecutive same-side sender. */
 export function groupMessagesByDayAndSender<T extends MessageLike>(messages: T[]): MessageGroupDay<T>[] {
+  const sorted = [...messages].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
   const byDay = new Map<string, T[]>();
-  for (const m of messages) {
+  for (const m of sorted) {
     const key = dayKey(m.createdAt);
     const list = byDay.get(key) ?? [];
     list.push(m);
     byDay.set(key, list);
   }
 
+  const dayKeys = [...byDay.keys()].sort();
   const days: MessageGroupDay<T>[] = [];
-  for (const [key, items] of byDay) {
+  for (const key of dayKeys) {
+    const items = byDay.get(key)!;
     const clusters: MessageGroupDay<T>["clusters"] = [];
     let current: MessageGroupDay<T>["clusters"][number] | null = null;
     for (const item of items) {

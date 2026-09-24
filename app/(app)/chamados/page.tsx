@@ -6,13 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { KanbanBoard } from "@/components/chamados/kanban-board";
 import { TicketList } from "@/components/chamados/ticket-list";
 import type { KanbanTicket } from "@/components/chamados/ticket-card";
+import { TicketCreateDrawer, type CreateTicketValues } from "@/components/chamados/ticket-create-drawer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Drawer } from "@/components/ui/drawer";
 import { PageHeader } from "@/components/ui/page-header";
 import { Toolbar } from "@/components/ui/toolbar";
 import { FilterBar, FilterChip } from "@/components/ui/filter-bar";
@@ -24,7 +24,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useRouter } from "next/navigation";
 
 type Condo = { id: string; nome: string };
-type Contact = { id: string; nome: string };
 type Member = { id: string; email: string; nome?: string; ativo: boolean };
 
 type TicketsCache = { data: KanbanTicket[]; meta?: Record<string, number> };
@@ -65,6 +64,14 @@ function ChamadosInner() {
     setQ(paramsQ);
   }, [paramsQ]);
 
+  useEffect(() => {
+    if (params.get("novo") !== "1" || !admin) return;
+    setOpen(true);
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("novo");
+    router.replace(sp.toString() ? `/chamados?${sp}` : "/chamados");
+  }, [params, admin, router]);
+
   const list = useQuery({
     queryKey: ["tickets", q, category, priority, assignee, unassigned, scope, myId],
     queryFn: () => {
@@ -80,26 +87,19 @@ function ChamadosInner() {
     },
   });
   const condos = useQuery({ queryKey: ["condominiums"], queryFn: () => api<Condo[]>("/api/condominiums"), enabled: admin });
-  const contacts = useQuery({ queryKey: ["contacts"], queryFn: () => api<Contact[]>("/api/contacts"), enabled: admin });
   const team = useQuery({ queryKey: ["team"], queryFn: () => api<Member[]>("/api/team"), enabled: admin });
-  const [form, setForm] = useState({
-    title: "",
-    category: "outro",
-    priority: "media",
-    condominiumId: "",
-    contactId: "",
-    assignedToId: "",
-  });
   const create = useMutation({
-    mutationFn: () =>
-      api("/api/tickets", {
+    mutationFn: (values: CreateTicketValues) =>
+      api<{ id: string }>("/api/tickets", {
         method: "POST",
-        body: JSON.stringify({ ...form, assignedToId: form.assignedToId || null }),
+        body: JSON.stringify({ ...values, assignedToId: values.assignedToId || null }),
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setOpen(false);
       toast("Chamado criado");
       qc.invalidateQueries({ queryKey: ["tickets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      router.push(`/chamados/${res.data.id}`);
     },
   });
   const move = useMutation({
@@ -121,7 +121,10 @@ function ChamadosInner() {
       toast((error as Error).message || "Não foi possível mover o chamado");
     },
     onSuccess: () => toast("Status atualizado"),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tickets"] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["tickets"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 
   if (list.isError) {
@@ -146,7 +149,7 @@ function ChamadosInner() {
   );
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col px-4 pt-3 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         className="mb-0 shrink-0"
         dense
@@ -308,59 +311,15 @@ function ChamadosInner() {
           />
         )}
       </div>
-      <Drawer open={open} onClose={() => setOpen(false)} title="Novo chamado">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-        >
-          <div>
-            <Label htmlFor="title">Título</Label>
-            <Input id="title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="condo">Condomínio</Label>
-            <Select id="condo" required value={form.condominiumId} onChange={(e) => setForm({ ...form, condominiumId: e.target.value })}>
-              <option value="">Selecionar</option>
-              {(condos.data?.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="contact">Contato</Label>
-            <Select id="contact" required value={form.contactId} onChange={(e) => setForm({ ...form, contactId: e.target.value })}>
-              <option value="">Selecionar</option>
-              {(contacts.data?.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="asg">Responsável</Label>
-            <Select id="asg" value={form.assignedToId} onChange={(e) => setForm({ ...form, assignedToId: e.target.value })}>
-              <option value="">Sem responsável</option>
-              {(team.data?.data ?? [])
-                .filter((m) => m.ativo)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nome || m.email}
-                  </option>
-                ))}
-            </Select>
-          </div>
-          {create.isError ? <p className="text-sm text-[var(--danger)]">{(create.error as Error).message}</p> : null}
-          <Button type="submit" disabled={create.isPending}>
-            Criar
-          </Button>
-        </form>
-      </Drawer>
+      <TicketCreateDrawer
+        open={open}
+        onClose={() => setOpen(false)}
+        condos={condos.data?.data ?? []}
+        team={team.data?.data ?? []}
+        pending={create.isPending}
+        errorMessage={create.isError ? (create.error as Error).message : null}
+        onCreate={(values) => create.mutate(values)}
+      />
     </div>
   );
 }

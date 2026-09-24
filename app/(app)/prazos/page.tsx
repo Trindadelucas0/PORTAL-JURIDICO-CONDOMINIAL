@@ -74,7 +74,7 @@ function PrazosInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <div>
           <h1 className="text-sm font-semibold">Prazos</h1>
@@ -104,7 +104,7 @@ function PrazosInner() {
         ) : items.length === 0 ? (
           <EmptyState title="Nenhum prazo neste filtro" hint="Adicione prazos na ficha do chamado." />
         ) : (
-          <ul className="divide-y divide-border border-t border-border">
+          <ul className="divide-y divide-border">
             {items.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
                 <span

@@ -28,7 +28,7 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {back ? <div className="mb-1.5">{back}</div> : null}
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
         {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
         {meta ? <div className="mt-0.5 text-sm text-muted-foreground">{meta}</div> : null}
       </div>

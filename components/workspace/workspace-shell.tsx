@@ -14,12 +14,10 @@ export function WorkspaceShell({
   const grid =
     cols === "inbox"
       ? contextOpen
-        ? "xl:grid-cols-[240px_minmax(0,1fr)_220px] lg:grid-cols-[240px_minmax(0,1fr)]"
-        : "xl:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]"
+        ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[240px_minmax(0,1fr)_220px]"
+        : "grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]"
       : cols === "unlinked"
-        ? contextOpen
-          ? "xl:grid-cols-[280px_minmax(0,1fr)_240px] lg:grid-cols-[280px_minmax(0,1fr)]"
-          : "xl:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[280px_minmax(0,1fr)]"
+        ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[280px_minmax(0,1fr)_240px]"
       : cols === "triage"
         ? "lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]"
         : "lg:grid-cols-[240px_minmax(0,1fr)]";
@@ -28,7 +26,7 @@ export function WorkspaceShell({
     <div
       data-slot="workspace-shell"
       className={cn(
-        "grid min-h-0 flex-1 overflow-hidden divide-x divide-border border-t border-border bg-card",
+        "grid min-h-0 flex-1 overflow-hidden divide-x divide-border bg-card",
         grid,
         className,
       )}

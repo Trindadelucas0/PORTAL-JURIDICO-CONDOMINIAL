@@ -27,7 +27,7 @@ export default function TriagemAnalisePage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
       <div className="shrink-0 border-b border-border px-3 py-2">
         <Link href="/triagem" className="text-sm text-[var(--brand)]">
           ← Triagem

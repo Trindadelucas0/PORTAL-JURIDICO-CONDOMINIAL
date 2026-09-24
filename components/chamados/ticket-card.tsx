@@ -57,33 +57,33 @@ export function TicketCard({
   return (
     <article
       className={cn(
-        "group relative overflow-hidden rounded-md border border-border/80 bg-card text-left transition-colors duration-[var(--motion-fast)] hover:bg-muted/40",
+        "group relative overflow-hidden rounded-[var(--radius)] border border-border bg-card text-left transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)]",
         moving && "opacity-60",
       )}
     >
-      <span className={cn("absolute inset-y-0 left-0 w-0.5", priorityBar)} aria-hidden />
-      <div className="flex items-start gap-0.5 py-1.5 pr-1 pl-2.5">
+      <span className={cn("absolute inset-y-0 left-0 w-1", priorityBar)} aria-hidden />
+      <div className="flex items-start gap-1 py-2.5 pr-1.5 pl-3">
         <button
           type="button"
           className="min-w-0 flex-1 text-left"
           onClick={() => router.push(`/chamados/${ticket.id}`)}
         >
-          <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase tabular">
+          <p className="font-mono text-[11px] font-semibold text-foreground tabular">
             #{ticket.protocol}
-            {age ? <span className="ml-1.5 font-normal normal-case">{age}</span> : null}
+            {age ? <span className="ml-1.5 font-sans font-normal text-muted-foreground">{age}</span> : null}
           </p>
-          <p className="mt-0.5 line-clamp-1 text-sm leading-snug font-medium text-foreground">{ticket.title}</p>
+          <p className="mt-1 line-clamp-2 text-sm leading-snug font-medium text-foreground">{ticket.title}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{ticket.condominium.nome}</p>
-          <p className="mt-0.5 flex items-center gap-2">
+          <p className="mt-2 flex flex-wrap items-center gap-2">
             <PriorityIndicator priority={ticket.priority} />
             <span className="truncate text-[11px] text-muted-foreground">{assignee}</span>
           </p>
           {ticket.nextDeadline ? (
             <p
               className={cn(
-                "truncate text-[11px] tabular",
+                "mt-1 truncate text-[11px] tabular",
                 isOverdue(ticket.nextDeadline.dueAt, ticket.nextDeadline.doneAt)
-                  ? "text-[var(--danger)]"
+                  ? "font-medium text-[var(--danger)]"
                   : "text-muted-foreground",
               )}
             >
@@ -91,7 +91,7 @@ export function TicketCard({
             </p>
           ) : null}
         </button>
-        <div className="flex shrink-0 flex-col items-center gap-0.5 opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
+        <div className="flex shrink-0 flex-col items-center gap-0.5">
           {showHandle ? (
             handle ?? (
               <span className="hidden text-muted-foreground md:inline" aria-hidden>

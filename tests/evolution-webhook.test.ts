@@ -3,6 +3,7 @@ import {
   extractMessageText,
   interpretEvolutionWebhook,
   phoneFromWhatsAppLid,
+  parseWhatsAppSentAt,
 } from "@/lib/channels/evolution-webhook";
 
 describe("interpretEvolutionWebhook", () => {
@@ -21,7 +22,16 @@ describe("interpretEvolutionWebhook", () => {
     });
     expect(result).toEqual({
       kind: "messages",
-      items: [{ waMessageId: "ABC", fromPhone: "+5511988880000", waLid: null, body: "Olá" }],
+      items: [
+        {
+          waMessageId: "ABC",
+          fromPhone: "+5511988880000",
+          waLid: null,
+          body: "Olá",
+          fromMe: false,
+          sentAt: null,
+        },
+      ],
     });
   });
 
@@ -43,19 +53,55 @@ describe("interpretEvolutionWebhook", () => {
     if (result.kind === "messages") {
       expect(result.items).toHaveLength(2);
       expect(result.items[1]?.body).toBe("b");
+      expect(result.items[0]?.fromMe).toBe(false);
     }
   });
 
-  it("treats null conversation and fromMe 1 without throwing", () => {
-    expect(
-      interpretEvolutionWebhook({
-        event: "messages.upsert",
-        data: {
-          key: { id: "X", remoteJid: "5511988880000@s.whatsapp.net", fromMe: 1 },
-          message: { conversation: null, extendedTextMessage: { text: null } },
+  it("accepts fromMe as office outbound with placeholder body when text is null", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: { id: "X", remoteJid: "5511988880000@s.whatsapp.net", fromMe: 1 },
+        messageTimestamp: 1700000000,
+        message: { conversation: null, extendedTextMessage: { text: null } },
+      },
+    });
+    expect(result).toEqual({
+      kind: "messages",
+      items: [
+        {
+          waMessageId: "X",
+          fromPhone: "+5511988880000",
+          waLid: null,
+          body: "(mídia ou mensagem sem texto)",
+          fromMe: true,
+          sentAt: new Date(1700000000 * 1000).toISOString(),
         },
-      }),
-    ).toEqual({ kind: "ignored", reason: "fromMe" });
+      ],
+    });
+  });
+
+  it("keeps inbound and fromMe in the same batch", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: [
+        {
+          key: { id: "IN1", remoteJid: "5511988880000@s.whatsapp.net", fromMe: false },
+          message: { conversation: "oi" },
+        },
+        {
+          key: { id: "OUT1", remoteJid: "5511988880000@s.whatsapp.net", fromMe: true },
+          message: { conversation: "resposta" },
+        },
+      ],
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]?.fromMe).toBe(false);
+      expect(result.items[1]?.fromMe).toBe(true);
+      expect(result.items[1]?.body).toBe("resposta");
+    }
   });
 
   it("caches QRCODE_UPDATED fields", () => {
@@ -101,6 +147,8 @@ describe("interpretEvolutionWebhook", () => {
           fromPhone: "+999035656245495",
           waLid: "+999035656245495",
           body: "Opa",
+          fromMe: false,
+          sentAt: null,
         },
       ],
     });
@@ -158,6 +206,40 @@ describe("interpretEvolutionWebhook", () => {
           fromPhone: "+5511977770000",
           waLid: "+999456789012345",
           body: "lid",
+          fromMe: false,
+          sentAt: null,
+        },
+      ],
+    });
+  });
+
+  it("extracts only @lid when remoteJid is @lid and no remoteJidAlt available", () => {
+    /**
+     * Cenário: mensagem chega com @lid puro (sem remoteJidAlt).
+     * Sistema cria conversa com LID placeholder.
+     * Ingest depois resolve via Evolution findMessages (que terá remoteJidAlt).
+     */
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: {
+          id: "LIDONLY1",
+          remoteJid: "142112045666497@lid",
+          fromMe: false,
+        },
+        message: { conversation: "olá sem número" },
+      },
+    });
+    expect(result).toEqual({
+      kind: "messages",
+      items: [
+        {
+          waMessageId: "LIDONLY1",
+          fromPhone: "+999112045666497",
+          waLid: "+999112045666497",
+          body: "olá sem número",
+          fromMe: false,
+          sentAt: null,
         },
       ],
     });
@@ -184,6 +266,8 @@ describe("interpretEvolutionWebhook", () => {
           fromPhone: "+551196522318",
           waLid: phoneFromWhatsAppLid("142112045666497@lid"),
           body: "oi",
+          fromMe: false,
+          sentAt: null,
         },
       ],
     });
@@ -227,6 +311,8 @@ describe("interpretEvolutionWebhook", () => {
           fromPhone: "+5511988880000",
           waLid: "+999885504524400",
           body: "oi",
+          fromMe: false,
+          sentAt: null,
         },
       ],
     });
@@ -267,5 +353,13 @@ describe("interpretEvolutionWebhook", () => {
 describe("extractMessageText", () => {
   it("prefers caption on image when conversation is absent", () => {
     expect(extractMessageText({ imageMessage: { caption: "foto" } })).toBe("foto");
+  });
+});
+
+describe("parseWhatsAppSentAt", () => {
+  it("accepts unix seconds in a plausible window", () => {
+    expect(parseWhatsAppSentAt(1700000000)).toBe(new Date(1700000000 * 1000).toISOString());
+    expect(parseWhatsAppSentAt(1)).toBeNull();
+    expect(parseWhatsAppSentAt("not-a-date")).toBeNull();
   });
 });

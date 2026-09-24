@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { FileText, Image as ImageIcon, Music } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
@@ -12,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { DataTable, Td, Th } from "@/components/ui/data-table";
 import { Toolbar } from "@/components/ui/toolbar";
 import { DocumentFichaForm, type DocumentFichaValues } from "@/components/documentos/document-ficha-form";
 import { api } from "@/lib/client/api";
@@ -44,6 +46,75 @@ type Summary = {
   lastAt: string | null;
 };
 
+function DocumentSideFicha({
+  doc,
+  pending,
+  onSend,
+}: {
+  doc: Doc;
+  pending: boolean;
+  onSend: () => void;
+}) {
+  return (
+    <div className="space-y-4 text-sm">
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Ficha</p>
+        <h2 className="mt-1 text-base font-semibold">{doc.title}</h2>
+      </div>
+      {doc.mime.startsWith("image/") ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/api/files/${doc.storageKey}`} alt="" className="max-h-40 w-full rounded-[var(--radius)] bg-muted object-contain" />
+      ) : null}
+      <dl className="space-y-2">
+        <div>
+          <dt className="text-xs text-muted-foreground">Tipo</dt>
+          <dd>{documentKindLabel(doc.kind)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Para que serve</dt>
+          <dd>{doc.purpose}</dd>
+        </div>
+        {doc.notes ? (
+          <div>
+            <dt className="text-xs text-muted-foreground">Observação</dt>
+            <dd>{doc.notes}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt className="text-xs text-muted-foreground">Condomínio</dt>
+          <dd>
+            {doc.condominium.nome}
+            {doc.ticket ? ` · #${doc.ticket.protocol}` : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Arquivo</dt>
+          <dd>
+            {doc.originalName} · {formatBytes(doc.sizeBytes)}
+            {doc.createdAt ? ` · ${formatWhen(doc.createdAt)}` : ""}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-col gap-2">
+        <a
+          className="inline-flex h-9 items-center justify-center rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-[var(--brand-soft)]"
+          href={`/api/files/${doc.storageKey}`}
+        >
+          Baixar
+        </a>
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-card text-sm font-medium text-primary hover:bg-secondary disabled:opacity-50"
+          disabled={pending}
+          onClick={onSend}
+        >
+          Enviar no WhatsApp
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function fileIcon(mime: string) {
   if (mime.startsWith("image/")) return ImageIcon;
   if (mime.startsWith("audio/")) return Music;
@@ -57,6 +128,7 @@ export default function DocumentosPage() {
   const [ticketId, setTicketId] = useState("");
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<Doc | null>(null);
+  const isMobile = useIsMobile();
   const [fichaOpen, setFichaOpen] = useState(false);
   const tickets = useQuery({
     queryKey: ["tickets", "docs"],
@@ -190,40 +262,99 @@ export default function DocumentosPage() {
       ) : items.length === 0 ? (
         <EmptyState title="Nenhum documento" hint="Use Novo documento para cadastrar a ficha e o arquivo." />
       ) : (
-        <ul className="divide-y divide-border border-t border-border">
-          {items.map((d) => {
-            const Icon = fileIcon(d.mime);
-            return (
-              <li key={d.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
-                  onClick={() => setPreview(d)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Icon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="shrink-0 text-xs text-muted-foreground">{documentKindLabel(d.kind)}</span>
-                    <span className="min-w-0 truncate font-medium">{d.title}</span>
-                  </span>
-                  <span className="line-clamp-1 pl-6 text-xs text-muted-foreground">
-                    {d.condominium.nome}
-                    {d.ticket ? ` · #${d.ticket.protocol}` : ""}
-                    {d.createdAt ? ` · ${formatWhen(d.createdAt)}` : ""}
-                    {` · ${d.purpose}`}
-                  </span>
-                </button>
-                <div className="flex gap-3 text-sm">
-                  <a className="text-primary" href={`/api/files/${d.storageKey}`}>
-                    Baixar
-                  </a>
-                  <button type="button" className="text-primary" disabled={sendDraft.isPending} onClick={() => sendDraft.mutate(d.id)}>
-                    WhatsApp
+        <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+          <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
+            <ul className="divide-y divide-border md:hidden">
+              {items.map((d) => (
+                <li key={d.id} className="px-3 py-3 text-sm">
+                  <button type="button" className="w-full text-left" onClick={() => setPreview(d)}>
+                    <span className="block font-medium">{d.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {documentKindLabel(d.kind)} · {d.condominium.nome}
+                      {d.ticket ? ` · #${d.ticket.protocol}` : ""}
+                    </span>
                   </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  <div className="mt-2 flex gap-3 text-sm">
+                    <button type="button" className="text-[var(--brand)]" onClick={() => setPreview(d)}>
+                      Ver
+                    </button>
+                    <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
+                      Baixar
+                    </a>
+                    <button type="button" className="font-medium text-primary" disabled={sendDraft.isPending} onClick={() => sendDraft.mutate(d.id)}>
+                      Enviar
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden md:block">
+              <DataTable className="border-t-0">
+                <thead>
+                  <tr>
+                    <Th>Documento</Th>
+                    <Th>Tipo</Th>
+                    <Th>Finalidade</Th>
+                    <Th>Condomínio</Th>
+                    <Th>Chamado</Th>
+                    <Th>Data</Th>
+                    <Th>Ações</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((d) => {
+                    const Icon = fileIcon(d.mime);
+                    const selected = preview?.id === d.id;
+                    return (
+                      <tr key={d.id} className={selected ? "bg-[color-mix(in_srgb,var(--brand)_6%,white)]" : undefined}>
+                        <Td>
+                          <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => setPreview(d)}>
+                            <Icon className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 truncate font-medium">{d.title}</span>
+                          </button>
+                        </Td>
+                        <Td>
+                          <span className="inline-flex rounded border border-border bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-foreground">
+                            {documentKindLabel(d.kind)}
+                          </span>
+                        </Td>
+                        <Td className="max-w-[14rem] truncate">{d.purpose}</Td>
+                        <Td>{d.condominium.nome}</Td>
+                        <Td className="tabular">{d.ticket ? `#${d.ticket.protocol}` : "—"}</Td>
+                        <Td className="text-xs text-muted-foreground">{d.createdAt ? formatWhen(d.createdAt) : "—"}</Td>
+                        <Td>
+                          <div className="flex gap-3 text-xs font-medium">
+                            <button type="button" className="text-primary" onClick={() => setPreview(d)}>
+                              Ver
+                            </button>
+                            <button
+                              type="button"
+                              className="text-primary disabled:opacity-50"
+                              disabled={sendDraft.isPending}
+                              onClick={() => sendDraft.mutate(d.id)}
+                            >
+                              Enviar
+                            </button>
+                            <a className="text-primary" href={`/api/files/${d.storageKey}`}>
+                              Baixar
+                            </a>
+                          </div>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </DataTable>
+            </div>
+          </div>
+          <aside className="hidden rounded-[var(--radius)] border border-border bg-card p-4 md:block">
+            {preview ? (
+              <DocumentSideFicha doc={preview} pending={sendDraft.isPending} onSend={() => sendDraft.mutate(preview.id)} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>
+            )}
+          </aside>
+        </div>
       )}
 
       <Dialog
@@ -251,7 +382,7 @@ export default function DocumentosPage() {
         />
       </Dialog>
 
-      <Drawer open={Boolean(preview)} onClose={() => setPreview(null)} title={preview?.title || "Documento"}>
+      <Drawer open={Boolean(preview) && isMobile} onClose={() => setPreview(null)} title={preview?.title || "Documento"}>
         {preview ? (
           <div className="space-y-4 text-sm">
             {preview.mime.startsWith("image/") ? (

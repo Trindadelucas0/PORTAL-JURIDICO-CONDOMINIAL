@@ -24,6 +24,10 @@ import { e164ToMaskedInput } from "@/lib/phone/mask";
 import { formatDue as formatDeadline, isOverdue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import {
+  ContactCondominiumPicker,
+  fetchAllCondominiums,
+} from "@/components/cadastro/contact-condominium-picker";
 
 type Condo = {
   id: string;
@@ -39,6 +43,9 @@ type Condo = {
     email: string | null;
     cargo: string | null;
     avatarKey?: string | null;
+    condominiumId?: string | null;
+    membershipCount?: number;
+    memberships?: Array<{ condominiumId: string; condominium?: { id: string; nome: string } }>;
   }>;
   tickets: Array<{
     id: string;
@@ -98,6 +105,13 @@ export default function CondominioFichaPage() {
   const [phone, setPhone] = useState("");
   const [cargo, setCargo] = useState("");
   const [email, setEmail] = useState("");
+  const [condoIds, setCondoIds] = useState<string[]>([]);
+  const [primaryCondoId, setPrimaryCondoId] = useState("");
+  const allCondos = useQuery({
+    queryKey: ["condominiums", "all-for-contact"],
+    enabled: contactOpen,
+    queryFn: () => fetchAllCondominiums(api),
+  });
   const save = useMutation({
     mutationFn: () =>
       api(`/api/condominiums/${id}`, {
@@ -108,7 +122,14 @@ export default function CondominioFichaPage() {
   });
   const saveContact = useMutation({
     mutationFn: () => {
-      const body = { nome: cNome, phone, cargo: cargo || undefined, email: email || undefined, condominiumId: id };
+      const body = {
+        nome: cNome,
+        phone,
+        cargo: cargo || undefined,
+        email: email || undefined,
+        condominiumId: primaryCondoId || null,
+        condominiumIds: condoIds,
+      };
       if (editingContact) {
         return api(`/api/contacts/${editingContact.id}`, { method: "PATCH", body: JSON.stringify(body) });
       }
@@ -120,6 +141,7 @@ export default function CondominioFichaPage() {
       toast("Contato salvo");
       qc.invalidateQueries({ queryKey: ["condominium", id] });
       qc.invalidateQueries({ queryKey: ["condominiums"] });
+      qc.invalidateQueries({ queryKey: ["contacts"] });
     },
   });
 
@@ -129,6 +151,8 @@ export default function CondominioFichaPage() {
     setPhone("");
     setCargo("");
     setEmail("");
+    setCondoIds([id]);
+    setPrimaryCondoId(id);
     setContactOpen(true);
   }
 
@@ -138,6 +162,14 @@ export default function CondominioFichaPage() {
     setPhone(e164ToMaskedInput(ct.phoneE164));
     setCargo(ct.cargo || "");
     setEmail(ct.email || "");
+    const fromMemberships = (ct.memberships ?? []).map((m) => m.condominiumId);
+    const ids = fromMemberships.length
+      ? fromMemberships
+      : ct.condominiumId
+        ? [ct.condominiumId]
+        : [id];
+    setCondoIds(ids);
+    setPrimaryCondoId(ct.condominiumId || ids[0] || id);
     setContactOpen(true);
   }
 
@@ -172,7 +204,7 @@ export default function CondominioFichaPage() {
       {q.isLoading || !c || !data ? (
         <Skeleton className="h-48" />
       ) : (
-        <div>
+        <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
           <ul className="flex flex-wrap gap-x-6 gap-y-1 border-b border-border px-4 py-3 text-sm">
             <li>
               <span className="tabular font-semibold">{c.contacts.length}</span>
@@ -252,13 +284,23 @@ export default function CondominioFichaPage() {
               <EmptyState title="Nenhum contato" hint={admin ? "Adicione o síndico ou o administrador." : undefined} />
             ) : (
               <ul className="divide-y divide-border text-sm">
-                {c.contacts.map((ct) => (
+                {c.contacts.map((ct) => {
+                  const extra =
+                    (ct.membershipCount ?? ct.memberships?.length ?? 1) > 1
+                      ? (ct.membershipCount ?? ct.memberships!.length) - 1
+                      : 0;
+                  return (
                   <li key={ct.id} className="flex items-start justify-between gap-2 py-2">
                     <span className="flex min-w-0 items-center gap-2">
                       <PeerAvatar name={ct.nome} avatarUrl={peerAvatarPublicUrl(ct.avatarKey)} className="size-7" />
                       <span className="min-w-0">
                         {ct.nome} · {formatWhatsAppPeer(ct.phoneE164)}
                         {ct.cargo ? ` · ${ct.cargo}` : ""}
+                        {extra > 0 ? (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            + {extra} {extra === 1 ? "condomínio" : "condomínios"}
+                          </span>
+                        ) : null}
                         {ct.email ? <span className="block text-xs text-muted-foreground">{ct.email}</span> : null}
                       </span>
                     </span>
@@ -268,7 +310,8 @@ export default function CondominioFichaPage() {
                       </button>
                     ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </SectionTabPanel>
@@ -367,6 +410,7 @@ export default function CondominioFichaPage() {
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
+            if (condoIds.length > 0 && !primaryCondoId) return;
             saveContact.mutate();
           }}
         >
@@ -377,8 +421,21 @@ export default function CondominioFichaPage() {
           <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
           <Label htmlFor="em">E-mail</Label>
           <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <ContactCondominiumPicker
+            options={allCondos.data ?? []}
+            loading={allCondos.isLoading}
+            selectedIds={condoIds}
+            primaryId={primaryCondoId}
+            onChange={({ selectedIds, primaryId }) => {
+              setCondoIds(selectedIds);
+              setPrimaryCondoId(primaryId);
+            }}
+          />
           {saveContact.isError ? <p className="text-sm text-[var(--danger)]">{(saveContact.error as Error).message}</p> : null}
-          <Button type="submit" disabled={saveContact.isPending}>
+          <Button
+            type="submit"
+            disabled={saveContact.isPending || (condoIds.length > 0 && !primaryCondoId)}
+          >
             Salvar contato
           </Button>
         </form>

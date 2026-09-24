@@ -182,6 +182,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.overflow-anchor-none {
+  overflow-anchor: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

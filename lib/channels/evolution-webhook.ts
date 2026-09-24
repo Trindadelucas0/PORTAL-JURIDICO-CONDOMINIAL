@@ -6,6 +6,9 @@ export type EvolutionInboundMessage = {
   fromPhone: string;
   body: string;
   waLid: string | null;
+  fromMe: boolean;
+  /** ISO timestamp when WhatsApp epoch is plausible; otherwise null. */
+  sentAt: string | null;
   pushName?: string | null;
 };
 
@@ -113,6 +116,20 @@ function phoneFromKey(
   key: Record<string, unknown>,
   extras: string[] = [],
 ): { phone: string | null; waLid: string | null; group: boolean } {
+  /**
+   * Ordem de busca do celular real (@s.whatsapp.net) na mensagem da Evolution.
+   * Regra: usar o primeiro JID que termina em @s.whatsapp.net (telefone real).
+   * Ignorar @lid, @g.us, @broadcast.
+   *
+   * Ordem obrigatória:
+   * 1. key.remoteJid se for @s.whatsapp.net (número do remetente)
+   * 2. key.remoteJidAlt (alternativa Evolution, quando remoteJid é @lid)
+   * 3. key.senderPn / participantPn (PN do payload ou envelope)
+   * 4. previousRemoteJid (se Evolution já trocou remoteJid para número)
+   *
+   * Se nenhum for @s.whatsapp.net, usar @lid como placeholder.
+   * Nunca usar dígitos soltos do @lid como telefone real.
+   */
   const candidates = [
     key.remoteJidAlt,
     key.remote_jid_alt,
@@ -164,11 +181,30 @@ function extractQr(records: Record<string, unknown>[]): { qr: string | null; pai
   return { qr, pairingCode };
 }
 
+/** Unix seconds/ms from Evolution → ISO only if within a plausible window. */
+export function parseWhatsAppSentAt(raw: unknown): string | null {
+  let seconds: number | null = null;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    seconds = raw > 1e12 ? Math.floor(raw / 1000) : Math.floor(raw);
+  } else if (typeof raw === "string" && raw.trim()) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      seconds = n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+    }
+  }
+  if (seconds == null || seconds < 1) return null;
+  const ms = seconds * 1000;
+  const min = Date.UTC(2020, 0, 1);
+  const max = Date.now() + 24 * 60 * 60 * 1000;
+  if (ms < min || ms > max) return null;
+  return new Date(ms).toISOString();
+}
+
 function extractInbound(row: Record<string, unknown>):
   | { skip: string }
   | { item: EvolutionInboundMessage } {
   const key = isRecord(row.key) ? row.key : {};
-  if (asBool(key.fromMe)) return { skip: "fromMe" };
+  const fromMe = Boolean(asBool(key.fromMe));
   const extraJids = [
     row.senderPn,
     row.sender_pn,
@@ -186,12 +222,19 @@ function extractInbound(row: Record<string, unknown>):
   if (!waMessageId || !phone) return { skip: "incomplete" };
   const text = extractMessageText(row.message);
   const pushName = sanitizePushName(asString(row.pushName) || asString(row.pushname) || asString(row.notifyName));
+  const sentAt =
+    parseWhatsAppSentAt(row.messageTimestamp) ||
+    parseWhatsAppSentAt(row.message_timestamp) ||
+    parseWhatsAppSentAt(key.messageTimestamp) ||
+    null;
   return {
     item: {
       waMessageId,
       fromPhone: phone,
       waLid: waLid || (phone.startsWith("+999") ? phone : null),
       body: text || "(mídia ou mensagem sem texto)",
+      fromMe,
+      sentAt,
       ...(pushName ? { pushName } : {}),
     },
   };
@@ -223,9 +266,15 @@ export function interpretEvolutionWebhook(body: unknown): EvolutionWebhookResult
   }
 
   if (items.length > 0) return { kind: "messages", items };
-  if (skipReasons.has("fromMe") && skipReasons.size === 1) return { kind: "ignored", reason: "fromMe" };
   if (skipReasons.has("group") && !skipReasons.has("incomplete")) return { kind: "ignored", reason: "group" };
-  if (skipReasons.has("fromMe")) return { kind: "ignored", reason: "fromMe" };
   if (skipReasons.has("group")) return { kind: "ignored", reason: "group" };
   return { kind: "ignored", reason: records.length ? "incomplete" : "ignored" };
+}
+
+/** Wrap raw Evolution message rows (webhook or findMessages) into the same shape as a webhook. */
+export function interpretEvolutionMessageRows(rows: unknown[]): EvolutionWebhookResult {
+  return interpretEvolutionWebhook({
+    event: "messages.upsert",
+    data: rows,
+  });
 }

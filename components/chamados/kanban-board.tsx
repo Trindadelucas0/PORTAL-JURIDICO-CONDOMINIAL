@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { TicketCard, type KanbanTicket } from "@/components/chamados/ticket-card";
-import { STATUS_LABEL, TICKET_STATUSES } from "@/lib/ui-labels";
+import { STATUS_LABEL, STATUS_TONE, TICKET_STATUSES } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 import {
   Kanban,
@@ -80,12 +80,31 @@ export function KanbanBoard({
               disabled
               className={cn("h-full min-h-0 !opacity-100", hideOnMobile && "max-md:hidden")}
             >
-              <div className="flex h-full min-h-0 flex-col overflow-hidden border border-border/80 bg-background">
-                <header className="flex items-center justify-between gap-2 border-b border-border/80 px-2.5 py-1.5">
-                  <h2 className="text-xs font-semibold tracking-wide text-foreground uppercase">
+              <div
+                className={cn(
+                  "flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius)] border border-border border-t-[3px]",
+                  STATUS_TONE[status]?.column,
+                  status === "aberto" && "border-t-[var(--status-aberto)]",
+                  status === "em_andamento" && "border-t-[var(--status-andamento)]",
+                  status === "aguardando" && "border-t-[var(--status-aguardando)]",
+                  status === "resolvido" && "border-t-[var(--status-resolvido)]",
+                )}
+              >
+                <header className="flex items-center justify-between gap-2 px-2.5 py-2">
+                  <h2
+                    className={cn(
+                      "text-[11px] font-semibold tracking-wider uppercase",
+                      status === "aberto" && "text-[var(--status-aberto)]",
+                      status === "em_andamento" && "text-[var(--status-andamento)]",
+                      status === "aguardando" && "text-[var(--status-aguardando)]",
+                      status === "resolvido" && "text-[var(--status-resolvido)]",
+                    )}
+                  >
                     {STATUS_LABEL[status]}
                   </h2>
-                  <span className="tabular text-xs text-muted-foreground">{columnTickets.length}</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular", STATUS_TONE[status]?.count)}>
+                    {columnTickets.length}
+                  </span>
                 </header>
                 <KanbanColumnContent
                   value={status}

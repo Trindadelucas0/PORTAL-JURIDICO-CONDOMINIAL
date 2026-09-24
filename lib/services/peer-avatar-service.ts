@@ -4,11 +4,17 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 import {
+  evolutionPeerHint,
   fetchEvolutionProfilePictureUrl,
   resolvePhoneForLidPeer,
+  resolvePhoneFromContacts,
+  type EvolutionPeerHint,
 } from "@/lib/channels/evolution-peer-profile";
-import { isLidPeer } from "@/lib/phone/identity";
+import { fetchEvolutionChatRows, fetchEvolutionContacts } from "@/lib/channels/evolution-lid-map";
+import { isLidPeer, uniquePhones } from "@/lib/phone/identity";
 import { mergeConversations } from "@/lib/services/conversation-merge";
+import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
+import { isInOperationalFlow } from "@/lib/services/operational-flow";
 import { Prisma as PrismaNs } from "@prisma/client";
 
 export { peerAvatarPublicUrl };
@@ -61,10 +67,12 @@ async function promoteLidPeerToPhone(
   phone: string,
 ): Promise<string> {
   if (!isLidPeer(currentPeer) || isLidPeer(phone)) return conversationId;
+  const source = await db.conversation.findFirst({ where: { id: conversationId } });
+  const peerLid = source?.peerLid || currentPeer;
   try {
     await db.conversation.update({
       where: { id: conversationId },
-      data: { peerPhoneE164: phone },
+      data: { peerPhoneE164: phone, peerLid },
     });
     return conversationId;
   } catch (error) {
@@ -73,6 +81,9 @@ async function promoteLidPeerToPhone(
         where: { connectionId, peerPhoneE164: phone },
       });
       if (other && other.id !== conversationId) {
+        if (peerLid && !other.peerLid) {
+          await db.conversation.update({ where: { id: other.id }, data: { peerLid } });
+        }
         await mergeConversations(db, other.id, conversationId);
         return other.id;
       }
@@ -81,6 +92,40 @@ async function promoteLidPeerToPhone(
     }
   }
   return conversationId;
+}
+
+function sanitizePeerDisplayName(value?: string | null): string | null {
+  const text = value?.trim().replace(/\s+/g, " ");
+  if (!text || text.length < 2 || text.length > 80) return null;
+  if (/^\+?\d[\d\s()-]{6,}$/.test(text)) return null;
+  return text;
+}
+
+async function relinkSavedContact(
+  db: PrismaClient,
+  conversationId: string,
+  phone: string,
+  lid: string | null,
+) {
+  if (!phone || isLidPeer(phone)) return;
+  const contact = await findContactByPhones(db, uniquePhones(phone, lid));
+  if (!contact) return;
+  await upsertContactIdentities(db, contact.id, uniquePhones(phone, lid, contact.phoneE164));
+  await db.conversation.update({
+    where: { id: conversationId },
+    data: {
+      contactId: contact.id,
+      condominiumId: contact.condominiumId,
+      unidentified: false,
+    },
+  });
+  if (!isInOperationalFlow(contact)) return;
+  const triage = await db.triageItem.findUnique({ where: { conversationId } });
+  if (!triage) {
+    await db.triageItem.create({ data: { conversationId, status: "aberto" } });
+  } else if (triage.status === "arquivado") {
+    await db.triageItem.update({ where: { id: triage.id }, data: { status: "aberto" } });
+  }
 }
 
 async function downloadAvatarToDisk(conversationId: string, remoteUrl: string): Promise<string | null> {
@@ -113,66 +158,134 @@ async function downloadAvatarToDisk(conversationId: string, remoteUrl: string): 
   }
 }
 
+export type EnrichPeerOptions = {
+  /**
+   * Cascata findChats → findMessages → findContacts (só no enrich-peer / Puxar).
+   * Inbound continua raso (nome, foto e par único de pushName).
+   */
+  deep?: boolean;
+  /** Mensagem que disparou o enrich (ou última inbound no Puxar). */
+  waMessageId?: string;
+  /** Baixa a foto mesmo dentro do TTL. O ingest só liga isso quando ainda não há avatar. */
+  forceAvatar?: boolean;
+  /**
+   * Teste: substitui a busca de PN na Evolution.
+   * Produção não passa. Cadastro Juricon continua valendo antes deste retorno.
+   */
+  resolvePhone?: (lidPlaceholder: string, pushName: string | null) => Promise<string | null> | string | null;
+};
+
+const emptyHint: EvolutionPeerHint = { jid: null, pushName: null, profilePicUrl: null };
+
+function avatarIsFresh(row: { peerAvatarKey: string | null; peerAvatarFetchedAt: Date | null }, forceAvatar?: boolean) {
+  if (forceAvatar || !row.peerAvatarKey || !row.peerAvatarFetchedAt) return false;
+  return Date.now() - row.peerAvatarFetchedAt.getTime() <= AVATAR_TTL_MS;
+}
+
 /**
- * Resolve PN (if LID) + refresh avatar when missing or older than 24h.
- * Never throws to callers that fire-and-forget.
+ * Nome e foto do Contact da Evolution.
+ * Celular: cadastro, JID de telefone, par único de pushName; com `deep` também
+ * cascata findChats → findMessages → findContacts.
+ * Não cria Contact. Não marca fetchedAt se a foto falhar.
  */
 export async function enrichConversationPeerProfile(
   conversationId: string,
   db: PrismaClient = defaultPrisma,
+  opts?: EnrichPeerOptions,
 ): Promise<{ conversationId: string; peerPhoneE164?: string; peerAvatarKey?: string | null }> {
   const row = await db.conversation.findFirst({ where: { id: conversationId } });
   if (!row) return { conversationId };
 
   let id = row.id;
   let peer = row.peerPhoneE164;
+  const lid = row.peerLid || (isLidPeer(peer) ? peer : null);
+  if (lid && !row.peerLid) {
+    await db.conversation.update({ where: { id }, data: { peerLid: lid } });
+  }
 
+  let phone: string | null = null;
   if (isLidPeer(peer)) {
-    const phone = await resolvePhoneForLidPeer(peer);
-    if (phone) {
-      id = await promoteLidPeerToPhone(db, id, row.connectionId, peer, phone);
-      const refreshed = await db.conversation.findFirst({ where: { id } });
-      if (refreshed) peer = refreshed.peerPhoneE164;
+    const saved = await findContactByPhones(db, uniquePhones(lid));
+    if (saved && !isLidPeer(saved.phoneE164)) phone = saved.phoneE164;
+    if (!phone && opts?.resolvePhone) {
+      const injected = await opts.resolvePhone(peer, row.peerDisplayName ?? null);
+      if (injected && !isLidPeer(injected)) phone = injected;
     }
+    if (!phone && opts?.deep) {
+      const resolved = await resolvePhoneForLidPeer(peer, {
+        deep: true,
+        waMessageId: opts.waMessageId,
+        pushName: row.peerDisplayName,
+      });
+      if (resolved && !isLidPeer(resolved)) phone = resolved;
+    }
+  }
+
+  const fresh = avatarIsFresh(row, opts?.forceAvatar);
+  const needEvolution = !opts?.resolvePhone && ((isLidPeer(peer) && !phone) || !row.peerDisplayName || !fresh);
+  let hint = emptyHint;
+  if (needEvolution) {
+    const [contacts, chats] = await Promise.all([fetchEvolutionContacts(), fetchEvolutionChatRows()]);
+    hint = evolutionPeerHint(peer, contacts ?? [], chats ?? []);
+    if (isLidPeer(peer) && !phone && contacts) {
+      const name = row.peerDisplayName?.trim() || hint.pushName || "";
+      if (name) phone = resolvePhoneFromContacts(contacts, name);
+    }
+  }
+
+  if (phone && isLidPeer(peer)) {
+    id = await promoteLidPeerToPhone(db, id, row.connectionId, peer, phone);
+    peer = phone;
+  }
+  if (phone && !isLidPeer(phone)) {
+    await relinkSavedContact(db, id, phone, lid);
+  } else if (!isLidPeer(peer)) {
+    await relinkSavedContact(db, id, peer, lid);
   }
 
   const current = await db.conversation.findFirst({ where: { id } });
   if (!current) return { conversationId: id, peerPhoneE164: peer };
 
-  const stale =
-    !current.peerAvatarKey ||
-    !current.peerAvatarFetchedAt ||
-    Date.now() - current.peerAvatarFetchedAt.getTime() > AVATAR_TTL_MS;
-
-  if (stale) {
-    const url = await fetchEvolutionProfilePictureUrl(current.peerPhoneE164);
-    const key = url ? await downloadAvatarToDisk(id, url) : null;
-    await db.conversation.update({
-      where: { id },
-      data: {
-        peerAvatarKey: key ?? current.peerAvatarKey,
-        peerAvatarFetchedAt: new Date(),
-      },
-    });
-    if (key && current.contactId) {
-      await db.contact.update({
-        where: { id: current.contactId },
-        data: { avatarKey: key },
-      });
-    }
-    return { conversationId: id, peerPhoneE164: current.peerPhoneE164, peerAvatarKey: key ?? current.peerAvatarKey };
+  const displayName = sanitizePeerDisplayName(hint.pushName);
+  if (!current.peerDisplayName && displayName) {
+    await db.conversation.update({ where: { id }, data: { peerDisplayName: displayName } });
   }
 
-  return {
-    conversationId: id,
-    peerPhoneE164: current.peerPhoneE164,
-    peerAvatarKey: current.peerAvatarKey,
-  };
+  if (avatarIsFresh(current, opts?.forceAvatar)) {
+    return {
+      conversationId: id,
+      peerPhoneE164: current.peerPhoneE164,
+      peerAvatarKey: current.peerAvatarKey,
+    };
+  }
+
+  let remoteUrl: string | null = hint.profilePicUrl;
+  let key = remoteUrl ? await downloadAvatarToDisk(id, remoteUrl) : null;
+  if (!key && hint.jid) {
+    remoteUrl = await fetchEvolutionProfilePictureUrl(hint.jid);
+    key = remoteUrl ? await downloadAvatarToDisk(id, remoteUrl) : null;
+  }
+  if (!key) {
+    return {
+      conversationId: id,
+      peerPhoneE164: current.peerPhoneE164,
+      peerAvatarKey: current.peerAvatarKey,
+    };
+  }
+
+  await db.conversation.update({
+    where: { id },
+    data: { peerAvatarKey: key, peerAvatarFetchedAt: new Date() },
+  });
+  if (current.contactId) {
+    await db.contact.update({ where: { id: current.contactId }, data: { avatarKey: key } });
+  }
+  return { conversationId: id, peerPhoneE164: current.peerPhoneE164, peerAvatarKey: key };
 }
 
-export function schedulePeerProfileEnrichment(conversationId: string) {
+export function schedulePeerProfileEnrichment(conversationId: string, opts?: EnrichPeerOptions) {
   if (process.env.VITEST) return;
-  void enrichConversationPeerProfile(conversationId).catch(() => undefined);
+  void enrichConversationPeerProfile(conversationId, defaultPrisma, opts).catch(() => undefined);
 }
 
 export async function authorizeAvatarRead(

@@ -1,43 +1,35 @@
 "use client";
 
-import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
+import { Drawer } from "@/components/ui/drawer";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FileItem } from "@/components/ui/file-item";
-import { PriorityIndicator, StatusBadge } from "@/components/ui/status-badge";
 import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
 import { DocumentFichaForm } from "@/components/documentos/document-ficha-form";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
-import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
+import { TicketDossieHeader } from "@/components/chamados/ticket-dossie-header";
+import { TicketCasePanel } from "@/components/chamados/ticket-case-panel";
+import { TicketEditDrawer } from "@/components/chamados/ticket-edit-drawer";
+import {
+  TicketContextContent,
+  TicketContextRail,
+} from "@/components/chamados/ticket-context-rail";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
+import { useSyncOwnMessages } from "@/lib/client/sync-own-messages";
+import { useScrollThreadToEnd } from "@/lib/client/stick-thread-scroll";
 import { documentKindLabel } from "@/lib/documents/kinds";
-import {
-  CATEGORIES,
-  CATEGORY_LABEL,
-  PRIORITIES,
-  PRIORITY_LABEL,
-  TICKET_STATUSES,
-  STATUS_LABEL,
-  formatDue,
-  formatWhen,
-  isOverdue,
-} from "@/lib/ui-labels";
+import { formatDue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
-import { formatWhatsAppPeer } from "@/lib/phone/display";
-import { PeerAvatar } from "@/components/atendimento/peer-avatar";
-import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
-import { cn } from "@/lib/utils";
 
 type Deadline = { id: string; title: string; dueAt: string; doneAt: string | null; kind: string };
 
@@ -79,7 +71,14 @@ export default function ChamadoFichaPage() {
   const id = params.id;
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState("resumo");
+  const [tab, setTab] = useState("caso");
+  const [openEdit, setOpenEdit] = useState(false);
+  const [openDetalhes, setOpenDetalhes] = useState(false);
+  const [openDocModal, setOpenDocModal] = useState(false);
+  const [openDeadline, setOpenDeadline] = useState(false);
+  const [deadlineTitle, setDeadlineTitle] = useState("");
+  const [deadlineDue, setDeadlineDue] = useState("");
+
   const me = useQuery({
     queryKey: ["me"],
     queryFn: () =>
@@ -95,16 +94,16 @@ export default function ChamadoFichaPage() {
     queryFn: () => api<Msg[]>(`/api/conversations/${ticket.data!.data.conversationId}/messages?pageSize=50`),
     ...livePollQuery,
   });
+  useSyncOwnMessages(ticket.data?.data.conversationId ?? undefined);
 
-  const [status, setStatus] = useState("");
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState("");
-  const [category, setCategory] = useState("");
-  const [assignedToId, setAssignedToId] = useState("");
-  const [openDocModal, setOpenDocModal] = useState(false);
-  const [openDeadline, setOpenDeadline] = useState(false);
-  const [deadlineTitle, setDeadlineTitle] = useState("");
-  const [deadlineDue, setDeadlineDue] = useState("");
+  const threadMessages = messages.data?.data ?? [];
+  const threadScrollRef = useRef<HTMLDivElement>(null);
+  const { onScroll: onThreadScroll, stickToBottom } = useScrollThreadToEnd(threadScrollRef, {
+    conversationKey: ticket.data?.data.conversationId,
+    lastMessageId: threadMessages[threadMessages.length - 1]?.id ?? null,
+    messageCount: threadMessages.length,
+  });
+
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -129,27 +128,33 @@ export default function ChamadoFichaPage() {
     },
     onSuccess: (_res, vars) => {
       toast(vars.visibility === "interna" ? "Nota salva" : vars.body ? "Mensagem registrada" : "Arquivo enviado");
+      stickToBottom();
       qc.invalidateQueries({ queryKey: ["ticket", id] });
       qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
   const patch = useMutation({
-    mutationFn: () => {
-      const current = ticket.data?.data;
-      return api(`/api/tickets/${id}`, {
+    mutationFn: (values: {
+      title: string;
+      priority: string;
+      category: string;
+      status: string;
+      assignedToId: string;
+    }) =>
+      api(`/api/tickets/${id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          status: status || current?.status,
-          title: title || current?.title,
-          priority: priority || current?.priority,
-          category: category || current?.category,
-          assignedToId: assignedToId || current?.assignedTo?.id || null,
+          status: values.status,
+          title: values.title,
+          priority: values.priority,
+          category: values.category,
+          assignedToId: values.assignedToId || null,
         }),
-      });
-    },
+      }),
     onSuccess: () => {
       toast("Chamado atualizado");
+      setOpenEdit(false);
       qc.invalidateQueries({ queryKey: ["ticket", id] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
     },
@@ -179,7 +184,8 @@ export default function ChamadoFichaPage() {
     },
   });
   const sendDoc = useMutation({
-    mutationFn: (docId: string) => api(`/api/documents/${docId}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
+    mutationFn: (docId: string) =>
+      api(`/api/documents/${docId}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
     onSuccess: () => {
       toast("Documento enviado no WhatsApp");
       qc.invalidateQueries({ queryKey: ["ticket", id] });
@@ -243,7 +249,15 @@ export default function ChamadoFichaPage() {
             : m.direction === "in"
               ? "Cliente"
               : "WhatsApp",
-        tone: interna ? "interna" : m.sendStatus === "draft" ? "draft" : m.sendStatus === "failed" ? "failed" : m.direction === "in" ? "in" : "out",
+        tone: interna
+          ? "interna"
+          : m.sendStatus === "draft"
+            ? "draft"
+            : m.sendStatus === "failed"
+              ? "failed"
+              : m.direction === "in"
+                ? "in"
+                : "out",
       });
     }
     for (const a of audit.data?.data ?? []) {
@@ -291,154 +305,65 @@ export default function ChamadoFichaPage() {
   const t = ticket.data?.data;
   const admin = me.data?.data.user.role === "admin";
   const user = me.data?.data.user;
-  const nextOpenDeadline = t?.deadlines.find((d) => !d.doneAt);
+  const nextOpenDeadline = t?.deadlines.find((d) => !d.doneAt) ?? null;
+  const contextTicket = t
+    ? {
+        condominium: t.condominium,
+        contact: t.contact,
+        assignedTo: t.assignedTo,
+        conversation: t.conversation
+          ? { connection: { label: t.conversation.connection.label }, peerAvatarKey: t.conversation.peerAvatarKey }
+          : null,
+        nextOpenDeadline,
+      }
+    : null;
 
   return (
-    <div className="flex min-h-[calc(100dvh-3rem)] flex-col">
-      <header className="shrink-0 border-b border-border px-4 py-3">
-        <Link href="/chamados" className="text-sm text-[var(--brand)]">
-          ← Chamados
-        </Link>
-        {ticket.isLoading || !t ? (
-          <Skeleton className="mt-2 h-8 w-48" />
-        ) : (
-          <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg font-semibold tabular">#{t.protocol}</h1>
-                <StatusBadge status={t.status} />
-                <PriorityIndicator priority={t.priority} />
-              </div>
-              <p className="mt-0.5 text-sm">{t.title}</p>
-              <p className="text-xs text-muted-foreground">
-                {t.condominium.nome} · {t.contact.nome}
-                {t.assignedTo ? ` · ${t.assignedTo.nome || t.assignedTo.email}` : " · sem responsável"}
-                {nextOpenDeadline
-                  ? ` · prazo ${formatDue(nextOpenDeadline.dueAt)}`
-                  : ""}
-              </p>
-            </div>
-          </div>
-        )}
-      </header>
-      {ticket.isLoading || !t ? (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
+      <TicketDossieHeader
+        loading={ticket.isLoading || !t}
+        ticket={
+          t
+            ? {
+                protocol: t.protocol,
+                title: t.title,
+                status: t.status,
+                priority: t.priority,
+                condominium: t.condominium,
+                contact: t.contact,
+                assignedTo: t.assignedTo,
+                nextOpenDeadline,
+              }
+            : null
+        }
+        onEdit={() => setOpenEdit(true)}
+        onDetalhes={() => setOpenDetalhes(true)}
+      />
+      {ticket.isLoading || !t || !contextTicket ? (
         <Skeleton className="m-4 h-48" />
       ) : (
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <div className="flex min-h-0 min-w-0 flex-col">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <SectionTabs
+              className="shrink-0 overflow-x-auto"
               tabs={[
-                { id: "resumo", label: "Resumo" },
-                { id: "atividade", label: "Atividade" },
+                { id: "caso", label: "Caso" },
+                { id: "atividade", label: "Linha do tempo" },
                 { id: "documentos", label: "Documentos", count: t.documents.length },
                 { id: "comunicacao", label: "Comunicação" },
               ]}
               value={tab}
               onChange={setTab}
             />
-            <SectionTabPanel id="resumo" active={tab === "resumo"} className="min-h-0 flex-1 overflow-y-auto p-4">
-              <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Categoria</dt>
-                  <dd>{CATEGORY_LABEL[t.category] || t.category}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Status</dt>
-                  <dd>{STATUS_LABEL[t.status] || t.status}</dd>
-                </div>
-              </dl>
-              <div className="mt-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Prazos</h2>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setOpenDeadline(true)}>
-                    Adicionar prazo
-                  </Button>
-                </div>
-                {t.deadlines.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted-foreground">Nenhum prazo neste chamado.</p>
-                ) : (
-                  <ul className="mt-2 divide-y divide-border">
-                    {t.deadlines.map((d) => (
-                      <li key={d.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                        <span>
-                          <span className="font-medium">{d.title}</span>
-                          <span
-                            className={cn(
-                              "ml-2 tabular text-xs",
-                              isOverdue(d.dueAt, d.doneAt) ? "text-[var(--danger)]" : "text-muted-foreground",
-                            )}
-                          >
-                            {formatDue(d.dueAt)}
-                            {d.doneAt ? " · concluído" : ""}
-                          </span>
-                        </span>
-                        {!d.doneAt ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={doneDeadline.isPending}
-                            onClick={() => doneDeadline.mutate(d.id)}
-                          >
-                            Concluir
-                          </Button>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <form
-                className="mt-6 max-w-md space-y-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  patch.mutate();
-                }}
-              >
-                <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Cadastro</h2>
-                <Input value={title || t.title} onChange={(e) => setTitle(e.target.value)} aria-label="Título" />
-                <Select value={priority || t.priority} onChange={(e) => setPriority(e.target.value)} aria-label="Prioridade">
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {PRIORITY_LABEL[p]}
-                    </option>
-                  ))}
-                </Select>
-                <Select value={category || t.category} onChange={(e) => setCategory(e.target.value)} aria-label="Categoria">
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {CATEGORY_LABEL[c]}
-                    </option>
-                  ))}
-                </Select>
-                {admin ? (
-                  <Select
-                    value={assignedToId || t.assignedTo?.id || ""}
-                    onChange={(e) => setAssignedToId(e.target.value)}
-                    aria-label="Responsável"
-                  >
-                    <option value="">Sem responsável</option>
-                    {(team.data?.data ?? [])
-                      .filter((m) => m.ativo)
-                      .map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.nome || m.email}
-                        </option>
-                      ))}
-                  </Select>
-                ) : null}
-                <Select value={status || t.status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-                  {TICKET_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABEL[s]}
-                    </option>
-                  ))}
-                </Select>
-                <Button type="submit" variant="secondary" disabled={patch.isPending}>
-                  Salvar
-                </Button>
-                {patch.isError ? <p className="text-sm text-[var(--danger)]">{(patch.error as Error).message}</p> : null}
-              </form>
+            <SectionTabPanel id="caso" active={tab === "caso"} className="min-h-0 flex-1 overflow-y-auto p-4">
+              <TicketCasePanel
+                category={t.category}
+                createdAt={t.createdAt}
+                deadlines={t.deadlines}
+                donePending={doneDeadline.isPending}
+                onAddDeadline={() => setOpenDeadline(true)}
+                onCompleteDeadline={(deadlineId) => doneDeadline.mutate(deadlineId)}
+              />
             </SectionTabPanel>
             <SectionTabPanel id="atividade" active={tab === "atividade"} className="min-h-0 flex-1 overflow-y-auto p-4">
               {messages.isLoading ? <Skeleton className="h-24" /> : <Timeline items={timeline} />}
@@ -479,18 +404,24 @@ export default function ChamadoFichaPage() {
               </Button>
             </SectionTabPanel>
             <SectionTabPanel id="comunicacao" active={tab === "comunicacao"} className="flex min-h-0 flex-1 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <div
+                ref={threadScrollRef}
+                onScroll={onThreadScroll}
+                className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto px-4 py-3"
+              >
                 {messages.isLoading ? <Skeleton className="h-24" /> : null}
                 {!messages.isLoading ? (
-                  <MessageBubbles
-                    messages={messages.data?.data ?? []}
-                    onResend={admin ? (mid) => approve.mutate(mid) : undefined}
-                    resendPending={approve.isPending}
-                  />
+                  <div data-thread-scroll-content>
+                    <MessageBubbles
+                      messages={threadMessages}
+                      onResend={admin ? (mid) => approve.mutate(mid) : undefined}
+                      resendPending={approve.isPending}
+                    />
+                  </div>
                 ) : null}
               </div>
               {admin
-                ? (messages.data?.data ?? [])
+                ? threadMessages
                     .filter((m) => m.visibility === "publica" && m.sendStatus === "draft")
                     .slice(0, 1)
                     .map((m) => (
@@ -521,41 +452,25 @@ export default function ChamadoFichaPage() {
               )}
             </SectionTabPanel>
           </div>
-          <ContextSummary title="Contexto" className="hidden border-l border-border lg:flex">
-            <div className="space-y-4">
-              <ContextBlock label="Condomínio">
-                <Link className="text-[var(--brand)]" href={`/condominios/${t.condominium.id}`}>
-                  {t.condominium.nome}
-                </Link>
-              </ContextBlock>
-              <ContextBlock label="Contato">
-                <span className="flex items-center gap-2">
-                  <PeerAvatar
-                    name={t.contact.nome}
-                    avatarUrl={
-                      peerAvatarPublicUrl(t.contact.avatarKey) || peerAvatarPublicUrl(t.conversation?.peerAvatarKey)
-                    }
-                    className="size-7"
-                  />
-                  <span>
-                    {t.contact.nome}
-                    <span className="block text-xs text-muted-foreground">{formatWhatsAppPeer(t.contact.phoneE164)}</span>
-                  </span>
-                </span>
-              </ContextBlock>
-              <ContextBlock label="Responsável">{t.assignedTo?.nome || t.assignedTo?.email || "—"}</ContextBlock>
-              {nextOpenDeadline ? (
-                <ContextBlock label="Próximo prazo">
-                  <span className={isOverdue(nextOpenDeadline.dueAt, nextOpenDeadline.doneAt) ? "text-[var(--danger)]" : undefined}>
-                    {nextOpenDeadline.title} · {formatDue(nextOpenDeadline.dueAt)}
-                  </span>
-                </ContextBlock>
-              ) : null}
-              {t.conversation ? <ContextBlock label="Origem">{t.conversation.connection.label}</ContextBlock> : null}
-            </div>
-          </ContextSummary>
+          <TicketContextRail ticket={contextTicket} className="hidden border-l border-border lg:flex" />
         </div>
       )}
+
+      <TicketEditDrawer
+        open={openEdit}
+        onClose={() => setOpenEdit(false)}
+        ticket={t ?? null}
+        admin={Boolean(admin)}
+        team={team.data?.data ?? []}
+        pending={patch.isPending}
+        errorMessage={patch.isError ? (patch.error as Error).message : null}
+        onSave={(values) => patch.mutate(values)}
+      />
+
+      <Drawer open={openDetalhes} onClose={() => setOpenDetalhes(false)} title="Detalhes">
+        {contextTicket ? <TicketContextContent ticket={contextTicket} /> : null}
+      </Drawer>
+
       <Dialog open={openDocModal} onClose={() => setOpenDocModal(false)} title="Novo documento">
         <DocumentFichaForm
           showTicketSelect={false}
@@ -588,7 +503,13 @@ export default function ChamadoFichaPage() {
           </div>
           <div>
             <Label htmlFor="dl-due">Data</Label>
-            <Input id="dl-due" type="datetime-local" required value={deadlineDue} onChange={(e) => setDeadlineDue(e.target.value)} />
+            <Input
+              id="dl-due"
+              type="datetime-local"
+              required
+              value={deadlineDue}
+              onChange={(e) => setDeadlineDue(e.target.value)}
+            />
           </div>
           {createDeadline.isError ? (
             <p className="text-sm text-[var(--danger)]">{(createDeadline.error as Error).message}</p>

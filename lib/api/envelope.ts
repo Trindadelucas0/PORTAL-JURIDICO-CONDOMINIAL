@@ -4,12 +4,14 @@ export type EnvelopeMeta = {
   total?: number;
 };
 
+const NO_STORE = { "Cache-Control": "no-store" } as const;
+
 export function ok<T>(data: T, meta: EnvelopeMeta = {}) {
-  return Response.json({ data, meta }, { status: 200 });
+  return Response.json({ data, meta }, { status: 200, headers: NO_STORE });
 }
 
 export function created<T>(data: T, meta: EnvelopeMeta = {}) {
-  return Response.json({ data, meta }, { status: 201 });
+  return Response.json({ data, meta }, { status: 201, headers: NO_STORE });
 }
 
 export type ApiErrorBody = {

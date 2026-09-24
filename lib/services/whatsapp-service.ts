@@ -230,6 +230,19 @@ export const whatsappService = {
       if (!limited.ok) {
         throw tooMany("Webhook rate limited");
       }
+      if (item.fromMe) {
+        ingested.push(
+          await atendimentoService.ingestOwnOutbound({
+            waMessageId: item.waMessageId,
+            fromPhone: item.fromPhone,
+            waLid: item.waLid,
+            body: item.body,
+            sentAt: item.sentAt,
+            connectionType: "evolution_baileys",
+          }),
+        );
+        continue;
+      }
       ingested.push(
         await atendimentoService.ingestInbound({
           waMessageId: item.waMessageId,

@@ -7,6 +7,7 @@ import { isAdmin } from "@/lib/auth/guards";
 import { requireTicketAccess, ticketListWhere } from "@/lib/auth/ticket-access";
 import { writeAudit } from "@/lib/services/audit-service";
 import { upsertContactIdentities } from "@/lib/services/contact-identity";
+import { CATEGORY_LABEL } from "@/lib/ui-labels";
 
 export const ticketCategorySchema = z.enum([
   "cobranca",
@@ -161,6 +162,14 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
       ]);
       if (!condo) throw notFound("Condomínio não encontrado");
       if (!contact) throw notFound("Contato não encontrado");
+      const member =
+        contact.condominiumId === condo.id ||
+        (await db.contactCondominium.findUnique({
+          where: { contactId_condominiumId: { contactId: contact.id, condominiumId: condo.id } },
+        }));
+      if (!member) {
+        throw unprocessable("Contato precisa pertencer ao condomínio do chamado");
+      }
       const connection =
         (await db.channelConnection.findFirst({ where: { type: "dev_mock" } })) ||
         (await db.channelConnection.findFirst({ orderBy: { createdAt: "asc" } }));
@@ -282,6 +291,7 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
         category: z.infer<typeof ticketCategorySchema>;
         priority: z.infer<typeof ticketPrioritySchema>;
         assignedToId?: string | null;
+        title?: string;
       },
     ) {
       if (!isAdmin(user)) throw forbidden();
@@ -290,6 +300,7 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
           category: ticketCategorySchema,
           priority: ticketPrioritySchema,
           assignedToId: assigneeId,
+          title: z.string().min(3).max(200).optional(),
         })
         .parse(input);
 
@@ -308,7 +319,8 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
       }
       const assignee = await resolveAssignee(db, parsed.assignedToId);
 
-      const title = `${contact.nome} — ${parsed.category}`;
+      const categoryLabel = CATEGORY_LABEL[parsed.category] || parsed.category;
+      const title = parsed.title?.trim() || `${contact.nome} — ${categoryLabel}`;
       const ticket = await db.$transaction(async (tx) => {
         const protocol = await nextProtocol(tx);
         const created = await tx.ticket.create({

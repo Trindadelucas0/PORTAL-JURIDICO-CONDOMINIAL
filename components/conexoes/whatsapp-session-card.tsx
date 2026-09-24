@@ -210,7 +210,7 @@ export function WhatsappSessionCard({ c, compact = false }: { c: Connection; com
   const [confirmDisc, setConfirmDisc] = useState(false);
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border border-border bg-card p-4 shadow-none">
+    <div className="flex flex-col gap-4 rounded-[var(--radius)] border border-border bg-card p-4 shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-3">
         <div>
           <p className="font-medium">{compact ? c.label : "WhatsApp do escritório"}</p>

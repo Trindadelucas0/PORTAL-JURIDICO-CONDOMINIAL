@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,11 @@ import { e164ToMaskedInput } from "@/lib/phone/mask";
 import { canPullWhatsAppPhone, sendableWhatsAppE164 } from "@/lib/phone/identity";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import {
+  ContactCondominiumPicker,
+  fetchAllCondominiums,
+} from "@/components/cadastro/contact-condominium-picker";
 
-type Condo = { id: string; nome: string };
 type SavedContact = {
   id: string;
   nome: string;
@@ -43,7 +46,7 @@ function NaoVinculadosInner() {
   const paramsQ = params.get("q") || "";
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState(paramsQ);
-  const [mobilePane, setMobilePane] = useState<"list" | "thread" | "context">("list");
+  const [mobilePane, setMobilePane] = useState<"list" | "thread">("list");
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollRow, setEnrollRow] = useState<UnlinkedConversation | null>(null);
   const [nome, setNome] = useState("");
@@ -52,6 +55,7 @@ function NaoVinculadosInner() {
   const [cargo, setCargo] = useState("");
   const [email, setEmail] = useState("");
   const [condominiumId, setCondominiumId] = useState("");
+  const [extraCondoIds, setExtraCondoIds] = useState<string[]>([]);
   const [existingContactId, setExistingContactId] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [confirmEnroll, setConfirmEnroll] = useState(false);
@@ -70,8 +74,8 @@ function NaoVinculadosInner() {
     ...livePollQuery,
   });
   const condos = useQuery({
-    queryKey: ["condominiums"],
-    queryFn: () => api<Condo[]>("/api/condominiums"),
+    queryKey: ["condominiums", "all-for-enroll"],
+    queryFn: () => fetchAllCondominiums(api),
   });
   const savedContacts = useQuery({
     queryKey: ["contacts", "enroll"],
@@ -89,6 +93,11 @@ function NaoVinculadosInner() {
   const phoneLocked = phoneFromWhatsApp || Boolean(sendable);
   const whatsappOpen = drawerPeer?.connection.status === "open";
   const showPullPhone = canPullWhatsAppPhone(drawerPeer?.connection.status, phoneLocked);
+  const enrolledCondoIds = useMemo(() => {
+    const set = new Set(extraCondoIds);
+    if (condominiumId) set.add(condominiumId);
+    return [...set];
+  }, [condominiumId, extraCondoIds]);
 
   const enroll = useMutation({
     mutationFn: () =>
@@ -97,6 +106,7 @@ function NaoVinculadosInner() {
         body: JSON.stringify({
           nome,
           condominiumId,
+          condominiumIds: enrolledCondoIds,
           phone: phoneLocked ? undefined : phone || undefined,
           cargo: cargo || undefined,
           email: email || undefined,
@@ -109,6 +119,7 @@ function NaoVinculadosInner() {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["triage"] });
+      qc.invalidateQueries({ queryKey: ["contacts"] });
       if (res.data.triage?.id) router.push(`/triagem/${res.data.triage.id}`);
     },
   });
@@ -170,6 +181,7 @@ function NaoVinculadosInner() {
     setCargo("");
     setEmail("");
     setCondominiumId("");
+    setExtraCondoIds([]);
     setExistingContactId("");
     setEnrollOpen(true);
     await runEnrich(row, { silent: true });
@@ -179,7 +191,7 @@ function NaoVinculadosInner() {
   const displayName = enrollRow ? conversationIdentityLabel(enrollRow) : "";
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
       <div className="shrink-0 border-b border-border px-3 py-2">
         <h1 className="text-sm font-semibold">Não vinculados</h1>
         <p className="text-xs text-muted-foreground">
@@ -207,7 +219,7 @@ function NaoVinculadosInner() {
             conversation={current}
             hidden={mobilePane !== "thread"}
             onBack={() => setMobilePane("list")}
-            onContext={() => setMobilePane("context")}
+            showContext={false}
             title={current ? conversationIdentityLabel(current) : "Mensagem"}
             subtitle={current ? `Fora do fluxo · ${current.connection.label}` : undefined}
             allowPublicSend={Boolean(current && current.connection.status === "open")}
@@ -217,10 +229,9 @@ function NaoVinculadosInner() {
             extraInvalidateKeys={[["conversations", "unlinked"]]}
           />
         </WorkspacePane>
-        <WorkspacePane className={cn(mobilePane !== "context" && "hidden xl:flex")}>
+        <WorkspacePane>
           <UnlinkedIdentityPanel
             conversation={current}
-            onBack={() => setMobilePane("thread")}
             onEnroll={() => current && openEnroll(current)}
           />
         </WorkspacePane>
@@ -248,7 +259,7 @@ function NaoVinculadosInner() {
                       ? "Buscando número no WhatsApp…"
                       : whatsappOpen
                         ? "Número não liberado — use Puxar do WhatsApp"
-                        : "Número não liberado pelo WhatsApp"}
+                        : "WhatsApp desconectado — conecte em Conexões para puxar"}
                 </p>
               </div>
             </div>
@@ -290,10 +301,12 @@ function NaoVinculadosInner() {
                 ? "Vindo do WhatsApp — não precisa digitar"
                 : enriching
                   ? "Consultando Evolution…"
-                  : "Obrigatório — o WhatsApp não mostrou o número"
+                  : whatsappOpen
+                    ? "Obrigatório — o WhatsApp não mostrou o número"
+                    : "Conecte o WhatsApp em Conexões para puxar, ou digite o número"
             }
             action={
-              showPullPhone ? (
+              phoneLocked ? undefined : showPullPhone ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -303,7 +316,16 @@ function NaoVinculadosInner() {
                 >
                   {enriching ? "Puxando…" : "Puxar do WhatsApp"}
                 </Button>
-              ) : undefined
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                  onClick={() => router.push("/conexoes")}
+                >
+                  Conectar WhatsApp
+                </Button>
+              )
             }
           />
           <fieldset className="space-y-2">
@@ -332,15 +354,25 @@ function NaoVinculadosInner() {
           />
           <Label htmlFor="en-email">E-mail</Label>
           <Input id="en-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Label htmlFor="en-condo">Condomínio</Label>
+          <Label htmlFor="en-condo">Condomínio (principal)</Label>
           <Select id="en-condo" required value={condominiumId} onChange={(e) => setCondominiumId(e.target.value)}>
             <option value="">Selecione</option>
-            {(condos.data?.data ?? []).map((c) => (
+            {(condos.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
               </option>
             ))}
           </Select>
+          <ContactCondominiumPicker
+            options={(condos.data ?? []).filter((c) => c.id !== condominiumId)}
+            loading={condos.isLoading}
+            selectedIds={extraCondoIds}
+            primaryId=""
+            showPrimary={false}
+            onChange={({ selectedIds }) => setExtraCondoIds(selectedIds)}
+            hint="Opcional — o contato também aparece nestas fichas. A conversa fica no principal acima."
+            emptyHint={condominiumId ? "Nenhum outro condomínio." : "Selecione o principal primeiro."}
+          />
           {enroll.isError ? <p className="text-sm text-[var(--danger)]">{(enroll.error as Error).message}</p> : null}
           <Button
             type="submit"
@@ -369,7 +401,7 @@ function NaoVinculadosInner() {
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Condomínio</dt>
-              <dd>{(condos.data?.data ?? []).find((c) => c.id === condominiumId)?.nome || "—"}</dd>
+              <dd>{(condos.data ?? []).find((c) => c.id === condominiumId)?.nome || "—"}</dd>
             </div>
           </dl>
         }

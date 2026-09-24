@@ -140,38 +140,53 @@ model SessionToken {
 }
 
 model Condominium {
-  id            String           @id @default(uuid()) @db.Uuid
+  id            String                @id @default(uuid()) @db.Uuid
   nome          String
   cnpj          String?
   endereco      String?
   cidadeUf      String?
   observacao    String?
   deletedAt     DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
   contacts      Contact[]
+  memberships   ContactCondominium[]
   conversations Conversation[]
   tickets       Ticket[]
   documents     OfficeDocument[]
 }
 
 model Contact {
-  id            String         @id @default(uuid()) @db.Uuid
+  id            String                @id @default(uuid()) @db.Uuid
   nome          String
-  phoneE164     String         @unique
+  phoneE164     String                @unique
   email         String?
   cargo         String?
   avatarKey     String?
-  condominiumId String?        @db.Uuid
+  condominiumId String?               @db.Uuid
   deletedAt     DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  condominium   Condominium?   @relation(fields: [condominiumId], references: [id])
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  condominium   Condominium?          @relation(fields: [condominiumId], references: [id])
+  memberships   ContactCondominium[]
   conversations Conversation[]
   tickets       Ticket[]
   identities    ContactIdentity[]
 
   @@index([phoneE164])
+  @@index([condominiumId])
+}
+
+model ContactCondominium {
+  id            String      @id @default(uuid()) @db.Uuid
+  contactId     String      @db.Uuid
+  condominiumId String      @db.Uuid
+  createdAt     DateTime    @default(now())
+  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  condominium   Condominium @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, condominiumId])
+  @@index([contactId])
   @@index([condominiumId])
 }
 
@@ -203,6 +218,7 @@ model Conversation {
   condominiumId  String?            @db.Uuid
   connectionId   String             @db.Uuid
   peerPhoneE164    String
+  peerLid          String?
   peerDisplayName  String?
   peerAvatarKey    String?
   peerAvatarFetchedAt DateTime?
@@ -223,6 +239,7 @@ model Conversation {
   @@index([contactId])
   @@index([unidentified])
   @@index([peerPhoneE164])
+  @@index([peerLid])
 }
 
 model Message {
