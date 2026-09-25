@@ -274,7 +274,7 @@ export default function DashboardPage() {
                   <MetricCard
                     label="Não lidas"
                     value={data.naoLidas ?? 0}
-                    hint="Mensagens de clientes no fluxo"
+                    hint="Mensagens do cliente que ninguém abriu"
                     verb="Atender"
                     icon={MessageSquare}
                     chip="Fila de espera"

@@ -51,6 +51,35 @@ function sanitizePeerDisplayName(value?: string | null): string | null {
   return text;
 }
 
+function latestOfficeReadAt(reads: { lastReadAt: Date }[]): Date | null {
+  if (!reads.length) return null;
+  return reads.reduce((max, row) => (row.lastReadAt > max ? row.lastReadAt : max), reads[0].lastReadAt);
+}
+
+async function unopenedInboundCounts(
+  db: PrismaClient,
+  conversationIds: string[],
+  cutoffById: Map<string, Date | null>,
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>(conversationIds.map((id) => [id, 0]));
+  if (conversationIds.length === 0) return counts;
+  const or: Prisma.MessageWhereInput[] = conversationIds.map((id) => {
+    const cutoff = cutoffById.get(id);
+    return cutoff
+      ? { conversationId: id, createdAt: { gt: cutoff } }
+      : { conversationId: id };
+  });
+  const grouped = await db.message.groupBy({
+    by: ["conversationId"],
+    where: { direction: "in", OR: or },
+    _count: { _all: true },
+  });
+  for (const row of grouped) {
+    counts.set(row.conversationId, row._count._all);
+  }
+  return counts;
+}
+
 async function promoteLidPeerToPhone(
   db: PrismaClient,
   conversation: Conversation,
@@ -91,6 +120,18 @@ function peerToRemoteJid(peerPhoneE164: string): string | null {
   const digits = peerPhoneE164.replace(/\D/g, "");
   if (digits.length < 8) return null;
   return `${digits}@s.whatsapp.net`;
+}
+
+export function inboundPeerEnrichOptions(
+  peerPhoneE164: string,
+  peerAvatarKey: string | null,
+  waMessageId: string,
+) {
+  return {
+    waMessageId,
+    forceAvatar: !peerAvatarKey,
+    ...(isLidPeer(peerPhoneE164) ? { deep: true as const } : {}),
+  };
 }
 
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
@@ -265,10 +306,10 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         triageId = triage.id;
       }
 
-      schedulePeerProfileEnrichment(conversation.id, {
-        waMessageId: payload.waMessageId,
-        forceAvatar: !conversation.peerAvatarKey,
-      });
+      schedulePeerProfileEnrichment(
+        conversation.id,
+        inboundPeerEnrichOptions(conversation.peerPhoneE164, conversation.peerAvatarKey, payload.waMessageId),
+      );
 
       return {
         created: true,
@@ -348,19 +389,25 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
               take: 5,
             },
             messages: { orderBy: { createdAt: "desc" }, take: 1 },
-            reads: { where: { userId: user.id }, take: 1 },
+            reads: { select: { lastReadAt: true } },
           },
         }),
       ]);
+      const cutoffById = new Map(items.map((row) => [row.id, latestOfficeReadAt(row.reads)]));
+      const unopenedById = await unopenedInboundCounts(
+        db,
+        items.map((row) => row.id),
+        cutoffById,
+      );
       const mapped = items
         .map((row) => {
-          const lastRead = row.reads[0]?.lastReadAt;
-          const unread = !lastRead || lastRead < row.updatedAt;
+          const unopenedMessages = unopenedById.get(row.id) ?? 0;
           const { reads, ...rest } = row;
           void reads;
           return {
             ...rest,
-            unread,
+            unopenedMessages,
+            unread: unopenedMessages > 0,
             peerAvatarUrl:
               peerAvatarPublicUrl(row.peerAvatarKey) || peerAvatarPublicUrl(row.contact?.avatarKey),
           };
@@ -597,15 +644,17 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         db.conversation.findMany({
           where: access,
           select: {
-            updatedAt: true,
-            reads: { where: { userId: user.id }, select: { lastReadAt: true }, take: 1 },
+            id: true,
+            reads: { select: { lastReadAt: true } },
           },
         }),
       ]);
-      const naoLidas = unreadRows.filter((row) => {
-        const lastRead = row.reads[0]?.lastReadAt;
-        return !lastRead || lastRead < row.updatedAt;
-      }).length;
+      const unopenedById = await unopenedInboundCounts(
+        db,
+        unreadRows.map((row) => row.id),
+        new Map(unreadRows.map((row) => [row.id, latestOfficeReadAt(row.reads)])),
+      );
+      const naoLidas = [...unopenedById.values()].reduce((sum, n) => sum + n, 0);
       if (!isAdmin(user)) {
         const [meus, meusChamadosLista] = await Promise.all([
           db.ticket.count({

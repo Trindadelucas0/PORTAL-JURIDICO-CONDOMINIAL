@@ -30,6 +30,7 @@ type ConversationTicket = { id: string; protocol: string; status: string; update
 
 type Conversation = ThreadConversation & {
   unread?: boolean;
+  unopenedMessages?: number;
   updatedAt: string;
   peerAvatarUrl?: string | null;
   peerDisplayName?: string | null;
@@ -209,12 +210,19 @@ function InboxInner() {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
-                          {c.unread ? (
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Não lida" />
-                          ) : null}
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {c.contact?.nome || c.peerDisplayName || conversationIdentityLabel(c)}
                           </span>
+                          {(c.unopenedMessages ?? 0) > 0 ? (
+                            <>
+                              <span className="shrink-0 text-[10px] font-medium tracking-wide text-primary uppercase">
+                                Não aberta
+                              </span>
+                              <span className="shrink-0 tabular text-[11px] font-semibold text-primary">
+                                {c.unopenedMessages}
+                              </span>
+                            </>
+                          ) : null}
                           <span className="shrink-0 tabular text-[11px] text-muted-foreground">
                             {formatAge(c.updatedAt) ?? ""}
                           </span>

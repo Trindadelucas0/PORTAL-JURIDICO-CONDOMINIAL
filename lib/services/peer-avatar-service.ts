@@ -158,16 +158,20 @@ async function downloadAvatarToDisk(conversationId: string, remoteUrl: string): 
   }
 }
 
+export const DEEP_PHONE_RETRY_MS = 5_000;
+
 export type EnrichPeerOptions = {
   /**
-   * Cascata findChats → findMessages → findContacts (só no enrich-peer / Puxar).
-   * Inbound continua raso (nome, foto e par único de pushName).
+   * Cascata findChats → findMessages → findContacts.
+   * Inbound LID, enrich-peer e Puxar passam `deep`. Peer E.164 no ingest não passa.
    */
   deep?: boolean;
   /** Mensagem que disparou o enrich (ou última inbound no Puxar). */
   waMessageId?: string;
   /** Baixa a foto mesmo dentro do TTL. O ingest só liga isso quando ainda não há avatar. */
   forceAvatar?: boolean;
+  /** Segunda tentativa (~5s) depois de um deep que ainda deixou o peer LID. */
+  retry?: boolean;
   /**
    * Teste: substitui a busca de PN na Evolution.
    * Produção não passa. Cadastro Juricon continua valendo antes deste retorno.
@@ -285,6 +289,23 @@ export async function enrichConversationPeerProfile(
 
 const enrichInFlight = new Map<string, Promise<unknown>>();
 
+function scheduleDeepPhoneRetry(
+  conversationId: string,
+  opts: EnrichPeerOptions | undefined,
+  result: { peerPhoneE164?: string } | undefined,
+  db: PrismaClient,
+) {
+  if (!opts?.deep || opts.retry) return;
+  if (!result?.peerPhoneE164 || !isLidPeer(result.peerPhoneE164)) return;
+  setTimeout(() => {
+    void enqueuePeerProfileEnrichment(
+      conversationId,
+      { ...opts, deep: true, retry: true },
+      db,
+    );
+  }, DEEP_PHONE_RETRY_MS);
+}
+
 export function enqueuePeerProfileEnrichment(
   conversationId: string,
   opts?: EnrichPeerOptions,
@@ -293,6 +314,10 @@ export function enqueuePeerProfileEnrichment(
   const existing = enrichInFlight.get(conversationId);
   if (existing) return existing;
   const run = enrichConversationPeerProfile(conversationId, db, opts)
+    .then((result) => {
+      scheduleDeepPhoneRetry(conversationId, opts, result, db);
+      return result;
+    })
     .catch(() => undefined)
     .finally(() => {
       if (enrichInFlight.get(conversationId) === run) enrichInFlight.delete(conversationId);

@@ -278,3 +278,25 @@ export function interpretEvolutionMessageRows(rows: unknown[]): EvolutionWebhook
     data: rows,
   });
 }
+
+const DUMP_REDACT_KEYS = new Set(["apikey", "token", "authorization"]);
+
+export function redactWebhookDumpSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactWebhookDumpSecrets);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = DUMP_REDACT_KEYS.has(key.toLowerCase()) ? "[redacted]" : redactWebhookDumpSecrets(nested);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Stdout dump of the authenticated webhook body. Off unless EVOLUTION_WEBHOOK_DUMP=1. Never logs the secret header. */
+export function maybeDumpEvolutionWebhookBody(body: unknown): boolean {
+  if (process.env.VITEST) return false;
+  if (process.env.EVOLUTION_WEBHOOK_DUMP !== "1") return false;
+  console.log("evo-webhook-dump", JSON.stringify(redactWebhookDumpSecrets(body)));
+  return true;
+}

@@ -421,6 +421,19 @@ describe("evolution send errors", () => {
     expect(canPullWhatsAppPhone(undefined, false)).toBe(false);
   });
 
+  it("schedules deep inbound enrich only for LID peers", async () => {
+    const { inboundPeerEnrichOptions } = await import("@/lib/services/atendimento-service");
+    expect(inboundPeerEnrichOptions("+999123456789012", null, "wa-lid")).toEqual({
+      waMessageId: "wa-lid",
+      forceAvatar: true,
+      deep: true,
+    });
+    expect(inboundPeerEnrichOptions("+5511988880000", "avatars/x.jpg", "wa-pn")).toEqual({
+      waMessageId: "wa-pn",
+      forceAvatar: false,
+    });
+  });
+
   it("sends WhatsApp to LID jid when the peer has no real phone", () => {
     expect(evolutionSendDestinations("142112045666497@lid")).toEqual(["142112045666497@lid"]);
     expect(evolutionSendDestinations("+999112045666497")).toEqual(["112045666497@lid"]);

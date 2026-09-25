@@ -2,6 +2,7 @@ import { ok } from "@/lib/api/envelope";
 import { handleRouteError } from "@/lib/api/handler";
 import { payloadTooLarge, tooMany } from "@/lib/api/errors";
 import { clientIp, rateLimit } from "@/lib/api/rate-limit";
+import { maybeDumpEvolutionWebhookBody } from "@/lib/channels/evolution-webhook";
 import { whatsappService } from "@/lib/services/whatsapp-service";
 
 export const WEBHOOK_MAX_BYTES = 256 * 1024;
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
     } catch {
       return ok({ ignored: true as const, reason: "malformed" });
     }
+
+    maybeDumpEvolutionWebhookBody(body);
 
     const result = await whatsappService.ingestEvolution(body);
     return ok(result);

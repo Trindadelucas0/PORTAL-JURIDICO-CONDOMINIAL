@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ function NaoVinculadosInner() {
   const [existingContactId, setExistingContactId] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [confirmEnroll, setConfirmEnroll] = useState(false);
+  const catchUpTried = useRef(new Set<string>());
 
   useEffect(() => {
     setQ(paramsQ);
@@ -73,6 +74,33 @@ function NaoVinculadosInner() {
     },
     ...livePollQuery,
   });
+
+  useEffect(() => {
+    const rows = list.data?.data ?? [];
+    for (const row of rows) {
+      const sendable = sendableWhatsAppE164({
+        contactPhoneE164: row.contact?.phoneE164,
+        peerPhoneE164: row.peerPhoneE164,
+      });
+      if (sendable || catchUpTried.current.has(row.id)) continue;
+      catchUpTried.current.add(row.id);
+      void (async () => {
+        try {
+          const res = await api<UnlinkedConversation>(`/api/conversations/${row.id}/enrich-peer`, {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+          const next = sendableWhatsAppE164({
+            contactPhoneE164: res.data.contact?.phoneE164,
+            peerPhoneE164: res.data.peerPhoneE164,
+          });
+          if (next) qc.invalidateQueries({ queryKey: ["conversations", "unlinked"] });
+        } catch {
+          /* silencioso: poll relê o banco; Puxar continua no drawer */
+        }
+      })();
+    }
+  }, [list.data, qc]);
   const condos = useQuery({
     queryKey: ["condominiums", "all-for-enroll"],
     queryFn: () => fetchAllCondominiums(api),

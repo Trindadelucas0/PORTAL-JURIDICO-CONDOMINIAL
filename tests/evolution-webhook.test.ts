@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   extractMessageText,
   interpretEvolutionWebhook,
+  maybeDumpEvolutionWebhookBody,
   phoneFromWhatsAppLid,
   parseWhatsAppSentAt,
+  redactWebhookDumpSecrets,
 } from "@/lib/channels/evolution-webhook";
 
 describe("interpretEvolutionWebhook", () => {
@@ -361,5 +363,38 @@ describe("parseWhatsAppSentAt", () => {
     expect(parseWhatsAppSentAt(1700000000)).toBe(new Date(1700000000 * 1000).toISOString());
     expect(parseWhatsAppSentAt(1)).toBeNull();
     expect(parseWhatsAppSentAt("not-a-date")).toBeNull();
+  });
+});
+
+describe("webhook dump", () => {
+  it("redacts apikey and token without touching remoteJid or pushName", () => {
+    const dumped = redactWebhookDumpSecrets({
+      event: "messages.upsert",
+      apikey: "secret-key",
+      apiKey: "also-secret",
+      data: {
+        key: { id: "ABC123", remoteJid: "130885504524400@lid", remoteJidAlt: "5511988880000@s.whatsapp.net" },
+        pushName: "Maria",
+        token: "nope",
+        authorization: "Bearer x",
+      },
+    }) as Record<string, unknown>;
+    expect(dumped.apikey).toBe("[redacted]");
+    expect(dumped.apiKey).toBe("[redacted]");
+    const data = dumped.data as Record<string, unknown>;
+    expect(data.token).toBe("[redacted]");
+    expect(data.authorization).toBe("[redacted]");
+    const key = data.key as Record<string, unknown>;
+    expect(key.remoteJid).toBe("130885504524400@lid");
+    expect(key.remoteJidAlt).toBe("5511988880000@s.whatsapp.net");
+    expect(key.id).toBe("ABC123");
+    expect(data.pushName).toBe("Maria");
+  });
+
+  it("does not dump when EVOLUTION_WEBHOOK_DUMP is not 1", () => {
+    const prev = process.env.EVOLUTION_WEBHOOK_DUMP;
+    delete process.env.EVOLUTION_WEBHOOK_DUMP;
+    expect(maybeDumpEvolutionWebhookBody({ event: "messages.upsert" })).toBe(false);
+    if (prev) process.env.EVOLUTION_WEBHOOK_DUMP = prev;
   });
 });

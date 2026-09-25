@@ -1,13 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { createAtendimentoService } from "@/lib/services/atendimento-service";
-import { enrichConversationPeerProfile } from "@/lib/services/peer-avatar-service";
+import { enrichConversationPeerProfile, schedulePeerProfileEnrichment } from "@/lib/services/peer-avatar-service";
 import { cadastroService } from "@/lib/services/cadastro-service";
 import { hashPassword } from "@/lib/auth/session";
 import { phoneFromWhatsAppLid } from "@/lib/channels/evolution-webhook";
 import * as evolutionPeerProfile from "@/lib/channels/evolution-peer-profile";
 import { AppError } from "@/lib/api/errors";
 import { assertNotOfficeDatabase } from "./assert-not-office-db";
+
+vi.mock("@/lib/services/peer-avatar-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/services/peer-avatar-service")>();
+  return {
+    ...actual,
+    schedulePeerProfileEnrichment: vi.fn(),
+  };
+});
 
 const db = new PrismaClient();
 const svc = createAtendimentoService(db);
@@ -226,6 +234,39 @@ describe("inbound ingest", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("schedules deep peer enrich for LID inbound and not for a real phone", async () => {
+    const schedule = vi.mocked(schedulePeerProfileEnrichment);
+    schedule.mockClear();
+    const suffix = `${Date.now()}`;
+    const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}99887766@lid`);
+    const waMessageId = `sched-lid-${suffix}`;
+    const inbound = await svc.ingestInbound({
+      waMessageId,
+      fromPhone: lidPhone!,
+      waLid: lidPhone,
+      body: "lid schedule deep",
+      connectionType: "dev_mock",
+    });
+    expect(schedule).toHaveBeenCalledWith(
+      inbound.conversationId,
+      expect.objectContaining({ deep: true, waMessageId }),
+    );
+
+    schedule.mockClear();
+    const fromPhone = `+55119${String(Date.now()).slice(-8)}`;
+    const e164Id = `sched-pn-${suffix}`;
+    const pn = await svc.ingestInbound({
+      waMessageId: e164Id,
+      fromPhone,
+      body: "phone schedule shallow",
+      connectionType: "dev_mock",
+    });
+    const opts = schedule.mock.calls[0]?.[1] as { deep?: boolean; waMessageId?: string };
+    expect(opts.waMessageId).toBe(e164Id);
+    expect(opts.deep).toBeUndefined();
+    expect(pn.conversationId).toBeTruthy();
   });
 
   it("matches contact with Brazil 8/9 digit variant", async () => {
