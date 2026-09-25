@@ -125,7 +125,7 @@ flowchart TD
 
 ### 2.6 Documento e prazo
 
-1. Documento: **Documentos** ou ficha do chamado → **Novo documento** → ficha + arquivo → **Salvar documento**. **Enviar WhatsApp** só com chamado vinculado.
+1. Documento: **Documentos** → card do condomínio → **Novo documento** → nome, para que serve e arquivo → **Salvar documento**.
 2. Prazo: ficha do chamado → **Adicionar prazo** → aparece em **Prazos** e no header da ficha → **Concluir**.
 
 ---
@@ -669,9 +669,9 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 ### Aba Documentos
 
 ```text
-│ (lista) Ata.pdf · tipo · [Baixar] [Enviar WhatsApp]                         │
-│ [Novo documento]                                                            │
+│ (lista) Ata.pdf · tipo · [Baixar]                                           │
 │ empty: Nenhum documento ainda.                                              │
+│        Os arquivos ficam em Documentos, na pasta do condomínio.             │
 ```
 
 ### Aba Comunicação
@@ -693,8 +693,6 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 | Salvar prazo | — | POST deadline | Título + data |
 | Concluir (prazo) | — | PATCH done | — |
 | Baixar | — | Download autenticado | — |
-| Enviar WhatsApp (doc) | — | POST send-draft | Precisa chamado + WA |
-| Novo documento | — | Dialog ficha | — |
 | Composer / Aprovar | iguais §6 | — | — |
 
 ### Estados
@@ -709,49 +707,59 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 
 ## 12. Documentos `/documentos`
 
-**Quem:** ambos (funcionário: Novo desabilitado sem tickets atribuídos; upload exige chamado).
+**Quem:** ambos (funcionário: só condomínios com chamado atribuído).
 
-### Print
+### Print — grade
 
 ```text
-┌─ sidebar ─┬─ Documentos · 12 no acervo · [Novo documento] ──────────────────┐
-│ …         │ [Buscar título…] [Todos os condomínios ▼] [Chamado ▼]           │
+┌─ sidebar ─┬─ Documentos · N condomínios ────────────────────────────────────┐
+│ …         │ [Buscar condomínio…]                                            │
+│           │ ┌ Card Aurora ─┐ ┌ Card Sol ───┐                                │
+│           │ │ 3 documentos │ │ 0 documentos│                                │
+│           │ └──────────────┘ └─────────────┘                                │
+└───────────┴─────────────────────────────────────────────────────────────────┘
+```
+
+### Print — pasta
+
+```text
+┌─ sidebar ─┬─ ← Condomínios · Residencial Aurora · [Novo documento] ─────────┐
+│ …         │ [Buscar título, finalidade…]                                    │
 │           ├─ tabela ──────────────────────────────────────┬─ Ficha ────────┤
-│           │ Documento │ Tipo │ Finalid. │ Condo │ Chamado │ Tipo · propósito│
-│           │ Ata.pdf   │ Ata  │ …        │ Aurora│ #2026   │ [Baixar]        │
-│           │           │      │          │       │ Ver/Env │ [Enviar no WA]  │
-│           │           │      │          │       │ /Baixar │                 │
-└───────────┴───────────┴──────┴──────────┴───────┴─────────┴─────────────────┘
+│           │ Documento │ Tipo │ Finalid. │ Data │ Ver/Baixar│ Tipo · propósito│
+│           │ Ata       │ Ata  │ …        │ 12/09│           │ [Baixar]        │
+└───────────┴───────────────────────────────────────────────┴─────────────────┘
 ```
 
 ### Controles
 
 | Rótulo | Ao clicar | Bloqueio |
 |--------|-----------|----------|
-| Novo documento | Dialog ficha | Func. sem tickets: disabled |
+| Card condomínio | Abre pasta | — |
+| ← Condomínios | Volta à grade | — |
+| Novo documento | Dialog ficha (só na pasta) | Sem condomínio aberto |
 | Linha / Ver | Abre ficha (aside ou drawer mobile) | — |
-| Enviar / Enviar no WhatsApp | send-draft | Sem chamado vinculado |
 | Baixar | `/api/files/...` | Sessão |
-| Cancelar / Salvar documento | Fecha / POST multipart | kind, title, purpose, file |
+| Cancelar / Salvar documento | Fecha / POST multipart | kind, title, purpose, file, condominiumId |
 
 ### Campos ficha Novo documento
 
 | Campo | Obrigatório |
 |-------|-------------|
-| Tipo | Sim (Convenção, Regimento, Ata, Edital, Contrato, Procuração, Parecer, Notificação, Correspondência, Foto, Áudio, Outro) |
-| Título | Sim (2–160) |
+| Nome do documento | Sim (2–160) |
 | Para que serve | Sim (10–2000) |
-| Chamado | Admin opcional; funcionário obrigatório |
-| Observação | Não |
 | Arquivo | Sim (jpeg/png/pdf/áudio ≤ 8 MB) |
+| Tipo | Sim (Convenção, Regimento, Ata, Edital, Contrato, Procuração, Parecer, Notificação, Correspondência, Foto, Áudio, Outro) |
+| Observação | Não |
 
 ### Estados
 
 | Estado | Copy |
 |--------|------|
-| Empty | “Nenhum documento” |
+| Grade vazia | “Nenhum condomínio” |
+| Busca grade | “Nenhum condomínio com esse nome” |
+| Pasta vazia | “Nenhum documento” |
 | Side vazio | “Selecione um documento para ver a ficha.” |
-| Hint func. | “Funcionário: escolha um chamado atribuído…” |
 
 ---
 
@@ -990,14 +998,14 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 ### 18.3 Dialog — Novo documento
 
 ```text
-┌──────── Novo documento ─────────────┐
-│ JPEG, PNG, PDF ou áudio · até 8 MB  │
-│ Tipo * ▼  Título *                  │
-│ Para que serve *                    │
-│ Chamado ▼  Observação               │
-│ Arquivo *                           │
-│ [Cancelar] [Salvar documento]       │
-└─────────────────────────────────────┘
+┌──────── Novo documento — Residencial Aurora ─┐
+│ JPEG, PNG, PDF ou áudio · até 8 MB           │
+│ Dados do documento                           │
+│ Nome do documento *  Para que serve *        │
+│ Arquivo *                                    │
+│ Tipo * ▼  Observação                         │
+│ [Cancelar] [Salvar documento]                │
+└──────────────────────────────────────────────┘
 ```
 
 ### 18.4 Dialog — Adicionar prazo (ficha)
@@ -1044,7 +1052,7 @@ Cancelar = sempre **Cancelar** (secondary).
 | `/chamados` | todos + Novo | só atribuídos · sem Novo |
 | `/chamados/[id]` | ✓ | se assignedTo = eu |
 | `/prazos` | todos | só dos seus |
-| `/documentos` | todos | condo/tickets seus; Novo com chamado |
+| `/documentos` | todos | pastas dos chamados seus |
 | `/condominios` | CRUD | leitura filtrada |
 | `/condominios/[id]` | PATCH | leitura |
 | `/equipe` | ✓ | 403 |

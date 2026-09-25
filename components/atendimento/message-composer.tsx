@@ -32,6 +32,7 @@ export function MessageComposer({
   const [mode, setMode] = useState<"publica" | "interna">("publica");
   const [recording, setRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -143,12 +144,16 @@ export function MessageComposer({
           className="min-w-[12rem] flex-1"
         />
         <input
+          ref={fileInputRef}
           type="file"
-          className="max-w-[10rem] text-xs"
+          className="sr-only"
           aria-label="Anexar arquivo"
           accept="image/jpeg,image/png,application/pdf,audio/ogg,audio/mpeg,audio/mp4,audio/webm"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
+        <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+          Anexar
+        </Button>
         {mode === "publica" ? (
           <Button
             type="button"

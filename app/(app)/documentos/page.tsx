@@ -8,10 +8,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { Drawer } from "@/components/ui/drawer";
 import { Dialog } from "@/components/ui/dialog";
+import { Drawer } from "@/components/ui/drawer";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable, Td, Th } from "@/components/ui/data-table";
 import { Toolbar } from "@/components/ui/toolbar";
@@ -34,10 +34,8 @@ type Doc = {
   storageKey: string;
   createdAt?: string;
   condominium: { id?: string; nome: string };
-  ticket: { id?: string; protocol: string } | null;
 };
 
-type Ticket = { id: string; protocol: string; title: string; condominium?: { id: string }; condominiumId?: string };
 type Summary = {
   condominiumId: string;
   nome: string;
@@ -46,15 +44,7 @@ type Summary = {
   lastAt: string | null;
 };
 
-function DocumentSideFicha({
-  doc,
-  pending,
-  onSend,
-}: {
-  doc: Doc;
-  pending: boolean;
-  onSend: () => void;
-}) {
+function DocumentSideFicha({ doc }: { doc: Doc }) {
   return (
     <div className="space-y-4 text-sm">
       <div>
@@ -82,10 +72,7 @@ function DocumentSideFicha({
         ) : null}
         <div>
           <dt className="text-xs text-muted-foreground">Condomínio</dt>
-          <dd>
-            {doc.condominium.nome}
-            {doc.ticket ? ` · #${doc.ticket.protocol}` : ""}
-          </dd>
+          <dd>{doc.condominium.nome}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Arquivo</dt>
@@ -95,22 +82,12 @@ function DocumentSideFicha({
           </dd>
         </div>
       </dl>
-      <div className="flex flex-col gap-2">
-        <a
-          className="inline-flex h-9 items-center justify-center rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-[var(--brand-soft)]"
-          href={`/api/files/${doc.storageKey}`}
-        >
-          Baixar
-        </a>
-        <button
-          type="button"
-          className="inline-flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-card text-sm font-medium text-primary hover:bg-secondary disabled:opacity-50"
-          disabled={pending}
-          onClick={onSend}
-        >
-          Enviar no WhatsApp
-        </button>
-      </div>
+      <a
+        className="inline-flex h-9 w-full items-center justify-center rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-[var(--brand-soft)]"
+        href={`/api/files/${doc.storageKey}`}
+      >
+        Baixar
+      </a>
     </div>
   );
 }
@@ -125,53 +102,36 @@ export default function DocumentosPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [condoId, setCondoId] = useState("");
-  const [ticketId, setTicketId] = useState("");
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<Doc | null>(null);
   const isMobile = useIsMobile();
   const [fichaOpen, setFichaOpen] = useState(false);
-  const tickets = useQuery({
-    queryKey: ["tickets", "docs"],
-    queryFn: () => api<Ticket[]>("/api/tickets?pageSize=50"),
-  });
   const summary = useQuery({
     queryKey: ["documents-summary"],
     queryFn: () => api<Summary[]>("/api/documents/summary"),
   });
   const docs = useQuery({
-    queryKey: ["documents", condoId, ticketId],
+    queryKey: ["documents", condoId],
+    enabled: Boolean(condoId),
     queryFn: () => {
       const p = new URLSearchParams();
-      if (condoId) p.set("condominiumId", condoId);
-      if (ticketId) p.set("ticketId", ticketId);
+      p.set("condominiumId", condoId);
       p.set("pageSize", "50");
       return api<Doc[]>(`/api/documents?${p.toString()}`);
     },
   });
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ user: { role: string } }>("/api/auth/me") });
-  const admin = me.data?.data.user.role === "admin";
-
-  const condoTickets = useMemo(() => {
-    const list = tickets.data?.data ?? [];
-    if (!condoId) return list;
-    return list.filter((t) => {
-      const cid = t.condominiumId || t.condominium?.id;
-      return cid === condoId;
-    });
-  }, [tickets.data, condoId]);
 
   const upload = useMutation({
     mutationFn: async (values: DocumentFichaValues) => {
       if (!values.file) throw new Error("Arquivo obrigatório");
+      if (!condoId) throw new Error("Informe o condomínio");
       const form = new FormData();
       form.append("file", values.file);
       form.append("kind", values.kind);
       form.append("title", values.title);
       form.append("purpose", values.purpose);
       if (values.notes) form.append("notes", values.notes);
-      if (condoId) form.append("condominiumId", condoId);
-      const linkedTicket = values.ticketId || ticketId;
-      if (linkedTicket) form.append("ticketId", linkedTicket);
+      form.append("condominiumId", condoId);
       return api("/api/documents", { method: "POST", body: form });
     },
     onSuccess: () => {
@@ -181,11 +141,12 @@ export default function DocumentosPage() {
       qc.invalidateQueries({ queryKey: ["documents-summary"] });
     },
   });
-  const sendDraft = useMutation({
-    mutationFn: (id: string) => api(`/api/documents/${id}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
-    onSuccess: () => toast("Documento enviado no WhatsApp"),
-  });
   const folders = summary.data?.data ?? [];
+  const condoQuery = q.trim().toLowerCase();
+  const visibleFolders = useMemo(() => {
+    if (!condoQuery) return folders;
+    return folders.filter((f) => f.nome.toLowerCase().includes(condoQuery));
+  }, [folders, condoQuery]);
   const items = useMemo(() => {
     const list = docs.data?.data ?? [];
     const s = q.trim().toLowerCase();
@@ -195,26 +156,86 @@ export default function DocumentosPage() {
         d.title.toLowerCase().includes(s) ||
         d.originalName.toLowerCase().includes(s) ||
         d.purpose.toLowerCase().includes(s) ||
-        d.condominium.nome.toLowerCase().includes(s) ||
         documentKindLabel(d.kind).toLowerCase().includes(s),
     );
   }, [docs.data, q]);
   const currentCondo = folders.find((f) => f.condominiumId === condoId);
   const truncated = (docs.data?.meta?.total ?? items.length) > items.length;
 
+  function openFolder(id: string) {
+    setCondoId(id);
+    setQ("");
+    setPreview(null);
+  }
+
+  function backToGrade() {
+    setCondoId("");
+    setQ("");
+    setPreview(null);
+    setFichaOpen(false);
+  }
+
   function openFicha() {
-    if (!admin && condoTickets.length === 0) return;
+    if (!condoId) return;
     upload.reset();
     setFichaOpen(true);
+  }
+
+  if (!condoId) {
+    return (
+      <div>
+        <PageHeader title="Documentos" description={`${folders.length} condomínios`} />
+        <Toolbar>
+          <Input
+            className="max-w-sm"
+            placeholder="Buscar condomínio…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Buscar condomínio"
+          />
+        </Toolbar>
+        {summary.isError ? <ErrorBanner message="Falha ao listar condomínios." onRetry={() => summary.refetch()} /> : null}
+        {summary.isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
+        ) : folders.length === 0 ? (
+          <EmptyState title="Nenhum condomínio" />
+        ) : visibleFolders.length === 0 ? (
+          <EmptyState title="Nenhum condomínio com esse nome" />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleFolders.map((f) => (
+              <button key={f.condominiumId} type="button" className="text-left" onClick={() => openFolder(f.condominiumId)}>
+                <Card>
+                  <p className="font-medium">{f.nome}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {f.count} {f.count === 1 ? "documento" : "documentos"}
+                  </p>
+                  {f.lastAt ? <p className="mt-1 text-xs text-muted-foreground">último {formatWhen(f.lastAt)}</p> : null}
+                </Card>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
     <div>
       <PageHeader
-        title="Documentos"
+        back={
+          <button type="button" className="text-sm text-[var(--brand)]" onClick={backToGrade}>
+            ← Condomínios
+          </button>
+        }
+        title={currentCondo?.nome || "Documentos"}
         description={`${docs.data?.meta?.total ?? items.length} no acervo`}
         action={
-          <Button type="button" onClick={openFicha} disabled={!admin && condoTickets.length === 0}>
+          <Button type="button" onClick={openFicha}>
             Novo documento
           </Button>
         }
@@ -222,37 +243,17 @@ export default function DocumentosPage() {
       <Toolbar>
         <Input
           className="max-w-sm"
-          placeholder="Buscar título, finalidade, condomínio…"
+          placeholder="Buscar título, finalidade…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           aria-label="Buscar documento"
         />
-        <Select className="max-w-[14rem]" value={condoId} onChange={(e) => { setCondoId(e.target.value); setTicketId(""); }} aria-label="Condomínio">
-          <option value="">Todos os condomínios</option>
-          {folders.map((f) => (
-            <option key={f.condominiumId} value={f.condominiumId}>
-              {f.nome} ({f.count})
-            </option>
-          ))}
-        </Select>
-        <Select className="max-w-[14rem]" value={ticketId} onChange={(e) => setTicketId(e.target.value)} aria-label="Chamado">
-          <option value="">Chamado</option>
-          {condoTickets.map((t) => (
-            <option key={t.id} value={t.id}>
-              #{t.protocol}
-            </option>
-          ))}
-        </Select>
       </Toolbar>
-      {!admin ? (
-        <p className="mb-3 text-xs text-muted-foreground">Funcionário: escolha um chamado atribuído para cadastrar documento.</p>
-      ) : null}
       {truncated ? (
         <p className="mb-2 text-sm text-muted-foreground" role="status">
           Exibindo {items.length} de {docs.data?.meta?.total} (limite de 50). Refine o filtro para ver os demais.
         </p>
       ) : null}
-      {summary.isError ? <ErrorBanner message="Falha ao listar condomínios." onRetry={() => summary.refetch()} /> : null}
       {docs.isError ? <ErrorBanner message="Falha ao listar documentos." onRetry={() => docs.refetch()} /> : null}
       {docs.isLoading ? (
         <div className="space-y-2">
@@ -260,19 +261,20 @@ export default function DocumentosPage() {
           <Skeleton className="h-10" />
         </div>
       ) : items.length === 0 ? (
-        <EmptyState title="Nenhum documento" hint="Use Novo documento para cadastrar a ficha e o arquivo." />
+        <EmptyState
+          title="Nenhum documento"
+          hint={q.trim() ? "Nenhum resultado para essa busca." : "Use Novo documento para cadastrar a ficha e o arquivo."}
+          action={q.trim() ? undefined : { label: "Novo documento", onClick: openFicha }}
+        />
       ) : (
         <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
           <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
-            <ul className="divide-y divide-border md:hidden">
-              {items.map((d) => (
-                <li key={d.id} className="px-3 py-3 text-sm">
+            <ul className="escalonar divide-y divide-border md:hidden">
+              {items.map((d, index) => (
+                <li key={d.id} className="px-3 py-3 text-sm" style={{ "--stagger-i": index } as React.CSSProperties}>
                   <button type="button" className="w-full text-left" onClick={() => setPreview(d)}>
                     <span className="block font-medium">{d.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {documentKindLabel(d.kind)} · {d.condominium.nome}
-                      {d.ticket ? ` · #${d.ticket.protocol}` : ""}
-                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{documentKindLabel(d.kind)}</span>
                   </button>
                   <div className="mt-2 flex gap-3 text-sm">
                     <button type="button" className="text-[var(--brand)]" onClick={() => setPreview(d)}>
@@ -281,9 +283,6 @@ export default function DocumentosPage() {
                     <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
                       Baixar
                     </a>
-                    <button type="button" className="font-medium text-primary" disabled={sendDraft.isPending} onClick={() => sendDraft.mutate(d.id)}>
-                      Enviar
-                    </button>
                   </div>
                 </li>
               ))}
@@ -295,18 +294,16 @@ export default function DocumentosPage() {
                     <Th>Documento</Th>
                     <Th>Tipo</Th>
                     <Th>Finalidade</Th>
-                    <Th>Condomínio</Th>
-                    <Th>Chamado</Th>
                     <Th>Data</Th>
                     <Th>Ações</Th>
                   </tr>
                 </thead>
-                <tbody>
-                  {items.map((d) => {
+                <tbody className="escalonar">
+                  {items.map((d, index) => {
                     const Icon = fileIcon(d.mime);
                     const selected = preview?.id === d.id;
                     return (
-                      <tr key={d.id} className={selected ? "bg-[color-mix(in_srgb,var(--brand)_6%,white)]" : undefined}>
+                      <tr key={d.id} className={selected ? "bg-[color-mix(in_srgb,var(--brand)_6%,white)]" : undefined} style={{ "--stagger-i": index } as React.CSSProperties}>
                         <Td>
                           <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => setPreview(d)}>
                             <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -319,21 +316,11 @@ export default function DocumentosPage() {
                           </span>
                         </Td>
                         <Td className="max-w-[14rem] truncate">{d.purpose}</Td>
-                        <Td>{d.condominium.nome}</Td>
-                        <Td className="tabular">{d.ticket ? `#${d.ticket.protocol}` : "—"}</Td>
                         <Td className="text-xs text-muted-foreground">{d.createdAt ? formatWhen(d.createdAt) : "—"}</Td>
                         <Td>
                           <div className="flex gap-3 text-xs font-medium">
                             <button type="button" className="text-primary" onClick={() => setPreview(d)}>
                               Ver
-                            </button>
-                            <button
-                              type="button"
-                              className="text-primary disabled:opacity-50"
-                              disabled={sendDraft.isPending}
-                              onClick={() => sendDraft.mutate(d.id)}
-                            >
-                              Enviar
                             </button>
                             <a className="text-primary" href={`/api/files/${d.storageKey}`}>
                               Baixar
@@ -348,11 +335,7 @@ export default function DocumentosPage() {
             </div>
           </div>
           <aside className="hidden rounded-[var(--radius)] border border-border bg-card p-4 md:block">
-            {preview ? (
-              <DocumentSideFicha doc={preview} pending={sendDraft.isPending} onSend={() => sendDraft.mutate(preview.id)} />
-            ) : (
-              <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>
-            )}
+            {preview ? <DocumentSideFicha doc={preview} /> : <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>}
           </aside>
         </div>
       )}
@@ -365,13 +348,7 @@ export default function DocumentosPage() {
         }}
         title={`Novo documento${currentCondo?.nome ? ` — ${currentCondo.nome}` : ""}`}
       >
-        {!condoId && admin ? (
-          <p className="mb-3 text-sm text-muted-foreground">Selecione o condomínio na barra de filtros antes de gravar, ou vincule a um chamado.</p>
-        ) : null}
         <DocumentFichaForm
-          tickets={condoTickets}
-          showTicketSelect
-          requireTicket={!admin}
           pending={upload.isPending}
           errorMessage={upload.isError ? (upload.error as Error).message : null}
           onCancel={() => {
@@ -410,10 +387,7 @@ export default function DocumentosPage() {
               ) : null}
               <div>
                 <dt className="text-xs text-muted-foreground">Condomínio</dt>
-                <dd>
-                  {preview.condominium.nome}
-                  {preview.ticket ? ` · #${preview.ticket.protocol}` : ""}
-                </dd>
+                <dd>{preview.condominium.nome}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Arquivo</dt>
@@ -423,14 +397,9 @@ export default function DocumentosPage() {
                 </dd>
               </div>
             </dl>
-            <div className="flex flex-wrap gap-2">
-              <a className="text-primary" href={`/api/files/${preview.storageKey}`}>
-                Baixar
-              </a>
-              <button type="button" className="text-primary" disabled={sendDraft.isPending} onClick={() => sendDraft.mutate(preview.id)}>
-                Enviar WhatsApp
-              </button>
-            </div>
+            <a className="text-primary" href={`/api/files/${preview.storageKey}`}>
+              Baixar
+            </a>
           </div>
         ) : null}
       </Drawer>

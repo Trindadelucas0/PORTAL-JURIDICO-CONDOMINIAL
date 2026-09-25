@@ -463,7 +463,7 @@ describe("documentos ficha", () => {
     await db.$disconnect();
   });
 
-  it("summary lists condominiums with count 0; ficha required; staff needs ticket", async () => {
+  it("summary lists condominiums with count 0; ficha required; staff needs condo of assigned ticket", async () => {
     const { ZodError } = await import("zod");
     const { createDocumentService } = await import("@/lib/services/document-service");
     const docs = createDocumentService(db);
@@ -506,6 +506,18 @@ describe("documentos ficha", () => {
     }
 
     try {
+      await docs.upload(admin, {
+        kind: "ata_assembleia",
+        title: "Ata assembleia",
+        purpose: "Para aprovar contas do condominio",
+        file: { buffer: Buffer.from("%PDF-1.4"), name: "ata.pdf", mime: "application/pdf" },
+      });
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect((e as AppError).status).toBe(422);
+    }
+
+    try {
       await docs.upload(staff, {
         kind: "ata_assembleia",
         title: "Ata assembleia",
@@ -523,15 +535,41 @@ describe("documentos ficha", () => {
       title: "Assembleia 12/03",
       purpose: "Aprovar contas e eleicao do sindico",
       condominiumId: condo.id,
+      ticketId: "ignored-not-uuid",
       file: { buffer: Buffer.from("%PDF-1.4-ok"), name: "ata.pdf", mime: "application/pdf" },
     });
     expect(created.kind).toBe("ata_assembleia");
     expect(created.title).toBe("Assembleia 12/03");
     expect(created.purpose).toContain("Aprovar");
+    expect(created.ticketId).toBeNull();
+
+    const contact = await db.contact.create({
+      data: { nome: "Doc C", phoneE164: `+55115${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
+    });
+    await tickets.createManual(admin, {
+      title: "Chamado docs",
+      category: "outro",
+      priority: "media",
+      condominiumId: condo.id,
+      contactId: contact.id,
+      assignedToId: staff.id,
+    });
+    const staffDoc = await docs.upload(staff, {
+      kind: "regimento",
+      title: "Regimento",
+      purpose: "Uso interno da administracao",
+      condominiumId: condo.id,
+      file: { buffer: Buffer.from("%PDF-1.4-staff"), name: "reg.pdf", mime: "application/pdf" },
+    });
+    expect(staffDoc.ticketId).toBeNull();
+
+    const listed = await docs.list(staff, 1, 50, condo.id);
+    expect(listed.items.some((d) => d.id === created.id)).toBe(true);
+    expect(listed.items.some((d) => d.id === staffDoc.id)).toBe(true);
 
     const summaryAfter = await docs.summaryByCondominium(admin);
     const folderAfter = summaryAfter.find((s) => s.condominiumId === condo.id);
-    expect(folderAfter!.count).toBeGreaterThanOrEqual(1);
+    expect(folderAfter!.count).toBeGreaterThanOrEqual(2);
 
     const audit = await db.auditEvent.findFirst({
       where: { entityId: created.id, action: "document.create" },

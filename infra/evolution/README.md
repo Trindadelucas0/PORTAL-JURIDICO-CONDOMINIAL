@@ -39,6 +39,7 @@ Admin, conexão `evolution_baileys`:
 2. **Obter QR** → cria a instância se faltar e faz poll em `GET /instance/connect/:name` (também aceita cache do webhook `QRCODE_UPDATED`, TTL **20s**). No app: `/conexoes` → **Conectar**; com o dialog aberto, `GET /qr?fresh=1` a cada ~15s e botão **Atualizar QR**. Não precisa de telefone.
    - `CONFIG_SESSION_PHONE_VERSION=2.3000.1043857760` no compose (sobrescreve o `.env` interno da imagem `2.3000.1015901307`, que deixava o socket em loop sem QR). Atualizar se o Baileys publicar versão nova. **Não** use `22.5.0`.
    - Nesta imagem o 3º item do browser é sempre `os.release()`. No Docker Desktop/WSL isso era `*-microsoft-standard-WSL2`, o WhatsApp recusava a sessão e o connect voltava `{count:0}` (422 no app). O compose monta `infra/evolution/patch-os-release.cjs` via `NODE_OPTIONS` para reportar `10.0.22621`, com `CONFIG_SESSION_PHONE_CLIENT=Windows`.
+   - A mesma imagem recusa envio para JID `@lid` (`whatsappNumber` devolve `exists: false` e o HTTP fica 400). A checagem está copiada em cada bundle de `dist`. `patch-lid-send.cjs` (também no `NODE_OPTIONS`) reescreve todas essas cópias no boot. Telefone que o WhatsApp não reconhece continua recusado.
    - Sem QR após ~25s: 422. Recrie o container (`docker compose up -d --force-recreate evolution-api`) depois de mudar o patch.
 3. **Desconectar** → `POST /api/connections/:id/disconnect` (CSRF) → `DELETE /instance/logout/:name`.
 

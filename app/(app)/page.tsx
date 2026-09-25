@@ -11,6 +11,7 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { DataTable, Td, Th } from "@/components/ui/data-table";
 import { ActivityRow } from "@/components/workspace/activity-row";
 import { AttentionStrip, type AttentionItem } from "@/components/workspace/attention-strip";
+import { AnimarNoScroll } from "@/components/animar-no-scroll";
 import { api } from "@/lib/client/api";
 import { formatAge } from "@/lib/ui-labels";
 import { humanSessionStatus } from "@/components/conexoes/whatsapp-session-card";
@@ -243,169 +244,177 @@ export default function DashboardPage() {
           <Skeleton className="h-36" />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
-          <section aria-label="Fila de ação">
-            <div className="mb-2.5">
-              <SectionLabel dot="rounded-sm bg-primary">Agora · Fila operacional</SectionLabel>
-            </div>
-            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard
-                label="Não vinculados"
-                value={unlinked}
-                hint="Mensagens fora do fluxo"
-                verb="Vincular"
-                icon={UserRoundX}
-                chip="Fora do fluxo"
-                chipClassName="bg-amber-50 text-amber-700"
-                href={employee ? undefined : "/nao-vinculados"}
-              />
-              <MetricCard
-                label="Triagem"
-                value={data.triagem}
-                hint="Aguardando classificação"
-                verb="Analisar"
-                icon={ListChecks}
-                chip="Classificação"
-                chipClassName="bg-slate-100 text-slate-600"
-                href={employee ? undefined : "/triagem"}
-              />
-              <MetricCard
-                label="Não lidas"
-                value={data.naoLidas ?? 0}
-                hint="Mensagens de clientes no fluxo"
-                verb="Atender"
-                icon={MessageSquare}
-                chip="Fila de espera"
-                chipClassName="bg-blue-50 text-blue-700"
-                href="/atendimento"
-              />
-              <MetricCard
-                label="Abertos"
-                value={openCount}
-                hint={employee ? "Abertos sob sua responsabilidade" : "Chamados ainda não em andamento"}
-                verb="Operar"
-                icon={Ticket}
-                chip="Chamados ativos"
-                chipClassName="bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]"
-                href="/chamados"
-              />
-            </div>
-          </section>
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+            <AnimarNoScroll animacao="surgir-de-baixo">
+              <section aria-label="Fila de ação">
+                <div className="mb-2.5">
+                  <SectionLabel dot="rounded-sm bg-primary">Agora · Fila operacional</SectionLabel>
+                </div>
+                <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                  <MetricCard
+                    label="Não vinculados"
+                    value={unlinked}
+                    hint="Mensagens fora do fluxo"
+                    verb="Vincular"
+                    icon={UserRoundX}
+                    chip="Fora do fluxo"
+                    chipClassName="bg-amber-50 text-amber-700"
+                    href={employee ? undefined : "/nao-vinculados"}
+                  />
+                  <MetricCard
+                    label="Triagem"
+                    value={data.triagem}
+                    hint="Aguardando classificação"
+                    verb="Analisar"
+                    icon={ListChecks}
+                    chip="Classificação"
+                    chipClassName="bg-slate-100 text-slate-600"
+                    href={employee ? undefined : "/triagem"}
+                  />
+                  <MetricCard
+                    label="Não lidas"
+                    value={data.naoLidas ?? 0}
+                    hint="Mensagens de clientes no fluxo"
+                    verb="Atender"
+                    icon={MessageSquare}
+                    chip="Fila de espera"
+                    chipClassName="bg-blue-50 text-blue-700"
+                    href="/atendimento"
+                  />
+                  <MetricCard
+                    label="Abertos"
+                    value={openCount}
+                    hint={employee ? "Abertos sob sua responsabilidade" : "Chamados ainda não em andamento"}
+                    verb="Operar"
+                    icon={Ticket}
+                    chip="Chamados ativos"
+                    chipClassName="bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]"
+                    href="/chamados"
+                  />
+                </div>
+              </section>
+            </AnimarNoScroll>
 
-          <div className="grid items-start gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-5">
-              <AttentionStrip items={attention} />
-            </div>
-
-            <section aria-label="Minha operação" className="space-y-3 lg:col-span-7">
-              <div className="flex items-center justify-between">
-                <SectionLabel dot="rounded-sm bg-primary">Minha operação · Chamados atribuídos</SectionLabel>
-                <Link href="/chamados" className="text-xs font-medium text-primary">
-                  Chamados →
-                </Link>
+            <div className="grid items-start gap-6 lg:grid-cols-12">
+              <div className="lg:col-span-5">
+                <AnimarNoScroll animacao="surgir-de-baixo" atraso={0.1}>
+                  <AttentionStrip items={attention} />
+                </AnimarNoScroll>
               </div>
-              <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card">
-                {tickets.length === 0 ? (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum chamado em aberto.</p>
-                ) : (
-                  <>
-                    <ul className="md:hidden">
-                      {tickets.map((t) => (
-                        <li key={t.id} className="border-b border-border last:border-b-0">
-                          <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-slate-50">
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="font-mono font-semibold tabular">#{t.protocol}</span>
-                              <StatusBadge status={t.status} />
-                            </span>
-                            <span className="mt-1 block font-medium">{t.contact?.nome || "Sem contato"}</span>
-                            <span className="block text-xs text-muted-foreground">{t.condominium.nome}</span>
-                            <span className="mt-1 flex items-center justify-between gap-2">
-                              {t.priority ? <PriorityIndicator priority={t.priority} /> : <span />}
-                              <time className="text-xs text-muted-foreground tabular">{ageLabel(t.updatedAt)}</time>
-                            </span>
-                          </Link>
+
+              <section aria-label="Minha operação" className="space-y-3 lg:col-span-7">
+                <AnimarNoScroll animacao="deslizar-direita" atraso={0.2}>
+                  <div className="flex items-center justify-between">
+                    <SectionLabel dot="rounded-sm bg-primary">Minha operação · Chamados atribuídos</SectionLabel>
+                    <Link href="/chamados" className="text-xs font-medium text-primary">
+                      Chamados →
+                    </Link>
+                  </div>
+                  <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-shadow duration-300">
+                    {tickets.length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum chamado em aberto.</p>
+                    ) : (
+                      <>
+                        <ul className="md:hidden">
+                          {tickets.map((t) => (
+                            <li key={t.id} className="border-b border-border last:border-b-0">
+                              <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-slate-50 transition-colors">
+                                <span className="flex items-center justify-between gap-2">
+                                  <span className="font-mono font-semibold tabular">#{t.protocol}</span>
+                                  <StatusBadge status={t.status} />
+                                </span>
+                                <span className="mt-1 block font-medium">{t.contact?.nome || "Sem contato"}</span>
+                                <span className="block text-xs text-muted-foreground">{t.condominium.nome}</span>
+                                <span className="mt-1 flex items-center justify-between gap-2">
+                                  {t.priority ? <PriorityIndicator priority={t.priority} /> : <span />}
+                                  <time className="text-xs text-muted-foreground tabular">{ageLabel(t.updatedAt)}</time>
+                                </span>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="hidden md:block">
+                          <DataTable className="border-t-0">
+                            <thead>
+                              <tr>
+                                <Th>Protocolo</Th>
+                                <Th>Contato / entidade</Th>
+                                <Th>Status</Th>
+                                <Th>Prioridade</Th>
+                                <Th className="text-right">Idade</Th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tickets.map((t) => (
+                                <tr key={t.id} className="transition-colors hover:bg-slate-50/50">
+                                  <Td>
+                                    <Link href={`/chamados/${t.id}`} className="font-mono font-semibold text-foreground tabular hover:text-primary transition-colors">
+                                      #{t.protocol}
+                                    </Link>
+                                  </Td>
+                                  <Td>
+                                    <span className="block font-medium leading-tight">{t.contact?.nome || "Sem contato"}</span>
+                                    <span className="block text-[11px] text-muted-foreground">{t.condominium.nome}</span>
+                                  </Td>
+                                  <Td>
+                                    <StatusBadge status={t.status} />
+                                  </Td>
+                                  <Td>{t.priority ? <PriorityIndicator priority={t.priority} /> : "—"}</Td>
+                                  <Td className="text-right font-mono text-xs text-muted-foreground">{ageLabel(t.updatedAt)}</Td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </DataTable>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex items-center justify-between border-t border-border bg-slate-50 px-4 py-2 text-xs text-muted-foreground">
+                      <span>
+                        {tickets.length} chamado{tickets.length === 1 ? "" : "s"} em aberto nesta lista
+                        {typeof data.meusChamados === "number" ? ` · ${data.meusChamados} sob sua responsabilidade` : ""}
+                      </span>
+                      <Link href="/chamados" className="font-semibold text-primary hover:underline">
+                        Ver grade completa →
+                      </Link>
+                    </div>
+                  </div>
+                </AnimarNoScroll>
+              </section>
+            </div>
+
+            <AnimarNoScroll animacao="surgir-de-baixo" atraso={0.3}>
+              <section aria-label="Atividade" className="space-y-2.5 pb-4">
+                <div className="flex items-center justify-between">
+                  <SectionLabel dot="rounded-sm bg-muted-foreground">Atividade recente</SectionLabel>
+                  <Link href="/atendimento" className="text-xs font-medium text-primary hover:underline">
+                    Inbox →
+                  </Link>
+                </div>
+                <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-shadow duration-300">
+                  {data.recent.length === 0 ? (
+                    <p className="px-4 py-4 text-sm text-muted-foreground">Nenhuma conversa recente.</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100">
+                      {data.recent.map((row) => (
+                        <li key={row.id} className="transition-colors hover:bg-slate-50/50">
+                          <ActivityRow
+                            variant="log"
+                            href="/atendimento"
+                            when={clock(row.updatedAt)}
+                            icon={<MessageSquare className="size-3.5" />}
+                            primary={row.contact?.nome || "Conversa"}
+                            secondary={row.condominium?.nome || undefined}
+                            trailing="Atendimento"
+                          />
                         </li>
                       ))}
                     </ul>
-                    <div className="hidden md:block">
-                      <DataTable className="border-t-0">
-                        <thead>
-                          <tr>
-                            <Th>Protocolo</Th>
-                            <Th>Contato / entidade</Th>
-                            <Th>Status</Th>
-                            <Th>Prioridade</Th>
-                            <Th className="text-right">Idade</Th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tickets.map((t) => (
-                            <tr key={t.id}>
-                              <Td>
-                                <Link href={`/chamados/${t.id}`} className="font-mono font-semibold text-foreground tabular hover:text-primary">
-                                  #{t.protocol}
-                                </Link>
-                              </Td>
-                              <Td>
-                                <span className="block font-medium leading-tight">{t.contact?.nome || "Sem contato"}</span>
-                                <span className="block text-[11px] text-muted-foreground">{t.condominium.nome}</span>
-                              </Td>
-                              <Td>
-                                <StatusBadge status={t.status} />
-                              </Td>
-                              <Td>{t.priority ? <PriorityIndicator priority={t.priority} /> : "—"}</Td>
-                              <Td className="text-right font-mono text-xs text-muted-foreground">{ageLabel(t.updatedAt)}</Td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </DataTable>
-                    </div>
-                  </>
-                )}
-                <div className="flex items-center justify-between border-t border-border bg-slate-50 px-4 py-2 text-xs text-muted-foreground">
-                  <span>
-                    {tickets.length} chamado{tickets.length === 1 ? "" : "s"} em aberto nesta lista
-                    {typeof data.meusChamados === "number" ? ` · ${data.meusChamados} sob sua responsabilidade` : ""}
-                  </span>
-                  <Link href="/chamados" className="font-semibold text-primary">
-                    Ver grade completa →
-                  </Link>
+                  )}
                 </div>
-              </div>
-            </section>
+              </section>
+            </AnimarNoScroll>
           </div>
-
-          <section aria-label="Atividade" className="space-y-2.5 pb-4">
-            <div className="flex items-center justify-between">
-              <SectionLabel dot="rounded-sm bg-muted-foreground">Atividade recente</SectionLabel>
-              <Link href="/atendimento" className="text-xs font-medium text-primary">
-                Inbox →
-              </Link>
-            </div>
-            <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card">
-              {data.recent.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-muted-foreground">Nenhuma conversa recente.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {data.recent.map((row) => (
-                    <li key={row.id}>
-                      <ActivityRow
-                        variant="log"
-                        href="/atendimento"
-                        when={clock(row.updatedAt)}
-                        icon={<MessageSquare className="size-3.5" />}
-                        primary={row.contact?.nome || "Conversa"}
-                        secondary={row.condominium?.nome || undefined}
-                        trailing="Atendimento"
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }

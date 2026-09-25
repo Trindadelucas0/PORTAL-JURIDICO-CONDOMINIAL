@@ -96,7 +96,6 @@ function InboxInner() {
   const items = list.data?.data ?? [];
   const current = items.find((c) => c.id === selected) || items[0];
   const currentId = selected || current?.id;
-  const currentTicket = pickTicketForCard(current?.tickets);
 
   const me = useQuery({
     queryKey: ["me"],
@@ -184,12 +183,12 @@ function InboxInner() {
             ) : items.length === 0 ? (
               <EmptyState title="Tudo limpo" hint="Nenhuma conversa no fluxo." />
             ) : (
-              <ul className="mt-2 space-y-1.5">
-                {items.map((c) => {
+              <ul className="escalonar mt-2 space-y-1.5">
+                {items.map((c, index) => {
                   const ticket = pickTicketForCard(c.tickets);
                   const inTriage = c.triageItem?.status === "aberto";
                   return (
-                  <li key={c.id} className="relative">
+                  <li key={c.id} className="relative" style={{ "--stagger-i": index } as React.CSSProperties}>
                     <button
                       type="button"
                       className={cn(
@@ -278,20 +277,6 @@ function InboxInner() {
                 ? `${conversationPhoneLabel(current.contact?.phoneE164, current.peerPhoneE164)} · ${current.condominium?.nome || "sem condomínio"} · ${current.connection.label}`
                 : undefined
             }
-            besideName={
-              currentTicket ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  className="shrink-0"
-                  onClick={() => setEditTicketId(currentTicket.id)}
-                >
-                  <Pencil data-icon="inline-start" />
-                  Atualizar chamado
-                </Button>
-              ) : null
-            }
             allowPublicSend={Boolean(current && current.connection.status === "open")}
             publicBlockedHint={
               current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
@@ -299,7 +284,7 @@ function InboxInner() {
           />
         </WorkspacePane>
         <WorkspacePane>
-          <ContextPane conversation={current} />
+          <ContextPane conversation={current} onEditTicket={setEditTicketId} />
         </WorkspacePane>
       </WorkspaceShell>
       <TicketEditDrawer
@@ -334,7 +319,13 @@ function InboxInner() {
   );
 }
 
-function ContextPane({ conversation }: { conversation?: Conversation }) {
+function ContextPane({
+  conversation,
+  onEditTicket,
+}: {
+  conversation?: Conversation;
+  onEditTicket: (id: string) => void;
+}) {
   return (
     <ContextSummary>
       {!conversation ? (
@@ -369,11 +360,27 @@ function ContextPane({ conversation }: { conversation?: Conversation }) {
           </ContextBlock>
           <ContextBlock label="Chamado">
             {conversation.tickets?.length ? (
-              conversation.tickets.map((t) => (
-                <Link key={t.id} className="block text-[var(--brand)]" href={`/chamados/${t.id}`}>
-                  #{t.protocol} · {STATUS_LABEL[t.status] || t.status}
-                </Link>
-              ))
+              <div className="space-y-2">
+                {conversation.tickets.map((t) => (
+                  <Link key={t.id} className="block text-[var(--brand)]" href={`/chamados/${t.id}`}>
+                    #{t.protocol} · {STATUS_LABEL[t.status] || t.status}
+                  </Link>
+                ))}
+                {pickTicketForCard(conversation.tickets) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      const ticket = pickTicketForCard(conversation.tickets);
+                      if (ticket) onEditTicket(ticket.id);
+                    }}
+                  >
+                    <Pencil data-icon="inline-start" />
+                    Atualizar chamado
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <p>Nenhum chamado ainda</p>
             )}

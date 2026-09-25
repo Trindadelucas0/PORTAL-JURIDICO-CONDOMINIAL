@@ -94,9 +94,9 @@ export default function TriagemPage() {
       ) : (
         <WorkspaceShell cols="triage">
           <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
-            <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-background p-2">
-              {items.map((item) => (
-                <li key={item.id}>
+            <ul className="escalonar min-h-0 flex-1 space-y-2 overflow-y-auto bg-background p-2">
+              {items.map((item, index) => (
+                <li key={item.id} style={{ "--stagger-i": index } as React.CSSProperties}>
                   <button
                     type="button"
                     className={cn(

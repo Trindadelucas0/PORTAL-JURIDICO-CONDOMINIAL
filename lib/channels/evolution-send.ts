@@ -58,9 +58,16 @@ export function isEvolutionUnreachable(error: unknown): boolean {
   );
 }
 
+function evolutionExistsFalse(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  return (value as { exists?: unknown }).exists === false;
+}
+
 function flattenEvolutionField(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim()) return value.trim();
+  if (evolutionExistsFalse(value)) return "exists: false";
   if (Array.isArray(value)) {
+    if (value.some(evolutionExistsFalse)) return "exists: false";
     const joined = value
       .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
       .join("; ");

@@ -165,8 +165,19 @@ export default function EquipePage() {
       )}
       {patch.isError ? <ErrorBanner message={(patch.error as Error).message} /> : null}
 
-      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Novo usuário">
+      <Drawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Novo usuário"
+        fitContent
+        footer={
+          <Button type="submit" disabled={create.isPending || !email} form="team-create-form">
+            Criar
+          </Button>
+        }
+      >
         <form
+          id="team-create-form"
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
@@ -189,15 +200,33 @@ export default function EquipePage() {
             </label>
           ) : null}
           {create.isError ? <p className="text-sm text-[var(--danger)]">{(create.error as Error).message}</p> : null}
-          <Button type="submit" disabled={create.isPending || !email}>
-            Criar
-          </Button>
         </form>
       </Drawer>
 
-      <Drawer open={Boolean(editing)} onClose={() => setEditing(null)} title="Usuário">
+      <Drawer
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title="Usuário"
+        fitContent
+        footer={
+          editing ? (
+            <div className="flex flex-col gap-2">
+              <Button type="submit" disabled={patch.isPending} form="team-edit-form">
+                {patch.isPending ? "Salvando…" : "Salvar"}
+              </Button>
+              <Button type="button" variant="secondary" disabled={patch.isPending} onClick={() => patch.mutate({ id: editing.id, resetPassword: true })}>
+                Redefinir senha
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => setConfirmOff(editing)}>
+                {editing.ativo ? "Desativar" : "Reativar"}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
         {editing ? (
           <form
+            id="team-edit-form"
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
@@ -230,17 +259,6 @@ export default function EquipePage() {
                 Não pode mandar WhatsApp
               </label>
             ) : null}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button type="submit" disabled={patch.isPending}>
-                Salvar
-              </Button>
-              <Button type="button" variant="secondary" disabled={patch.isPending} onClick={() => patch.mutate({ id: editing.id, resetPassword: true })}>
-                Redefinir senha
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setConfirmOff(editing)}>
-                {editing.ativo ? "Desativar" : "Reativar"}
-              </Button>
-            </div>
           </form>
         ) : null}
       </Drawer>

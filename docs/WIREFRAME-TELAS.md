@@ -142,7 +142,7 @@ flowchart TD
 | Main padded | `px-5 py-5 md:px-6 md:py-6`, max 1440px |
 | Bottom nav mobile | `fixed`, `grid-cols-4`, `border-t`, `pb-16` no main |
 | Item lista ativo | `border-l-2` brand + `bg color-mix(brand 6%, white)` |
-| Workspace Inbox | `240px / 1fr / 220px` (xl) |
+| Workspace Inbox | `280px / 1fr / 300px` (lg) |
 | Workspace Unlinked | `280px / 1fr / 240px` (xl) |
 | Workspace Triagem | `240–320px / 1fr` (lg) |
 
@@ -319,19 +319,20 @@ Sidebar = Sheet offcanvas ao tocar ☰
 ## 5. 3. Inbox `/atendimento`
 
 **Arquivos:** `app/(app)/atendimento/page.tsx` · `thread-panel.tsx` · `workspace-shell.tsx`  
-**Full-bleed · h = `100dvh - 3rem` · grid 240 / 1fr / 220 (abaixo de lg: restante / 200).**
+**Full-bleed · h = `100dvh - 3rem` · grid 280 / 1fr / 300 (abaixo de lg: restante / 200).**
 
 ```text
-┌─ Inbox ── [Todas] [Não lidas] [Triagem] ────────────────────┐
-├─ 240px ──────┬─ thread 1fr ──────────────┬─ 220px contexto ─┤
+┌─ Atendimento ── [Todas] [Não lidas] [Triagem] ──────────────┐
+├─ 280px ──────┬─ thread 1fr ──────────────┬─ 300px contexto ─┤
 │ Buscar…      │ ← Conversas (mobile)      │ Contexto         │
-│              │ Nome contato              │ Analisar → triagem│
-│ ● Nome       │ condo · canal             │ #PROT → chamado  │
-│   preview    │                           │ Accordion info   │
-│ (ativo: barra│  [bolhas WhatsApp/nota]   │                  │
-│  brand)      │                           │                  │
+│              │ Nome contato              │ contato + fone   │
+│ ● Nome       │ condo · canal        DEV  │ Condomínio       │
+│   preview    │                           │ Chamado #PROT    │
+│ #PROT selo   │  [bolhas WhatsApp/nota]   │ [Atualizar chamado]│
+│ (ativo: barra│                           │ Triagem          │
+│  brand)      │                           │ Accordion info   │
 │              │ Resposta | Nota interna   │                  │
-│              │ [msg…] [file] [Áudio]     │                  │
+│              │ [msg…] [Anexar] [Áudio]   │                  │
 │              │              [Enviar]     │                  │
 └──────────────┴───────────────────────────┴──────────────────┘
 MOBILE: (lista | thread) à esquerda + contexto fixo à direita
@@ -344,8 +345,10 @@ MOBILE: (lista | thread) à esquerda + contexto fixo à direita
 | ← Conversas | — | link brand | Volta lista (mobile) |
 | Analisar | — | Link brand | `/triagem/[id]` se triage |
 | #{protocol} | — | Link brand | `/chamados/[id]` |
+| Atualizar chamado | Pencil | outline xs | Abre Editar chamado (bloco Chamado) |
 | Resposta | — | primary/secondary sm | mode `publica` |
 | Nota interna | — | primary/secondary sm | mode `interna` |
+| Anexar | — | secondary sm | Abre seletor jpeg/png/pdf/audio |
 | × (reply bar) | — | texto muted | Limpa citação |
 | Áudio / Parar áudio | — | secondary sm | MediaRecorder |
 | Cancelar (gravação) | — | ghost sm | Cancela áudio |
@@ -353,16 +356,17 @@ MOBILE: (lista | thread) à esquerda + contexto fixo à direita
 | Responder (bolha) | — | link | Seta replyTo |
 | Reenviar (failed) | — | link | POST `/api/messages/:id/approve` |
 
-**Campos:** busca conversas · mensagem · file (jpeg/png/pdf/audio).
+**Campos:** busca conversas · mensagem · Anexar (jpeg/png/pdf/audio).
 
 **Estados:** Empty “Tudo limpo” · Skeleton · ErrorBanner · aviso “WhatsApp não está conectado” / “não pode mandar WhatsApp”.
 
 ### Checklist auditoria — Inbox
 
-- [ ] Larguras 240/220 vs conteúdo truncado
-- [ ] Composer: wrap gap-2 vs overflow mobile
+- [ ] Larguras 280/300 vs conteúdo truncado
+- [ ] Composer: Anexar + Enviar visíveis, wrap gap-2
 - [ ] Bolhas vs nota interna amber
 - [ ] FilterChip ativo vs hierarquia título
+- [ ] Atualizar chamado no contexto, não no cabeçalho
 
 ---
 
@@ -533,11 +537,11 @@ DRAWER: Novo chamado (título, condo, contato, responsável)
 │ PRAZOS [Adicionar] · Concluir              │ Origem / Próximo prazo        │
 │ (sem selects)                              │ *Detalhes = mesmo em Drawer   │
 │ Linha do tempo: Timeline                   │                               │
-│ Docs: lista Baixar / WA · Novo documento   │                               │
+│ Docs: lista Baixar (sem criar)             │                               │
 │ Comunicação: bolhas + composer             │                               │
 └────────────────────────────────────────────┴───────────────────────────────┘
 DRAWER Editar: Título Prioridade Categoria Status Responsável(admin) [Salvar]
-DIALOG: Novo documento | Adicionar prazo
+DIALOG: Adicionar prazo
 ```
 
 | Rótulo | Ícone | Variant | Função |
@@ -546,15 +550,11 @@ DIALOG: Novo documento | Adicionar prazo
 | Editar dados | — | secondary sm | Abre Drawer PATCH ticket |
 | Detalhes | — | ghost sm | Só `<lg`: Drawer com contexto |
 | Baixar | — | link primary | `/api/files/...` |
-| Enviar WhatsApp (doc) | — | link primary | POST send-draft |
-| Novo documento | — | secondary sm | Abre Dialog ficha |
 | Adicionar prazo | — | secondary sm | Dialog prazo |
 | Concluir (prazo) | — | ghost sm | PATCH deadline done |
 | Salvar (Drawer) | — | default | PATCH ticket |
 | WhatsApp / Nota interna | — | primary/secondary sm | Toggle mode (`publica` / `interna`) |
 | Enviar / Salvar nota | — | default | POST `/api/tickets/{id}/messages` |
-| DocumentFicha Cancelar | — | secondary | Fecha modal |
-| Salvar documento / Salvando… | — | default | Upload + metadados (kind/title/purpose/file) |
 
 **Estados:** 403 · 404 · Skeleton · ErrorBanner · docs/prazos empty quietos.
 
@@ -565,7 +565,7 @@ DIALOG: Novo documento | Adicionar prazo
 - [ ] Rail lg+ vs Detalhes Drawer mobile
 - [ ] Dual composer (ficha vs Inbox) — consistência
 - [ ] Labels uppercase 10px tracking
-- [ ] Ações doc inline Baixar/WA
+- [ ] Ações doc inline Baixar
 
 ---
 
@@ -574,17 +574,23 @@ DIALOG: Novo documento | Adicionar prazo
 **Arquivo:** `app/(app)/documentos/page.tsx`  
 **Padded (não full-bleed).**
 
-### Tabela + ficha
+### Grade e pasta
 
 ```text
-┌─ Documentos · [Novo documento] ─────────────────────────────┐
-│ [Buscar…] [Condomínio ▼] [Chamado ▼]                        │
-│ documento | tipo | finalidade | condomínio | chamado | data │
+┌─ Documentos ───────────────────────────────────────────────┐
+│ [Buscar condomínio…]                                       │
+│ ┌ Card ──────────┐ ┌ Card ──────────┐                      │
+│ │ Aurora  3 docs │ │ Sol    0 docs  │                      │
+│ └────────────────┘ └────────────────┘                      │
+└────────────────────────────────────────────────────────────┘
+┌─ ← Condomínios · Aurora · [Novo documento] ────────────────┐
+│ [Buscar título, finalidade…]                               │
+│ documento | tipo | finalidade | data | Ver · Baixar        │
 │                                          ┌─ ficha ────────┐ │
 │                                          │ tipo · propósito│ │
-│                                          │ Baixar · WA     │ │
+│                                          │ Baixar          │ │
 │                                          └────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────┘
 DIALOG: Novo documento | DRAWER (celular): mesma ficha
 ```
 
@@ -592,14 +598,13 @@ Sem selo ICP, páginas ou hash. Campos só os que a API devolve.
 
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
-| Novo documento | — | default | Dialog ficha |
-| Linha | FileText / Image / Music | button | Abre ficha |
+| Novo documento | — | default | Dialog ficha (só na pasta) |
+| Card / Linha | FileText / Image / Music | button | Abre pasta ou ficha |
 | Baixar | — | link primary | Download |
-| Enviar WhatsApp | — | link primary | send-draft (se ticket) |
 | Cancelar (ficha) | — | secondary | Fecha Dialog |
-| Salvar documento / Salvando… | — | default | Upload ficha (kind*, title*, purpose*, file*; chamado opcional/obrigatório conforme tela) |
+| Salvar documento / Salvando… | — | default | Upload ficha (kind*, title*, purpose*, file*, condominiumId*) |
 
-**Estados:** Empty pastas / empty pasta · Skeleton · ErrorBanner · botão Novo disabled se funcionário sem tickets.
+**Estados:** Empty grade / empty pasta · Skeleton · ErrorBanner.
 
 ### Checklist auditoria — Documentos
 
@@ -798,19 +803,20 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | Overlay | Tela | Título | Submit |
 |---------|------|--------|--------|
 | Novo chamado | `/chamados` | Novo chamado | Criar |
+| Editar chamado | `/atendimento`, `/chamados/[id]` | Editar chamado | Salvar (fitContent + barra) |
 | Novo condomínio | `/condominios` | Novo condomínio | Salvar |
 | Novo contato | `/condominios`, `/[id]` | Novo contato | Salvar |
 | Editar contato | `/condominios/[id]` | Editar contato | Salvar |
 | Vincular ao fluxo | `/nao-vinculados` | Vincular ao fluxo | Vincular ao fluxo |
-| Novo usuário | `/equipe` | Novo usuário | Criar |
-| Editar usuário | `/equipe` | Usuário | Salvar (+ Reset / Desativar) |
-| Preview documento | `/documentos` | título do doc | Baixar / WA (links) |
+| Novo usuário | `/equipe` | Novo usuário | Criar (fitContent + barra) |
+| Editar usuário | `/equipe` | Usuário | Salvar / Reset / Desativar destructive (fitContent + barra) |
+| Preview documento | `/documentos` | título do doc | Baixar |
 
 ### 17.2 Dialogs (centro)
 
 | Overlay | Tela | Título | Ações |
 |---------|------|--------|-------|
-| Ficha documento | `/documentos`, `/chamados/[id]` | Novo documento | Cancelar secondary · Salvar documento default |
+| Ficha documento | `/documentos` | Novo documento | Cancelar secondary · Salvar documento default |
 | QR WhatsApp | `/conexoes` | Conectar WhatsApp | Cancelar secondary |
 | Senha provisória | `/equipe` | Senha provisória | Ok, já copiei secondary |
 

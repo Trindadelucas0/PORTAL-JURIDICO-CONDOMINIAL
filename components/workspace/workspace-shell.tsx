@@ -14,8 +14,8 @@ export function WorkspaceShell({
   const grid =
     cols === "inbox"
       ? contextOpen
-        ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[240px_minmax(0,1fr)_220px]"
-        : "grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]"
+        ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[280px_minmax(0,1fr)_300px]"
+        : "grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]"
       : cols === "unlinked"
         ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[280px_minmax(0,1fr)_240px]"
       : cols === "triage"

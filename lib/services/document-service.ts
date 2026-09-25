@@ -21,20 +21,34 @@ export const documentFichaSchema = z.object({
     .max(2000)
     .optional()
     .transform((v) => (v && v.length > 0 ? v : undefined)),
-  condominiumId: z.string().uuid().optional(),
-  ticketId: z.string().uuid().optional(),
+  condominiumId: z.string().uuid(),
 });
 
 export type DocumentFichaInput = z.infer<typeof documentFichaSchema>;
 
+async function staffAssignedCondoIds(db: PrismaClient, userId: string) {
+  const tickets = await db.ticket.findMany({
+    where: { assignedToId: userId },
+    select: { condominiumId: true },
+    distinct: ["condominiumId"],
+  });
+  return tickets.map((t) => t.condominiumId);
+}
+
 export function createDocumentService(db: PrismaClient = defaultPrisma) {
   return {
-    async list(user: User, page: number, pageSize: number, condominiumId?: string, ticketId?: string) {
+    async list(user: User, page: number, pageSize: number, condominiumId?: string) {
       const where: Prisma.OfficeDocumentWhereInput = {};
       if (condominiumId) where.condominiumId = condominiumId;
-      if (ticketId) where.ticketId = ticketId;
       if (!isAdmin(user)) {
-        where.ticket = { assignedToId: user.id };
+        const condoIds = await staffAssignedCondoIds(db, user.id);
+        if (condoIds.length === 0) return { items: [], total: 0, page, pageSize };
+        where.condominiumId = condominiumId
+          ? condominiumId
+          : { in: condoIds };
+        if (condominiumId && !condoIds.includes(condominiumId)) {
+          throw forbidden("Sem permissão para este condomínio");
+        }
       }
       const [total, items] = await Promise.all([
         db.officeDocument.count({ where }),
@@ -45,7 +59,6 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
           take: pageSize,
           include: {
             condominium: { select: { id: true, nome: true } },
-            ticket: { select: { id: true, protocol: true, assignedToId: true } },
             uploadedBy: { select: { id: true, email: true } },
           },
         }),
@@ -81,31 +94,23 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         });
       }
 
-      const [ticketCondos, docGroups] = await Promise.all([
-        db.ticket.findMany({
-          where: { assignedToId: user.id },
-          select: { condominiumId: true },
-          distinct: ["condominiumId"],
+      const condoIds = await staffAssignedCondoIds(db, user.id);
+      if (condoIds.length === 0) return [];
+      const [condos, groups] = await Promise.all([
+        db.condominium.findMany({
+          where: { id: { in: condoIds }, deletedAt: null },
+          select: { id: true, nome: true },
+          orderBy: { nome: "asc" },
         }),
         db.officeDocument.groupBy({
           by: ["condominiumId"],
-          where: { ticket: { assignedToId: user.id } },
+          where: { condominiumId: { in: condoIds } },
           _count: { _all: true },
           _sum: { sizeBytes: true },
           _max: { createdAt: true },
         }),
       ]);
-      const condoIds = new Set<string>([
-        ...ticketCondos.map((t) => t.condominiumId),
-        ...docGroups.map((g) => g.condominiumId),
-      ]);
-      if (condoIds.size === 0) return [];
-      const condos = await db.condominium.findMany({
-        where: { id: { in: [...condoIds] }, deletedAt: null },
-        select: { id: true, nome: true },
-        orderBy: { nome: "asc" },
-      });
-      const stats = new Map(docGroups.map((g) => [g.condominiumId, g]));
+      const stats = new Map(groups.map((g) => [g.condominiumId, g]));
       return condos.map((c) => {
         const g = stats.get(c.id);
         return {
@@ -130,24 +135,22 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         file: { buffer: Buffer; name: string; mime: string };
       },
     ) {
+      if (!input.condominiumId) throw unprocessable("Informe o condomínio");
       const ficha = documentFichaSchema.parse({
         kind: input.kind,
         title: input.title,
         purpose: input.purpose,
         notes: input.notes,
         condominiumId: input.condominiumId,
-        ticketId: input.ticketId,
       });
 
-      let condominiumId = ficha.condominiumId;
-      if (ficha.ticketId) {
-        const ticket = await requireTicketAccess(user, ficha.ticketId, db);
-        condominiumId = ticket.condominiumId;
-      } else if (!isAdmin(user)) {
-        throw forbidden("Funcionário só anexa documento em chamado atribuído");
+      if (!isAdmin(user)) {
+        const condoIds = await staffAssignedCondoIds(db, user.id);
+        if (!condoIds.includes(ficha.condominiumId)) {
+          throw forbidden("Funcionário só anexa documento em condomínio com chamado atribuído");
+        }
       }
-      if (!condominiumId) throw unprocessable("Informe condomínio ou chamado");
-      const condo = await db.condominium.findFirst({ where: { id: condominiumId, deletedAt: null } });
+      const condo = await db.condominium.findFirst({ where: { id: ficha.condominiumId, deletedAt: null } });
       if (!condo) throw notFound("Condomínio não encontrado");
 
       const stored = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
@@ -155,7 +158,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       const doc = await db.officeDocument.create({
         data: {
           condominiumId: condo.id,
-          ticketId: ficha.ticketId || null,
+          ticketId: null,
           uploadedById: user.id,
           kind: ficha.kind,
           title: ficha.title,
@@ -229,11 +232,11 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
     async authorizeRead(user: User, storageKey: string) {
       const doc = await db.officeDocument.findFirst({
         where: { storageKey },
-        include: { ticket: { select: { assignedToId: true } } },
       });
       if (doc) {
         if (isAdmin(user)) return doc;
-        if (!doc.ticket || doc.ticket.assignedToId !== user.id) {
+        const condoIds = await staffAssignedCondoIds(db, user.id);
+        if (!condoIds.includes(doc.condominiumId)) {
           throw forbidden("Sem permissão para este arquivo");
         }
         return doc;
@@ -256,7 +259,6 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
 
 export const documentCreateQuery = z.object({
   condominiumId: z.string().uuid().optional(),
-  ticketId: z.string().uuid().optional(),
 });
 
 export const documentService = createDocumentService();

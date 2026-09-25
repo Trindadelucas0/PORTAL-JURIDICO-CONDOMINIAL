@@ -12,8 +12,7 @@ export async function GET(request: Request) {
     const { page, pageSize } = parsePage(request);
     const url = new URL(request.url);
     const condominiumId = url.searchParams.get("condominiumId") || undefined;
-    const ticketId = url.searchParams.get("ticketId") || undefined;
-    const result = await documentService.list(user, page, pageSize, condominiumId, ticketId);
+    const result = await documentService.list(user, page, pageSize, condominiumId);
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,
@@ -38,14 +37,12 @@ export async function POST(request: Request) {
     const purpose = String(form.get("purpose") || "");
     const notesRaw = String(form.get("notes") || "");
     const condominiumId = String(form.get("condominiumId") || "") || undefined;
-    const ticketId = String(form.get("ticketId") || "") || undefined;
     const doc = await documentService.upload(user, {
       kind,
       title,
       purpose,
       notes: notesRaw || undefined,
       condominiumId,
-      ticketId,
       file: {
         buffer: Buffer.from(await uploaded.arrayBuffer()),
         name: uploaded.name,

@@ -122,8 +122,9 @@ model User {
   sessions             SessionToken[]
   assignedTickets      Ticket[]           @relation("TicketAssignee")
   createdTickets       Ticket[]           @relation("TicketCreator")
-  uploadedDocuments    OfficeDocument[]
-  conversationReads    ConversationRead[]
+  uploadedDocuments         OfficeDocument[]
+  uploadedSystemDocuments   SystemDocument[]
+  conversationReads         ConversationRead[]
   auditEvents          AuditEvent[]
 }
 
@@ -349,6 +350,33 @@ model OfficeDocument {
   @@index([ticketId])
   @@index([ingestStatus])
   @@index([condominiumId, kind])
+}
+
+model SystemDocumentCategory {
+  id        String           @id @default(uuid()) @db.Uuid
+  nome      String           @unique
+  createdAt DateTime         @default(now())
+  documents SystemDocument[]
+}
+
+model SystemDocument {
+  id            String                  @id @default(uuid()) @db.Uuid
+  categoryId    String                  @db.Uuid
+  uploadedById  String                  @db.Uuid
+  title         String
+  purpose       String
+  whenToUse     String
+  searchHints   String
+  storageKey    String                  @unique
+  mime          String
+  sizeBytes     Int
+  originalName  String
+  sha256        String
+  createdAt     DateTime                @default(now())
+  category      SystemDocumentCategory  @relation(fields: [categoryId], references: [id])
+  uploadedBy    User                    @relation(fields: [uploadedById], references: [id])
+
+  @@index([categoryId])
 }
 
 model Deadline {

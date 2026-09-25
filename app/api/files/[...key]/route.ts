@@ -1,6 +1,7 @@
 import { handleRouteError } from "@/lib/api/handler";
 import { requireSession } from "@/lib/auth/guards";
 import { documentService } from "@/lib/services/document-service";
+import { systemDocumentService } from "@/lib/services/system-document-service";
 import { authorizeAvatarRead } from "@/lib/services/peer-avatar-service";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { unprocessable } from "@/lib/api/errors";
@@ -22,6 +23,19 @@ export async function GET(_request: Request, ctx: { params: Promise<{ key: strin
           "Content-Type": avatar.mime,
           "Content-Disposition": `inline; filename="${avatar.originalName.replace(/"/g, "")}"`,
           "Cache-Control": "private, max-age=3600",
+        },
+      });
+    }
+    const sys = await systemDocumentService.findByStorageKey(storageKey);
+    if (sys) {
+      const allowed = await systemDocumentService.authorizeRead(user, storageKey);
+      const file = await localDiskStorage.read(allowed.storageKey);
+      return new Response(new Uint8Array(file.buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": allowed.mime,
+          "Content-Disposition": `attachment; filename="${allowed.originalName.replace(/"/g, "")}"`,
+          "Cache-Control": "private, no-store",
         },
       });
     }

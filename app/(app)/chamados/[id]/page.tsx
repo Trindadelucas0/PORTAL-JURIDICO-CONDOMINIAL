@@ -12,7 +12,6 @@ import { Drawer } from "@/components/ui/drawer";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FileItem } from "@/components/ui/file-item";
 import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
-import { DocumentFichaForm } from "@/components/documentos/document-ficha-form";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
@@ -74,7 +73,6 @@ export default function ChamadoFichaPage() {
   const [tab, setTab] = useState("caso");
   const [openEdit, setOpenEdit] = useState(false);
   const [openDetalhes, setOpenDetalhes] = useState(false);
-  const [openDocModal, setOpenDocModal] = useState(false);
   const [openDeadline, setOpenDeadline] = useState(false);
   const [deadlineTitle, setDeadlineTitle] = useState("");
   const [deadlineDue, setDeadlineDue] = useState("");
@@ -157,39 +155,6 @@ export default function ChamadoFichaPage() {
       setOpenEdit(false);
       qc.invalidateQueries({ queryKey: ["ticket", id] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
-    },
-  });
-  const upload = useMutation({
-    mutationFn: async (values: {
-      kind: string;
-      title: string;
-      purpose: string;
-      notes: string;
-      file: File;
-    }) => {
-      const form = new FormData();
-      form.append("file", values.file);
-      form.append("kind", values.kind);
-      form.append("title", values.title);
-      form.append("purpose", values.purpose);
-      if (values.notes) form.append("notes", values.notes);
-      form.append("ticketId", id);
-      return api("/api/documents", { method: "POST", body: form });
-    },
-    onSuccess: () => {
-      toast("Documento salvo");
-      setOpenDocModal(false);
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-      qc.invalidateQueries({ queryKey: ["documents"] });
-    },
-  });
-  const sendDoc = useMutation({
-    mutationFn: (docId: string) =>
-      api(`/api/documents/${docId}/send-draft`, { method: "POST", body: JSON.stringify({}) }),
-    onSuccess: () => {
-      toast("Documento enviado no WhatsApp");
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-      qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
     },
   });
   const createDeadline = useMutation({
@@ -370,7 +335,10 @@ export default function ChamadoFichaPage() {
             </SectionTabPanel>
             <SectionTabPanel id="documentos" active={tab === "documentos"} className="min-h-0 flex-1 overflow-y-auto p-4">
               {t.documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum documento ainda.</p>
+                <p className="text-sm text-muted-foreground">
+                  Nenhum documento ainda.
+                  <span className="mt-1 block">Os arquivos ficam em Documentos, na pasta do condomínio.</span>
+                </p>
               ) : (
                 <ul>
                   {t.documents.map((d) => (
@@ -380,28 +348,15 @@ export default function ChamadoFichaPage() {
                         sizeBytes={d.sizeBytes}
                         meta={d.kind ? documentKindLabel(d.kind) : undefined}
                         actions={
-                          <>
-                            <a className="text-primary" href={`/api/files/${d.storageKey}`}>
-                              Baixar
-                            </a>
-                            <button
-                              type="button"
-                              className="text-primary"
-                              disabled={sendDoc.isPending}
-                              onClick={() => sendDoc.mutate(d.id)}
-                            >
-                              Enviar WhatsApp
-                            </button>
-                          </>
+                          <a className="text-primary" href={`/api/files/${d.storageKey}`}>
+                            Baixar
+                          </a>
                         }
                       />
                     </li>
                   ))}
                 </ul>
               )}
-              <Button className="mt-3" type="button" variant="secondary" size="sm" onClick={() => setOpenDocModal(true)}>
-                Novo documento
-              </Button>
             </SectionTabPanel>
             <SectionTabPanel id="comunicacao" active={tab === "comunicacao"} className="flex min-h-0 flex-1 flex-col">
               <div
@@ -471,24 +426,6 @@ export default function ChamadoFichaPage() {
         {contextTicket ? <TicketContextContent ticket={contextTicket} /> : null}
       </Drawer>
 
-      <Dialog open={openDocModal} onClose={() => setOpenDocModal(false)} title="Novo documento">
-        <DocumentFichaForm
-          showTicketSelect={false}
-          pending={upload.isPending}
-          errorMessage={upload.isError ? (upload.error as Error).message : null}
-          onCancel={() => setOpenDocModal(false)}
-          onSubmit={(values) => {
-            if (!values.file) return;
-            upload.mutate({
-              kind: values.kind,
-              title: values.title,
-              purpose: values.purpose,
-              notes: values.notes,
-              file: values.file,
-            });
-          }}
-        />
-      </Dialog>
       <Dialog open={openDeadline} onClose={() => setOpenDeadline(false)} title="Adicionar prazo">
         <form
           className="space-y-3"

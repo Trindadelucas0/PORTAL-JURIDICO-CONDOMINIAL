@@ -30,7 +30,7 @@ const toneClass = {
   muted: "border-transparent bg-muted text-muted-foreground",
   ok: "border-transparent bg-green-50 text-[var(--ok)]",
   warn: "border-transparent bg-amber-50 text-[var(--warn)]",
-  danger: "border-transparent bg-red-50 text-[var(--danger)]",
+  danger: "border-transparent bg-red-50 text-[var(--danger)] animate-[pulsar-sutil_2s_ease-in-out_infinite]",
   wa: "border-transparent bg-[#128c7e]/10 text-[var(--channel-whatsapp)]",
   dev: "border-transparent bg-primary text-primary-foreground",
 }

@@ -65,9 +65,27 @@ export function TicketEditDrawer({
   }, [open, ticket]);
 
   return (
-    <Drawer open={open} onClose={onClose} title="Editar chamado">
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Editar chamado"
+      fitContent
+      footer={
+        ticket ? (
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={pending} form="ticket-edit-form">
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={pending} form="ticket-edit-form">
+              {pending ? "Salvando…" : "Salvar"}
+            </Button>
+          </div>
+        ) : null
+      }
+    >
       {!ticket ? null : (
         <form
+          id="ticket-edit-form"
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
@@ -141,14 +159,6 @@ export function TicketEditDrawer({
             </div>
           ) : null}
           {errorMessage ? <p className="text-sm text-[var(--danger)]">{errorMessage}</p> : null}
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Salvando…" : "Salvar"}
-            </Button>
-          </div>
         </form>
       )}
     </Drawer>

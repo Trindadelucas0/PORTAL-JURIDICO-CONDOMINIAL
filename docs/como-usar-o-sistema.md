@@ -18,3 +18,11 @@ As regras oficiais estão em [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA
 9. Se o contato foi cadastrado no condomínio errado: abra a ficha em **Condomínios** → **Editar** no contato → marque/desmarque condomínios e escolha o **principal**. A conversa do WhatsApp acompanha o principal; chamados já abertos não mudam de lugar.
 
 Abrir o chat não consulta a Evolution a cada 3 segundos. O que já foi gravado reaparece no poll.
+
+## Documentos
+
+1. Menu **Documentos** (`/documentos`).
+2. Clique no card do condomínio (quantidade e data do último arquivo).
+3. **Novo documento**: nome, para que serve e o arquivo; tipo e observação se precisar.
+4. **Salvar documento**. A linha aparece na pasta daquele condomínio.
+5. **Ver** abre a ficha; **Baixar** baixa o arquivo. Funcionário só entra em condomínio em que tem chamado.

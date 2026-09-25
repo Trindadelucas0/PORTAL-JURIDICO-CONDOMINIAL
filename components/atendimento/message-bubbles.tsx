@@ -66,7 +66,7 @@ export function MessageBubbles({
                   {cluster.items.map((m) => (
                     <div
                       key={m.id}
-                      className="w-full border-l-2 border-amber-500/70 bg-amber-50/80 px-3 py-2 text-sm text-amber-950"
+                      className="animar-entrada w-full border-l-2 border-amber-500/70 bg-amber-50/80 px-3 py-2 text-sm text-amber-950"
                     >
                       <span className="mr-1.5 text-[10px] font-semibold tracking-wide text-amber-700 uppercase">
                         Interno
@@ -88,7 +88,7 @@ export function MessageBubbles({
                   {cluster.items.map((m) => (
                     <div
                       key={m.id}
-                      className="border border-dashed border-border bg-[var(--status-aguardando-bg)] px-2.5 py-1.5 text-sm"
+                      className="animar-entrada border border-dashed border-border bg-[var(--status-aguardando-bg)] px-2.5 py-1.5 text-sm"
                     >
                       <span className="mr-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                         Rascunho
@@ -124,7 +124,7 @@ export function MessageBubbles({
                     <div
                       key={m.id}
                       className={cn(
-                        "px-2.5 py-1.5 text-sm leading-snug",
+                        "animar-entrada px-2.5 py-1.5 text-sm leading-snug",
                         outgoing
                           ? "bg-[color-mix(in_srgb,var(--brand)_10%,white)] text-foreground"
                           : "bg-muted/60 text-foreground",

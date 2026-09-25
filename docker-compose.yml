@@ -47,11 +47,12 @@ services:
       # Imagem v2.2.3 traz .env interno 2.3000.1015901307 (desatualizado → socket em loop, QR {count:0}).
       # Valor atual: Baileys Defaults baileys-version.json. Sem isso o dotenv interno prevalece.
       CONFIG_SESSION_PHONE_VERSION: "2.3000.1043857760"
-      NODE_OPTIONS: "--require /evolution/patch-os-release.cjs"
+      NODE_OPTIONS: "--require /evolution/patch-os-release.cjs --require /evolution/patch-lid-send.cjs"
       CONFIG_SESSION_PHONE_CLIENT: "Windows"
       CONFIG_SESSION_PHONE_NAME: Chrome
     volumes:
       - ./infra/evolution/patch-os-release.cjs:/evolution/patch-os-release.cjs:ro
+      - ./infra/evolution/patch-lid-send.cjs:/evolution/patch-lid-send.cjs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

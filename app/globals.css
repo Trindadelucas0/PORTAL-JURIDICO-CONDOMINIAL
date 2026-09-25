@@ -212,3 +212,100 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ═══════════════════════════════════════════ */
+/* Variáveis de temporização                  */
+/* ═══════════════════════════════════════════ */
+:root {
+  --ease-mola: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-suave: cubic-bezier(0.22, 1, 0.36, 1);
+  --duracao-rapida: 150ms;
+  --duracao-normal: 300ms;
+  --duracao-lenta: 500ms;
+}
+
+/* ═══════════════════════════════════════════ */
+/* Keyframes                                  */
+/* ═══════════════════════════════════════════ */
+@keyframes deslizar-acima {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes surgir {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes escalar-entrada {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes brilho {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulsar-sutil {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+@keyframes deslizar-da-direita {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes deslizar-da-esquerda {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ═══════════════════════════════════════════ */
+/* Classes utilitárias de animação            */
+/* ═══════════════════════════════════════════ */
+.animar-entrada {
+  animation: deslizar-acima 0.6s var(--ease-suave) both;
+}
+
+.animar-surgir {
+  animation: surgir 0.5s var(--ease-suave) both;
+}
+
+.animar-escalar {
+  animation: escalar-entrada 0.5s var(--ease-mola) both;
+}
+
+.animar-da-direita {
+  animation: deslizar-da-direita 0.5s var(--ease-suave) both;
+}
+
+.animar-da-esquerda {
+  animation: deslizar-da-esquerda 0.5s var(--ease-suave) both;
+}
+
+.pulsar-risco {
+  animation: pulsar-sutil 2s ease-in-out infinite;
+}
+
+/* Escalonamento via CSS (usado com variável --stagger-i) */
+.escalonar > * {
+  animation: deslizar-acima 0.5s var(--ease-suave) both;
+  animation-delay: calc(var(--stagger-i, 0) * 80ms);
+}
+
+/* Borda pulsante para riscos altos */
+.borda-risco-alto {
+  position: relative;
+}
+
+.borda-risco-alto::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid oklch(0.577 0.221 27.325 / 30%);
+  animation: pulsar-sutil 2.5s ease-in-out infinite;
+  pointer-events: none;
+}

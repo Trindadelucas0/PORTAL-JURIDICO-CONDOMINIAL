@@ -19,8 +19,8 @@ export function TicketList({
   }
 
   return (
-    <ul className="flex flex-col gap-2">
-      {tickets.map((ticket) => {
+    <ul className="escalonar flex flex-col gap-2">
+      {tickets.map((ticket, index) => {
         const assignee = ticket.assignedTo?.nome || ticket.assignedTo?.email || "Sem responsável";
         const age = formatAge(ticket.updatedAt || ticket.createdAt);
         const due = ticket.nextDeadline;
@@ -28,7 +28,7 @@ export function TicketList({
         const priorityBar = PRIORITY_TONE[ticket.priority]?.bar ?? PRIORITY_TONE.media.bar;
 
         return (
-          <li key={ticket.id}>
+          <li key={ticket.id} style={{ "--stagger-i": index } as React.CSSProperties}>
             <Link
               href={`/chamados/${ticket.id}`}
               className="group relative block overflow-hidden rounded-[var(--radius)] border border-border bg-card px-3 py-2.5 pl-4 shadow-sm transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)]"

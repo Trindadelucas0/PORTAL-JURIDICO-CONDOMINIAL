@@ -61,12 +61,12 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
     return <p className="text-sm text-muted-foreground">Sem atividade ainda.</p>;
   }
   return (
-    <ReuiTimeline value={items.length} className="px-1">
+    <ReuiTimeline value={items.length} className="escalonar px-1">
       {items.map((item, index) => {
         const meta = KIND_META[item.kind] ?? KIND_META.system;
         const Icon = meta.icon;
         return (
-          <ReuiTimelineItem key={item.id} step={index + 1}>
+          <ReuiTimelineItem key={item.id} step={index + 1} style={{ "--stagger-i": index } as React.CSSProperties}>
             <TimelineHeader>
               <TimelineDate dateTime={item.at}>{formatWhen(item.at)}</TimelineDate>
               <TimelineTitle className="flex items-center gap-1.5">

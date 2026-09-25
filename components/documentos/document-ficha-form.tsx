@@ -14,20 +14,10 @@ export type DocumentFichaValues = {
   title: string;
   purpose: string;
   notes: string;
-  ticketId: string;
   file: File | null;
 };
 
-export type DocumentFichaTicketOption = {
-  id: string;
-  protocol: string;
-  title?: string;
-};
-
 type Props = {
-  tickets?: DocumentFichaTicketOption[];
-  showTicketSelect?: boolean;
-  requireTicket?: boolean;
   submitLabel?: string;
   pending?: boolean;
   errorMessage?: string | null;
@@ -40,14 +30,10 @@ const empty: DocumentFichaValues = {
   title: "",
   purpose: "",
   notes: "",
-  ticketId: "",
   file: null,
 };
 
 export function DocumentFichaForm({
-  tickets = [],
-  showTicketSelect = true,
-  requireTicket = false,
   submitLabel = "Salvar documento",
   pending = false,
   errorMessage = null,
@@ -58,16 +44,10 @@ export function DocumentFichaForm({
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
   const [notes, setNotes] = useState("");
-  const [ticketId, setTicketId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const canSubmit =
-    title.trim().length >= 2 &&
-    purpose.trim().length >= 10 &&
-    Boolean(file) &&
-    (!requireTicket || Boolean(ticketId)) &&
-    !pending;
+  const canSubmit = title.trim().length >= 2 && purpose.trim().length >= 10 && Boolean(file) && !pending;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,16 +64,59 @@ export function DocumentFichaForm({
       setLocalError("Selecione o arquivo.");
       return;
     }
-    if (requireTicket && !ticketId) {
-      setLocalError("Escolha um chamado atribuído.");
-      return;
-    }
-    onSubmit({ kind, title: title.trim(), purpose: purpose.trim(), notes: notes.trim(), ticketId, file });
+    onSubmit({ kind, title: title.trim(), purpose: purpose.trim(), notes: notes.trim(), file });
   }
 
   return (
     <form className="space-y-3" onSubmit={handleSubmit}>
       <p className="text-sm text-muted-foreground">JPEG, PNG, PDF ou áudio · até 8 MB</p>
+
+      <fieldset className="space-y-3 rounded-[var(--radius)] border border-border p-3">
+        <legend className="px-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          Dados do documento
+        </legend>
+        <div>
+          <Label htmlFor="doc-title">Nome do documento *</Label>
+          <Input
+            id="doc-title"
+            className="mt-1"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={160}
+            required
+            aria-invalid={title.trim().length > 0 && title.trim().length < 2}
+          />
+        </div>
+        <div>
+          <Label htmlFor="doc-purpose">Para que serve *</Label>
+          <Textarea
+            id="doc-purpose"
+            className="mt-1"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            maxLength={2000}
+            required
+            aria-invalid={purpose.trim().length > 0 && purpose.trim().length < 10}
+            placeholder="Ex.: Aprovar contas e eleição do síndico"
+          />
+        </div>
+        <div>
+          <Label htmlFor="doc-file">Arquivo *</Label>
+          <input
+            id="doc-file"
+            type="file"
+            className="mt-1 w-full text-sm"
+            accept="image/jpeg,image/png,application/pdf,audio/*"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            required
+          />
+          {file ? (
+            <p className="mt-2 text-sm">
+              {file.name} · {formatBytes(file.size)}
+            </p>
+          ) : null}
+        </div>
+      </fieldset>
 
       <div>
         <Label htmlFor="doc-kind">Tipo *</Label>
@@ -114,55 +137,6 @@ export function DocumentFichaForm({
       </div>
 
       <div>
-        <Label htmlFor="doc-title">Título *</Label>
-        <Input
-          id="doc-title"
-          className="mt-1"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={160}
-          required
-          aria-invalid={title.trim().length > 0 && title.trim().length < 2}
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="doc-purpose">Para que serve *</Label>
-        <Textarea
-          id="doc-purpose"
-          className="mt-1"
-          value={purpose}
-          onChange={(e) => setPurpose(e.target.value)}
-          maxLength={2000}
-          required
-          aria-invalid={purpose.trim().length > 0 && purpose.trim().length < 10}
-          placeholder="Ex.: Aprovar contas e eleição do síndico"
-        />
-      </div>
-
-      {showTicketSelect ? (
-        <div>
-          <Label htmlFor="doc-ticket">Chamado{requireTicket ? " *" : " (opcional)"}</Label>
-          <Select
-            id="doc-ticket"
-            className="mt-1 w-full"
-            value={ticketId}
-            onChange={(e) => setTicketId(e.target.value)}
-            aria-label="Chamado"
-            required={requireTicket}
-          >
-            <option value="">{requireTicket ? "Selecione um chamado" : "Sem chamado"}</option>
-            {tickets.map((t) => (
-              <option key={t.id} value={t.id}>
-                #{t.protocol}
-                {t.title ? ` · ${t.title}` : ""}
-              </option>
-            ))}
-          </Select>
-        </div>
-      ) : null}
-
-      <div>
         <Label htmlFor="doc-notes">Observação</Label>
         <Textarea
           id="doc-notes"
@@ -171,23 +145,6 @@ export function DocumentFichaForm({
           onChange={(e) => setNotes(e.target.value)}
           maxLength={2000}
         />
-      </div>
-
-      <div>
-        <Label htmlFor="doc-file">Arquivo *</Label>
-        <input
-          id="doc-file"
-          type="file"
-          className="mt-1 w-full text-sm"
-          accept="image/jpeg,image/png,application/pdf,audio/*"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-          required
-        />
-        {file ? (
-          <p className="mt-2 text-sm">
-            {file.name} · {formatBytes(file.size)}
-          </p>
-        ) : null}
       </div>
 
       {localError || errorMessage ? <ErrorBanner message={localError || errorMessage || ""} /> : null}

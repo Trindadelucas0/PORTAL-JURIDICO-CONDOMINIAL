@@ -155,6 +155,15 @@ describe("evolution send errors", () => {
     expect(msg).toContain("text must be a string");
   });
 
+  it("reads exists:false from Evolution object message", () => {
+    const msg = describeEvolutionError(
+      400,
+      { error: "Bad Request", message: [{ exists: false, jid: "1@lid", number: "1@lid" }] },
+      "text",
+    );
+    expect(msg).toContain("exists: false");
+  });
+
   it("detects legacy sendText schema errors only", () => {
     expect(evolutionSendLooksLikeLegacySchema({ message: ["text must be a string"], error: "Bad Request" })).toBe(true);
     expect(evolutionSendLooksLikeLegacySchema({ message: "exists: false", error: "Bad Request" })).toBe(false);
