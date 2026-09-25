@@ -54,6 +54,17 @@ describe("inbound ingest", () => {
     expect(second.created).toBe(false);
     expect(second.messageId).toBe(first.messageId);
 
+    const spy = vi.spyOn(db.message, "findUnique").mockResolvedValueOnce(null);
+    const raced = await svc.ingestInbound({
+      waMessageId,
+      fromPhone,
+      body: "Olá, preciso de orientação",
+      connectionType: "dev_mock",
+    });
+    spy.mockRestore();
+    expect(raced.created).toBe(false);
+    expect(raced.messageId).toBe(first.messageId);
+
     const messages = await db.message.count({ where: { waMessageId } });
     expect(messages).toBe(1);
     expect(first.ticketCreated).toBe(false);

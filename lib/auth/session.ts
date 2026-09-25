@@ -38,8 +38,15 @@ export async function hashPassword(plain: string) {
   return bcrypt.hash(plain, 12);
 }
 
+/** Hash de custo 12 só para o compare quando o e-mail não existe (mesmo tempo de CPU). */
+export const LOGIN_DUMMY_HASH = bcrypt.hashSync("juricon-timing-dummy", 12);
+
 export async function verifyPassword(plain: string, hash: string) {
   return bcrypt.compare(plain, hash);
+}
+
+export async function verifyLoginPassword(plain: string, storedHash: string | null | undefined) {
+  return bcrypt.compare(plain, storedHash || LOGIN_DUMMY_HASH);
 }
 
 export async function createSession(userId: string) {

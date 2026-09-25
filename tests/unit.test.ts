@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AppError, unavailable } from "@/lib/api/errors";
 import { assertAdmin } from "@/lib/auth/guards";
-import { hashPassword, verifyPassword } from "@/lib/auth/session";
+import { hashPassword, LOGIN_DUMMY_HASH, verifyLoginPassword, verifyPassword } from "@/lib/auth/session";
 import { whatsappService } from "@/lib/services/whatsapp-service";
 import { assertCsrf } from "@/lib/api/handler";
 import { clientIp, rateLimit } from "@/lib/api/rate-limit";
@@ -49,6 +49,20 @@ describe("login primitives", () => {
       expect(rateLimit(key, 10, 60_000).ok).toBe(true);
     }
     expect(rateLimit(key, 10, 60_000).ok).toBe(false);
+  });
+
+  it("compares dummy hash when stored hash is missing", async () => {
+    expect(await verifyLoginPassword("juricon-timing-dummy", null)).toBe(true);
+    expect(await verifyLoginPassword("wrong-password", null)).toBe(false);
+    expect(LOGIN_DUMMY_HASH.startsWith("$2")).toBe(true);
+  });
+
+  it("rate-limits email key after 10 attempts", () => {
+    const key = `login:email:limit-${Date.now()}@example.com`;
+    for (let i = 0; i < 10; i++) {
+      expect(rateLimit(key, 10, 15 * 60 * 1000).ok).toBe(true);
+    }
+    expect(rateLimit(key, 10, 15 * 60 * 1000).ok).toBe(false);
   });
 
   it("prefers CF-Connecting-IP over X-Forwarded-For", () => {

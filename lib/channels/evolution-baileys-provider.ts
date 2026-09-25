@@ -64,14 +64,21 @@ function headers(json = false): HeadersInit {
   };
 }
 
-async function evoFetch(url: string, init?: RequestInit): Promise<Response> {
+export const EVO_FETCH_TIMEOUT_MS = 20_000;
+
+export async function evoFetch(url: string, init?: RequestInit): Promise<Response> {
+  const timeoutMs = Number(process.env.EVO_FETCH_TIMEOUT_MS) || EVO_FETCH_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, init);
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (isEvolutionUnreachable(error)) {
       throw unavailable(EVOLUTION_UNREACHABLE_MESSAGE);
     }
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

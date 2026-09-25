@@ -283,9 +283,27 @@ export async function enrichConversationPeerProfile(
   return { conversationId: id, peerPhoneE164: current.peerPhoneE164, peerAvatarKey: key };
 }
 
+const enrichInFlight = new Map<string, Promise<unknown>>();
+
+export function enqueuePeerProfileEnrichment(
+  conversationId: string,
+  opts?: EnrichPeerOptions,
+  db: PrismaClient = defaultPrisma,
+) {
+  const existing = enrichInFlight.get(conversationId);
+  if (existing) return existing;
+  const run = enrichConversationPeerProfile(conversationId, db, opts)
+    .catch(() => undefined)
+    .finally(() => {
+      if (enrichInFlight.get(conversationId) === run) enrichInFlight.delete(conversationId);
+    });
+  enrichInFlight.set(conversationId, run);
+  return run;
+}
+
 export function schedulePeerProfileEnrichment(conversationId: string, opts?: EnrichPeerOptions) {
   if (process.env.VITEST) return;
-  void enrichConversationPeerProfile(conversationId, defaultPrisma, opts).catch(() => undefined);
+  void enqueuePeerProfileEnrichment(conversationId, opts);
 }
 
 export async function authorizeAvatarRead(

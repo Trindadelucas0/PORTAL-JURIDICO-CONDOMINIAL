@@ -209,17 +209,38 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         orderBy: { createdAt: "desc" },
       });
 
-      const message = await db.message.create({
-        data: {
-          conversationId: conversation.id,
-          ticketId: linkedTicket?.id ?? null,
-          direction: "in",
-          visibility: "publica",
-          waMessageId: payload.waMessageId,
-          sendStatus: "sent",
-          body: payload.body.slice(0, 8000),
-        },
-      });
+      let message;
+      try {
+        message = await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            ticketId: linkedTicket?.id ?? null,
+            direction: "in",
+            visibility: "publica",
+            waMessageId: payload.waMessageId,
+            sendStatus: "sent",
+            body: payload.body.slice(0, 8000),
+          },
+        });
+      } catch (error) {
+        if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
+          const existingDup = await db.message.findUnique({
+            where: { waMessageId: payload.waMessageId },
+            include: { conversation: { include: { triageItem: true } } },
+          });
+          if (existingDup) {
+            return {
+              created: false,
+              conversationId: existingDup.conversationId,
+              messageId: existingDup.id,
+              unidentified: existingDup.conversation.unidentified,
+              triageId: existingDup.conversation.triageItem?.id ?? null,
+              ticketCreated: false,
+            };
+          }
+        }
+        throw error;
+      }
 
       await db.conversation.update({
         where: { id: conversation.id },

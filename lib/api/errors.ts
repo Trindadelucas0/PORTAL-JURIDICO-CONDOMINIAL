@@ -37,6 +37,10 @@ export function tooMany(message = "Muitas tentativas. Tente novamente em instant
   return new AppError(429, "RATE_LIMITED", message);
 }
 
+export function payloadTooLarge(message = "Payload grande demais") {
+  return new AppError(413, "PAYLOAD_TOO_LARGE", message);
+}
+
 export function failClosed(message: string) {
   return new AppError(401, "WEBHOOK_SECRET_REQUIRED", message);
 }

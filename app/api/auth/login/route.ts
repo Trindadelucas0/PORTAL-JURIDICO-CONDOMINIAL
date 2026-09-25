@@ -9,7 +9,7 @@ import {
   createSession,
   SESSION_COOKIE,
   toPublicUser,
-  verifyPassword,
+  verifyLoginPassword,
 } from "@/lib/auth/session";
 
 const loginSchema = z.object({
@@ -17,17 +17,21 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
 export async function POST(request: Request) {
   try {
-    const limited = rateLimit(`login:${clientIp(request)}`, 10, 15 * 60 * 1000);
-    if (!limited.ok) {
+    const body = loginSchema.parse(await request.json());
+    const email = body.email.toLowerCase();
+    const ipLimited = rateLimit(`login:ip:${clientIp(request)}`, 30, LOGIN_WINDOW_MS);
+    const emailLimited = rateLimit(`login:email:${email}`, 10, LOGIN_WINDOW_MS);
+    if (!ipLimited.ok || !emailLimited.ok) {
       return fail(429, "RATE_LIMITED", "Muitas tentativas. Tente novamente em instantes.");
     }
-    const body = loginSchema.parse(await request.json());
     const user = await prisma.user.findFirst({
-      where: { email: body.email.toLowerCase(), deletedAt: null },
+      where: { email, deletedAt: null },
     });
-    const valid = user ? await verifyPassword(body.password, user.passwordHash) : false;
+    const valid = await verifyLoginPassword(body.password, user?.passwordHash);
     if (!user || !user.ativo || !valid) {
       return fail(401, "UNAUTHORIZED", "Credenciais inválidas");
     }

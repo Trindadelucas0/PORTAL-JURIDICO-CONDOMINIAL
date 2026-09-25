@@ -1,12 +1,12 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
-import { AppError, failClosed, notFound, tooMany, unprocessable } from "@/lib/api/errors";
+import { AppError, failClosed, notFound, unprocessable } from "@/lib/api/errors";
 import { atendimentoService } from "@/lib/services/atendimento-service";
 import { providerFor } from "@/lib/channels/resolve-provider";
 import { rememberEvolutionQr } from "@/lib/channels/evolution-qr-cache";
 import { interpretEvolutionWebhook } from "@/lib/channels/evolution-webhook";
-import { rateLimit } from "@/lib/api/rate-limit";
 
 const connectionCreate = z.object({
   type: z.enum(["evolution_baileys", "evolution_cloud", "dev_mock"]),
@@ -206,7 +206,12 @@ export const whatsappService = {
     if (!expected) {
       throw failClosed("Webhook Evolution recusado: secret não cadastrado");
     }
-    if (!headerSecret || headerSecret !== expected) {
+    if (!headerSecret) {
+      throw failClosed("Webhook Evolution recusado");
+    }
+    const provided = createHash("sha256").update(headerSecret).digest();
+    const wanted = createHash("sha256").update(expected).digest();
+    if (!timingSafeEqual(provided, wanted)) {
       throw failClosed("Webhook Evolution recusado");
     }
   },
@@ -226,10 +231,6 @@ export const whatsappService = {
 
     const ingested = [];
     for (const item of parsed.items) {
-      const limited = rateLimit("webhook:evolution", 120, 60_000);
-      if (!limited.ok) {
-        throw tooMany("Webhook rate limited");
-      }
       if (item.fromMe) {
         ingested.push(
           await atendimentoService.ingestOwnOutbound({
