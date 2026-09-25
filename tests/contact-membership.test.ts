@@ -161,4 +161,45 @@ describe("contato em vários condomínios", () => {
       [condo.id, condoExtra.id, condo2.id].sort(),
     );
   });
+
+  it("enroll com contactId soma o LID e não troca o celular real", async () => {
+    const suffix = `${Date.now()}`;
+    const admin = await db.user.create({
+      data: {
+        email: `enroll-keep-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Keep ${suffix}` } });
+    const realPhone = `+55119${suffix.slice(-8)}`;
+    const saved = await db.contact.create({
+      data: { nome: "Já salvo", phoneE164: realPhone, condominiumId: condo.id },
+    });
+    await db.contactCondominium.create({ data: { contactId: saved.id, condominiumId: condo.id } });
+    let connection = await db.channelConnection.findFirst({ where: { type: "dev_mock" } });
+    if (!connection) {
+      connection = await db.channelConnection.create({
+        data: { type: "dev_mock", status: "open", label: "Dev / mock" },
+      });
+    }
+    const lid = `+999${suffix.slice(-12).padStart(12, "0")}`;
+    const unlinked = await db.conversation.create({
+      data: {
+        connectionId: connection.id,
+        peerPhoneE164: lid,
+        peerLid: lid,
+        unidentified: true,
+      },
+    });
+    const enrolled = await cadastroService.enrollConversation(admin, unlinked.id, {
+      nome: "Já salvo",
+      condominiumId: condo.id,
+      contactId: saved.id,
+    });
+    expect(enrolled.contact.id).toBe(saved.id);
+    expect(enrolled.contact.phoneE164).toBe(realPhone);
+    const ident = await db.contactIdentity.findFirst({ where: { contactId: saved.id, value: lid } });
+    expect(ident?.kind).toBe("lid");
+  });
 });

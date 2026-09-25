@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { conflict, forbidden, notFound } from "@/lib/api/errors";
 import { normalizeE164 } from "@/lib/phone/e164";
 import { e164LookupValues, isLidPeer, sendableWhatsAppE164, uniquePhones } from "@/lib/phone/identity";
-import { enrichConversationPeerProfile, peerAvatarPublicUrl } from "@/lib/services/peer-avatar-service";
+import { peerAvatarPublicUrl } from "@/lib/services/peer-avatar-service";
 import { unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { ticketListWhere } from "@/lib/auth/ticket-access";
@@ -58,10 +58,25 @@ export const enrollConversationSchema = z.object({
   nome: z.string().min(2).max(120),
   condominiumId: z.string().uuid(),
   condominiumIds: z.array(z.string().uuid()).optional(),
+  contactId: z.string().uuid().optional(),
   phone: z.string().min(8).max(32).optional(),
   email: z.string().email().optional().or(z.literal("")),
   cargo: z.string().max(80).optional(),
 });
+
+function enrollIdentityPhone(conversation: { peerPhoneE164: string }, typedPhone?: string): string | null {
+  const fromPeer = sendableWhatsAppE164({ peerPhoneE164: conversation.peerPhoneE164 });
+  if (fromPeer) return fromPeer;
+  if (conversation.peerPhoneE164) return conversation.peerPhoneE164;
+  if (typedPhone?.trim()) return normalizeE164(typedPhone) || typedPhone.trim();
+  return null;
+}
+
+function nextContactPhone(existing: string, identity: string): string {
+  if (isLidPeer(identity) && !isLidPeer(existing)) return existing;
+  if (!isLidPeer(identity) && isLidPeer(existing)) return identity;
+  return existing;
+}
 
 const contactWithMemberships = {
   condominium: true,
@@ -601,25 +616,17 @@ export const cadastroService = {
   async enrollConversation(actor: User, conversationId: string, input: unknown) {
     if (!isAdmin(actor)) throw forbidden("Somente administradores cadastram no fluxo");
     const data = enrollConversationSchema.parse(input);
-    let conversation = await prisma.conversation.findFirst({ where: { id: conversationId } });
+    const conversation = await prisma.conversation.findFirst({ where: { id: conversationId } });
     if (!conversation) throw notFound("Conversa não encontrada");
     const condo = await prisma.condominium.findFirst({ where: { id: data.condominiumId, deletedAt: null } });
     if (!condo) throw notFound("Condomínio não encontrado");
 
-    if (isLidPeer(conversation.peerPhoneE164)) {
-      const enriched = await enrichConversationPeerProfile(conversation.id, prisma);
-      conversation =
-        (await prisma.conversation.findFirst({ where: { id: enriched.conversationId } })) ?? conversation;
+    const phoneE164 = enrollIdentityPhone(conversation, data.phone);
+    if (!phoneE164) {
+      throw unprocessable("Conversa sem identidade para cadastrar");
     }
 
-    const whatsappPhone = sendableWhatsAppE164({ peerPhoneE164: conversation.peerPhoneE164 });
-    const rawPhone = whatsappPhone || data.phone?.trim() || "";
-    const phoneE164 = normalizeE164(rawPhone);
-    if (!phoneE164 || isLidPeer(phoneE164)) {
-      throw unprocessable("Informe um telefone real para cadastrar no fluxo");
-    }
-
-    const lookup = uniquePhones(phoneE164, conversation.peerPhoneE164, ...e164LookupValues(phoneE164));
+    const lookup = uniquePhones(phoneE164, conversation.peerPhoneE164, conversation.peerLid, ...e164LookupValues(phoneE164));
     const conversationIdFixed = conversation.id;
     const connectionId = conversation.connectionId;
     const peerLid = conversation.peerLid;
@@ -628,9 +635,19 @@ export const cadastroService = {
 
     try {
       const result = await prisma.$transaction(async (tx) => {
-        let contact = await findContactByPhones(tx, lookup);
+        let contact = data.contactId
+          ? await tx.contact.findFirst({ where: { id: data.contactId, deletedAt: null } })
+          : await findContactByPhones(tx, lookup);
+        if (data.contactId && !contact) throw notFound("Contato não encontrado");
         if (contact) {
           const previousPhone = contact.phoneE164;
+          const storedPhone = nextContactPhone(previousPhone, phoneE164);
+          if (!isLidPeer(previousPhone) && !isLidPeer(phoneE164) && storedPhone !== phoneE164) {
+            const variants = uniquePhones(...e164LookupValues(previousPhone), ...e164LookupValues(phoneE164));
+            if (!variants.includes(phoneE164) || !variants.includes(previousPhone)) {
+              throw conflict("Já existe conversa ou contato com este telefone");
+            }
+          }
           const existingMemberships = await tx.contactCondominium.findMany({ where: { contactId: contact.id } });
           const membership = resolveMembershipInput({
             existingPrimary: contact.condominiumId,
@@ -643,7 +660,7 @@ export const cadastroService = {
             where: { id: contact.id },
             data: {
               nome: data.nome,
-              phoneE164,
+              phoneE164: storedPhone,
               email: data.email ? data.email : undefined,
               cargo: data.cargo ? data.cargo : undefined,
               condominiumId: membership.primary,
@@ -654,12 +671,13 @@ export const cadastroService = {
           await upsertContactIdentities(
             tx,
             contact.id,
-            uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+            uniquePhones(...lookup, previousPhone, storedPhone, ...e164LookupValues(previousPhone)),
           );
         } else {
           const taken = await tx.contact.findFirst({ where: { phoneE164, deletedAt: null } });
           if (taken) {
             const previousPhone = taken.phoneE164;
+            const storedPhone = nextContactPhone(previousPhone, phoneE164);
             const existingMemberships = await tx.contactCondominium.findMany({ where: { contactId: taken.id } });
             const membership = resolveMembershipInput({
               existingPrimary: taken.condominiumId,
@@ -672,7 +690,7 @@ export const cadastroService = {
               where: { id: taken.id },
               data: {
                 nome: data.nome,
-                phoneE164,
+                phoneE164: storedPhone,
                 email: data.email ? data.email : undefined,
                 cargo: data.cargo ? data.cargo : undefined,
                 condominiumId: membership.primary,
@@ -683,7 +701,7 @@ export const cadastroService = {
             await upsertContactIdentities(
               tx,
               contact.id,
-              uniquePhones(...lookup, previousPhone, ...e164LookupValues(previousPhone)),
+              uniquePhones(...lookup, previousPhone, storedPhone, ...e164LookupValues(previousPhone)),
             );
           } else {
             const membership = resolveMembershipInput({
@@ -731,8 +749,8 @@ export const cadastroService = {
               contactId: contact.id,
               condominiumId: condo.id,
               unidentified: false,
-              ...(wasLidPeer
-                ? { peerPhoneE164: phoneE164, peerLid: peerLid ?? conversation.peerPhoneE164 }
+              ...(wasLidPeer && !isLidPeer(contact.phoneE164)
+                ? { peerPhoneE164: contact.phoneE164, peerLid: peerLid ?? conversation.peerPhoneE164 }
                 : {}),
             },
             include: { contact: true, condominium: true },

@@ -36,7 +36,7 @@ export function UnlinkedIdentityPanel({
         <div className="space-y-4">
           <ol className="space-y-1 text-xs text-muted-foreground">
             <li>1. Mensagem recebida</li>
-            <li className="font-medium text-foreground">2. Identificar quem é</li>
+            <li className="font-medium text-foreground">2. Nome e condomínio</li>
             <li>3. Vincular ao fluxo (abre triagem, não chamado)</li>
           </ol>
           <div className="flex items-center gap-3">

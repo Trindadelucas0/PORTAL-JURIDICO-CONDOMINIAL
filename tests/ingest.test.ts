@@ -132,6 +132,54 @@ describe("inbound ingest", () => {
     expect(third.triageId).toBeTruthy();
   });
 
+  it("enrolls a LID conversation without a typed phone and later inbound promotes the contact", async () => {
+    const suffix = `${Date.now()}`;
+    const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}55667788@lid`);
+    expect(lidPhone).toBeTruthy();
+    const first = await svc.ingestInbound({
+      waMessageId: `lid-enroll-${suffix}`,
+      fromPhone: lidPhone!,
+      waLid: lidPhone,
+      body: "oi",
+      connectionType: "dev_mock",
+    });
+    const admin = await db.user.create({
+      data: {
+        email: `lid-enroll-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Lid Enroll ${suffix}` } });
+    const enrolled = await cadastroService.enrollConversation(admin, first.conversationId, {
+      nome: "Lid Sem Telefone",
+      condominiumId: condo.id,
+    });
+    expect(enrolled.triage.id).toBeTruthy();
+    expect(enrolled.contact.phoneE164).toBe(lidPhone);
+    const ident = await db.contactIdentity.findFirst({
+      where: { contactId: enrolled.contact.id, value: lidPhone! },
+    });
+    expect(ident?.kind).toBe("lid");
+    const conv = await db.conversation.findFirstOrThrow({ where: { id: enrolled.conversation.id } });
+    expect(conv.unidentified).toBe(false);
+    expect(conv.contactId).toBe(enrolled.contact.id);
+
+    const realPhone = `+55113${suffix.slice(-8)}`;
+    const later = await svc.ingestInbound({
+      waMessageId: `lid-enroll-pn-${suffix}`,
+      fromPhone: realPhone,
+      waLid: lidPhone,
+      body: "agora com celular",
+      connectionType: "dev_mock",
+    });
+    expect(later.conversationId).toBe(enrolled.conversation.id);
+    expect(later.unidentified).toBe(false);
+    const promoted = await db.contact.findFirstOrThrow({ where: { id: enrolled.contact.id } });
+    expect(promoted.phoneE164).toBe(realPhone);
+    expect(await db.contact.count({ where: { phoneE164: lidPhone! } })).toBe(0);
+  });
+
   it("reuses the same conversation when a later LID arrives after the phone was saved", async () => {
     const suffix = `${Date.now()}`;
     const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}99887766@lid`);

@@ -111,6 +111,49 @@ async function promoteLidPeerToPhone(
   return conversation;
 }
 
+async function promoteLidContactToPhone(
+  db: PrismaClient,
+  contact: { id: string; phoneE164: string },
+  realPhone: string,
+  extraKeys: Array<string | null | undefined>,
+) {
+  const current = await db.contact.findFirst({ where: { id: contact.id, deletedAt: null } });
+  if (!current) return null;
+  if (!isLidPeer(current.phoneE164) || isLidPeer(realPhone)) {
+    return current;
+  }
+  const taken = await db.contact.findFirst({
+    where: { phoneE164: realPhone, id: { not: current.id }, deletedAt: null },
+  });
+  if (taken) {
+    await upsertContactIdentities(db, taken.id, uniquePhones(realPhone, current.phoneE164, ...extraKeys));
+    return taken;
+  }
+  try {
+    const updated = await db.contact.update({
+      where: { id: current.id },
+      data: { phoneE164: realPhone },
+    });
+    await upsertContactIdentities(
+      db,
+      updated.id,
+      uniquePhones(realPhone, current.phoneE164, ...extraKeys),
+    );
+    return updated;
+  } catch (error) {
+    if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
+      const rival = await db.contact.findFirst({
+        where: { phoneE164: realPhone, id: { not: current.id }, deletedAt: null },
+      });
+      if (rival) {
+        await upsertContactIdentities(db, rival.id, uniquePhones(realPhone, current.phoneE164, ...extraKeys));
+        return rival;
+      }
+    }
+    throw error;
+  }
+}
+
 const OWN_SYNC_COOLDOWN_MS = 120_000; // 2 minutos
 const OWN_SYNC_LIMIT = 50;
 const ownSyncCooldown = new Map<string, number>();
@@ -165,7 +208,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           });
       if (!connection) throw unprocessable("Nenhuma conexão disponível para ingestão");
 
-      const contact = await findContactByPhones(db, lookupKeys);
+      let contact = await findContactByPhones(db, lookupKeys);
       const lidValue = (waLid && isLidPeer(waLid) ? waLid : null) || (isLidPeer(phone) ? phone : null);
       const or: Prisma.ConversationWhereInput[] = [
         { peerPhoneE164: { in: lookupKeys } },
@@ -231,6 +274,10 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       const realPhone = !isLidPeer(phone) ? phone : contact && !isLidPeer(contact.phoneE164) ? contact.phoneE164 : null;
       if (realPhone) {
         conversation = await promoteLidPeerToPhone(db, conversation, realPhone);
+      }
+
+      if (contact && realPhone) {
+        contact = (await promoteLidContactToPhone(db, contact, realPhone, [phone, waLid])) ?? contact;
       }
 
       if (contact) {
