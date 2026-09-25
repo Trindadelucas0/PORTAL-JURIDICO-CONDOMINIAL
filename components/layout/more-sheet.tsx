@@ -33,6 +33,7 @@ export type MoreSheetItem = {
 const OPERATION: MoreSheetItem[] = [
   { href: "/chamados", label: "Chamados", icon: Ticket },
   { href: "/documentos", label: "Documentos", icon: FolderOpen },
+  { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen },
   { href: "/condominios", label: "Condomínios", icon: Building2 },
   { href: "/prazos", label: "Prazos", icon: CalendarClock },
 ];
@@ -44,6 +45,7 @@ const ADMIN_OPERATION: MoreSheetItem[] = [
 
 const ADMIN_ONLY: MoreSheetItem[] = [
   { href: "/equipe", label: "Equipe", icon: Users, admin: true },
+  { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: true },
   { href: "/conexoes", label: "Conexões", icon: Radio, admin: true },
 ];
 
@@ -126,7 +128,7 @@ export function MoreSheet({
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
-                key={item.href}
+                key={`admin-${item.href}`}
                 href={item.href}
                 className={cn(
                   "flex min-h-11 items-center gap-3 px-4 py-2.5 text-sm",

@@ -126,6 +126,8 @@ describe("schema contract", () => {
   it("defines Ticket without vector columns or DocumentChunk", () => {
     const schema = readFileSync(path.join(process.cwd(), "prisma/schema.prisma"), "utf8");
     expect(schema).toMatch(/model Ticket\b/);
+    expect(schema).toMatch(/model SystemDocumentCategory\b/);
+    expect(schema).toMatch(/model SystemDocument\b/);
     expect(schema).not.toMatch(/model DocumentChunk\b/);
     expect(schema).not.toMatch(/embedding/);
     expect(schema).not.toMatch(/pgvector/);

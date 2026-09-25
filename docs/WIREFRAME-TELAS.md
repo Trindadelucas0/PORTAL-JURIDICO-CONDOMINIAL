@@ -30,6 +30,7 @@
 9. [7. Chamados `/chamados`](#9-7-chamados-chamados)
 10. [8. Ficha do chamado `/chamados/[id]`](#10-8-ficha-do-chamado-chamadosid)
 11. [9. Documentos `/documentos`](#11-9-documentos-documentos)
+11b. [9b. Documentos do sistema `/documentos-sistema`](#11b-9b-documentos-do-sistema-documentos-sistema)
 12. [10. Condomínios `/condominios`](#12-10-condomínios-condominios)
 13. [11. Ficha do condomínio `/condominios/[id]`](#13-11-ficha-do-condomínio-condominiosid)
 14. [12. Equipe `/equipe`](#14-12-equipe-equipe)
@@ -52,6 +53,7 @@ flowchart TD
   chamados --> chamadoId["/chamados/id"]
   shell --> prazos["/prazos"]
   shell --> docs["/documentos"]
+  shell --> sysdocs["/documentos-sistema"]
   shell --> condos["/condominios"]
   condos --> condoId["/condominios/id"]
   shell --> equipe["/equipe"]
@@ -172,9 +174,11 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │  Chamados [n]   │                                                  │
 │  Prazos [n]     │                                                  │
 │  Documentos     │                                                  │
+│  Docs. sistema  │                                                  │
 │  Condomínios    │                                                  │
 │ ADMINISTRAÇÃO * │                                                  │
 │  Equipe         │                                                  │
+│  Docs. sistema  │                                                  │
 │  Conexões       │                                                  │
 │ ─────────────── │                                                  │
 │ ● WA · status   │  (admin, link → /conexoes)                       │
@@ -196,7 +200,7 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │ Início  Inbox  Triagem|+  Mais     │  admin: Triagem no 3º slot
 │ Início  Inbox  Chamados  Mais      │  funcionário: Chamados no 3º
 └────────────────────────────────────┘
-+ sheet: Chamados, Documentos, Condomínios, Prazos,
++ sheet: Chamados, Documentos, Documentos do sistema, Condomínios, Prazos,
   (Triagem/Não vinc. se admin e não no bottom), Equipe, Conexões, Sair
 Sidebar = Sheet offcanvas ao tocar ☰
 ```
@@ -213,6 +217,7 @@ Sidebar = Sheet offcanvas ao tocar ☰
 | Chamados | Ticket | nav Link `/chamados` · badge abertos | Quadro/Lista |
 | Prazos | CalendarClock | nav Link `/prazos` · badge vencidos | Deadlines |
 | Documentos | FolderOpen | nav Link `/documentos` | Lista operacional |
+| Documentos do sistema | FolderOpen | nav Link `/documentos-sistema` | Pasta do escritório (Operação + Administração) |
 | Condomínios | Building2 | nav Link `/condominios` | Cadastro |
 | Equipe | Users | nav Link `/equipe` | Usuários (admin) |
 | Conexões | Radio | nav Link `/conexoes` | WhatsApp (admin) |
@@ -222,7 +227,7 @@ Sidebar = Sheet offcanvas ao tocar ☰
 | Início / Inbox / Triagem|Chamados / Mais | LayoutDashboard / Inbox / ListChecks|Ticket / Plus 18px | bottom Link + Sheet | Mobile only |
 | SidebarTrigger | PanelLeft (shadcn) | ghost icon | Abre Sheet sidebar |
 
-**Busca contextual:** `/chamados` → chamados; `/documentos` → docs; `/triagem` → triagem; `/nao-vinculados` → não vinc.; `/condominios` → condomínios; `/equipe` → equipe; senão → `/atendimento`.
+**Busca contextual:** `/chamados` → chamados; `/documentos-sistema` → docs do sistema; `/documentos` → docs; `/triagem` → triagem; `/nao-vinculados` → não vinc.; `/condominios` → condomínios; `/equipe` → equipe; senão → `/atendimento`.
 
 ### Checklist auditoria — Chrome
 
@@ -614,6 +619,32 @@ Sem selo ICP, páginas ou hash. Campos só os que a API devolve.
 
 ---
 
+## 11b. 9b. Documentos do sistema `/documentos-sistema`
+
+**Arquivo:** `app/(app)/documentos-sistema/page.tsx`  
+**Padded.**
+
+```text
+┌─ Documentos do sistema · [Nova categoria]* ────────────────┐
+│ [Buscar categoria…]                                        │
+│ ┌ Card Regras ──┐ ┌ Card Avisos ─┐                         │
+│ │ 3 documentos  │ │ 0 documentos │                         │
+└────────────────────────────────────────────────────────────┘
+┌─ ← Categorias · Regras · [Novo documento]* ────────────────┐
+│ documento | quando usar | data | Ver · Baixar              │
+│                              ┌─ ficha (4 textos + Baixar)─┐ │
+└────────────────────────────────────────────────────────────┘
+```
+
+Só admin: Nova categoria, Excluir vazia, Novo documento. Sem LLM.
+
+### Checklist auditoria — Documentos do sistema
+
+- [ ] Item ativo `/documentos` não marca esta rota
+- [ ] Staff sem botões de mutação
+
+---
+
 ## 12. 10. Condomínios `/condominios`
 
 **Arquivo:** `app/(app)/condominios/page.tsx` · padded · master-detail.
@@ -853,6 +884,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | `/chamados/[id]` | ✓ | se assignedTo = eu |
 | `/prazos` | todos visíveis | só dos seus chamados |
 | `/documentos` | todos condomínios | condomínios com ticket seu |
+| `/documentos-sistema` | GET + mutação | GET + Baixar; POST 403 |
 | `/condominios` | CRUD | leitura filtrada |
 | `/condominios/[id]` | PATCH | leitura |
 | `/equipe` | ✓ | 403 |
@@ -941,6 +973,7 @@ Use ao auditar o produto inteiro (além dos checklists por tela).
 | `/chamados` | `app/(app)/chamados/page.tsx` | KanbanBoard, TicketCard |
 | `/chamados/[id]` | `app/(app)/chamados/[id]/page.tsx` | Timeline, DocumentFichaForm |
 | `/documentos` | `app/(app)/documentos/page.tsx` | DocumentFichaForm |
+| `/documentos-sistema` | `app/(app)/documentos-sistema/page.tsx` | SystemDocumentFichaForm |
 | `/condominios` | `app/(app)/condominios/page.tsx` | — |
 | `/condominios/[id]` | `app/(app)/condominios/[id]/page.tsx` | — |
 | `/equipe` | `app/(app)/equipe/page.tsx` | DataTable |

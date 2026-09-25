@@ -29,6 +29,7 @@
 10. [Chamados `/chamados`](#10-chamados-chamados)
 11. [Ficha do chamado `/chamados/[id]`](#11-ficha-do-chamado-chamadosid)
 12. [Documentos `/documentos`](#12-documentos-documentos)
+12b. [Documentos do sistema `/documentos-sistema`](#12b-documentos-do-sistema-documentos-sistema)
 13. [Condomínios `/condominios`](#13-condomínios-condominios)
 14. [Ficha do condomínio `/condominios/[id]`](#14-ficha-do-condomínio-condominiosid)
 15. [Equipe `/equipe`](#15-equipe-equipe)
@@ -125,8 +126,9 @@ flowchart TD
 
 ### 2.6 Documento e prazo
 
-1. Documento: **Documentos** → card do condomínio → **Novo documento** → nome, para que serve e arquivo → **Salvar documento**.
-2. Prazo: ficha do chamado → **Adicionar prazo** → aparece em **Prazos** e no header da ficha → **Concluir**.
+1. Documento do condomínio: **Documentos** → card do condomínio → **Novo documento**.
+2. Documento do escritório: **Documentos do sistema** → categoria → **Novo documento** (admin; quatro perguntas).
+3. Prazo: ficha do chamado → **Adicionar prazo** → aparece em **Prazos** e no header da ficha → **Concluir**.
 
 ---
 
@@ -148,9 +150,11 @@ flowchart TD
 │    Chamados   [5] │                                                          │
 │    Prazos     [1] │                                                          │
 │    Documentos     │                                                          │
+│    Documentos do sistema │                                                   │
 │    Condomínios    │                                                          │
 │ ADMINISTRAÇÃO     │                                                          │
 │    Equipe         │                                                          │
+│    Documentos do sistema │                                                   │
 │    Conexões       │                                                          │
 │ ───────────────── │                                                          │
 │ ● WA · Conectado  │                                                          │
@@ -174,6 +178,7 @@ flowchart TD
 │  Chamados         │                                                          │
 │  Prazos           │                                                          │
 │  Documentos       │                                                          │
+│  Documentos do sistema │                                                     │
 │  Condomínios      │                                                          │
 │ ───────────────── │                                                          │
 │ ● WA · Conectado  │  (texto, sem link)                                       │
@@ -763,6 +768,46 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 
 ---
 
+## 12b. Documentos do sistema `/documentos-sistema`
+
+**Quem:** GET ambos; criar categoria/arquivo **admin**.
+
+### Print — grade
+
+```text
+┌─ sidebar ─┬─ Documentos do sistema · [Nova categoria]* ─────────────────────┐
+│ …         │ [Buscar categoria…]                                             │
+│           │ ┌ Card Regras ─┐ ┌ Card Avisos ─┐                               │
+│           │ │ 3 documentos │ │ 0 documentos │                               │
+│           │ └──────────────┘ └──────────────┘                               │
+└───────────┴─────────────────────────────────────────────────────────────────┘
+```
+
+### Print — pasta
+
+```text
+┌─ sidebar ─┬─ ← Categorias · Regras · [Novo documento]* ──────────────────────┐
+│ …         │ [Buscar título, finalidade…]                                     │
+│           ├─ tabela ───────────────────────────────┬─ Ficha ────────────────┤
+│           │ Documento │ Quando usar │ Data │ Ver/Baixar│ quatro respostas + Baixar│
+└───────────┴────────────────────────────────────────┴────────────────────────┘
+```
+
+### Controles
+
+| Rótulo | Ao clicar | Bloqueio |
+|--------|-----------|----------|
+| Card categoria | Abre pasta | — |
+| ← Categorias | Volta à grade | — |
+| Nova categoria | Dialog nome | Só admin |
+| Excluir (card) | ConfirmDialog DELETE | Só count 0; senão 422 |
+| Novo documento | Dialog quatro textos + arquivo | Só admin |
+| Baixar | `/api/files/...` | Sessão |
+
+Sem chat de IA. Sem Enviar WhatsApp.
+
+---
+
 ## 13. Condomínios `/condominios`
 
 **Quem:** leitura ambos; criar condo/contato: **admin**.
@@ -1053,6 +1098,7 @@ Cancelar = sempre **Cancelar** (secondary).
 | `/chamados/[id]` | ✓ | se assignedTo = eu |
 | `/prazos` | todos | só dos seus |
 | `/documentos` | todos | pastas dos chamados seus |
+| `/documentos-sistema` | GET + CRUD cat/arquivo | GET + download; POST 403 |
 | `/condominios` | CRUD | leitura filtrada |
 | `/condominios/[id]` | PATCH | leitura |
 | `/equipe` | ✓ | 403 |
@@ -1071,7 +1117,7 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 3. Mensagem de contato conhecido → **Triagem** → **Criar chamado**.
 4. Número novo → **Não vinculados** → responder se preciso → **Vincular ao fluxo**.
 5. Trabalhar no **Atendimento** ou na ficha (**Comunicação**).
-6. **Documentos** / **Prazos** / **Equipe** conforme o dia.
+6. **Documentos** / **Documentos do sistema** / **Prazos** / **Equipe** conforme o dia.
 7. Visão `/` mostra o que está parado (zeros também nos quatro cartões).
 
 ---
@@ -1089,6 +1135,7 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 | `/chamados` | `app/(app)/chamados/page.tsx`, `kanban-board.tsx`, `ticket-card.tsx` |
 | `/chamados/[id]` | `app/(app)/chamados/[id]/page.tsx` |
 | `/documentos` | `app/(app)/documentos/page.tsx`, `document-ficha-form.tsx` |
+| `/documentos-sistema` | `app/(app)/documentos-sistema/page.tsx`, `system-document-ficha-form.tsx` |
 | `/condominios` | `app/(app)/condominios/page.tsx`, `[id]/page.tsx` |
 | `/equipe` | `app/(app)/equipe/page.tsx` |
 | `/conexoes` | `app/(app)/conexoes/page.tsx`, `whatsapp-session-card.tsx` |

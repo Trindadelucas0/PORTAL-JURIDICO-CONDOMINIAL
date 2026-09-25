@@ -26,3 +26,11 @@ Abrir o chat não consulta a Evolution a cada 3 segundos. O que já foi gravado 
 3. **Novo documento**: nome, para que serve e o arquivo; tipo e observação se precisar.
 4. **Salvar documento**. A linha aparece na pasta daquele condomínio.
 5. **Ver** abre a ficha; **Baixar** baixa o arquivo. Funcionário só entra em condomínio em que tem chamado.
+
+## Documentos do sistema
+
+1. Menu **Documentos do sistema** (`/documentos-sistema`) — em Operação (todos) e em Administração (admin).
+2. Clique no card da categoria (ex. Regras).
+3. Admin: **Nova categoria** na grade; na pasta, **Novo documento** com as quatro perguntas e o arquivo.
+4. **Salvar documento**. A ficha (para que serve, quando usar, o que a IA deve procurar) permanece no banco.
+5. Funcionário vê a mesma pasta e **Baixar**. Não há botão de perguntar à IA nesta versão.

@@ -577,3 +577,98 @@ describe("documentos ficha", () => {
     expect(audit).toBeTruthy();
   });
 });
+
+describe("documentos do sistema", () => {
+  beforeAll(async () => {
+    await db.$connect();
+    await assertNotOfficeDatabase(db);
+  });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+
+  it("admin creates category and file; staff reads; staff POST 403; delete filled category 422", async () => {
+    const { ZodError } = await import("zod");
+    const { createSystemDocumentService } = await import("@/lib/services/system-document-service");
+    const sys = createSystemDocumentService(db);
+    const suffix = `${Date.now()}`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-sysdoc-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `func-sysdoc-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    const cat = await sys.createCategory(admin, { nome: `Regras ${suffix}` });
+    expect(cat.nome).toContain("Regras");
+
+    try {
+      await sys.createCategory(staff, { nome: `Aviso ${suffix}` });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+
+    try {
+      await sys.upload(admin, {
+        categoryId: cat.id,
+        title: "Edital",
+        purpose: "curto",
+        whenToUse: "Quando houver assembleia extra",
+        searchHints: "quorum convocacao prazo edital",
+        file: { buffer: Buffer.from("%PDF-1.4"), name: "e.pdf", mime: "application/pdf" },
+      });
+      throw new Error("expected validation");
+    } catch (e) {
+      expect(e instanceof ZodError).toBe(true);
+    }
+
+    const created = await sys.upload(admin, {
+      categoryId: cat.id,
+      title: "Como convocar",
+      purpose: "Orientar convocacao de assembleia extra",
+      whenToUse: "Quando o sindico pedir assembleia extraordinaria",
+      searchHints: "quorum convocacao prazo de edital",
+      file: { buffer: Buffer.from("%PDF-1.4-sys"), name: "conv.pdf", mime: "application/pdf" },
+    });
+    expect(created.title).toBe("Como convocar");
+
+    try {
+      await sys.upload(staff, {
+        categoryId: cat.id,
+        title: "Staff file",
+        purpose: "Tentativa de gravar pelo funcionario",
+        whenToUse: "Nao deveria gravar este arquivo",
+        searchHints: "funcionario sem permissao de escrita",
+        file: { buffer: Buffer.from("%PDF-1.4-no"), name: "no.pdf", mime: "application/pdf" },
+      });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect((e as AppError).status).toBe(403);
+    }
+
+    const listed = await sys.list(staff, 1, 50, cat.id);
+    expect(listed.items.some((d) => d.id === created.id)).toBe(true);
+    const read = await sys.authorizeRead(staff, created.storageKey);
+    expect(read.id).toBe(created.id);
+
+    try {
+      await sys.deleteCategory(admin, cat.id);
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect((e as AppError).status).toBe(422);
+    }
+
+    const cats = await sys.listCategories();
+    const folder = cats.find((c) => c.id === cat.id);
+    expect(folder?.count).toBeGreaterThanOrEqual(1);
+  });
+});

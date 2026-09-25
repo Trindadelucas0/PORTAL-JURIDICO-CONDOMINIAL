@@ -57,6 +57,7 @@ const NAV = [
       { href: "/chamados", label: "Chamados", icon: Ticket, admin: false },
       { href: "/prazos", label: "Prazos", icon: CalendarClock, admin: false },
       { href: "/documentos", label: "Documentos", icon: FolderOpen, admin: false },
+      { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: false },
       { href: "/condominios", label: "Condomínios", icon: Building2, admin: false },
     ],
   },
@@ -64,6 +65,7 @@ const NAV = [
     group: "Administração",
     items: [
       { href: "/equipe", label: "Equipe", icon: Users, admin: true },
+      { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: true },
       { href: "/conexoes", label: "Conexões", icon: Radio, admin: true },
     ],
   },
@@ -75,8 +77,15 @@ function isFullBleed(pathname: string) {
   return FULL_BLEED_PREFIXES.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(`${p}/`)));
 }
 
+function navItemActive(href: string, pathname: string) {
+  if (href === "/") return pathname === "/";
+  if (href === "/documentos") return pathname === "/documentos" || pathname.startsWith("/documentos/");
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function searchTarget(pathname: string) {
   if (pathname.startsWith("/chamados")) return "/chamados";
+  if (pathname.startsWith("/documentos-sistema")) return "/documentos-sistema";
   if (pathname.startsWith("/documentos")) return "/documentos";
   if (pathname.startsWith("/triagem")) return "/triagem";
   if (pathname.startsWith("/nao-vinculados")) return "/nao-vinculados";
@@ -205,11 +214,11 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-1 px-2">
                     {items.map((item) => {
-                      const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                      const active = navItemActive(item.href, pathname);
                       const Icon = item.icon;
                       const badge = badgeFor(item.href);
                       return (
-                        <SidebarMenuItem key={item.href}>
+                        <SidebarMenuItem key={`${group.group}-${item.href}`}>
                           <SidebarMenuButton
                             render={<Link href={item.href} aria-current={active ? "page" : undefined} />}
                             isActive={active}

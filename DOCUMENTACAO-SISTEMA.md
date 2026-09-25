@@ -2,8 +2,8 @@
 
 | Item | Valor |
 |------|--------|
-| Versão do sistema | 0.9.31 — Atendimento sem corte |
-| Última atualização | 25/09/2026 (Inbox: contexto 300px, Anexar, Atualizar chamado no contexto; drawers de edição na altura do form) |
+| Versão do sistema | 0.9.32 — Documentos do sistema |
+| Última atualização | 25/09/2026 (Pasta do escritório: categorias + ficha de quatro textos; sem LLM) |
 | Fonte oficial | Este arquivo |
 | Repositório | pasta `PORTAL JURIDICO CONDOMINIAL` (GitHub PORTAL-JURIDICO-CONDOMINIAL) |
 
@@ -31,6 +31,7 @@ Justificativa Route Handlers: um cliente (o próprio App Router); domínio e API
 
 | Versão | Data | Nome | O que mudou |
 |--------|------|------|-------------|
+| 0.9.32 | 25/09/2026 | Documentos do sistema | `/documentos-sistema`: cards de categoria (`GET /api/system-document-categories`). Admin cria categoria e grava arquivo (`SystemDocumentCategory` / `SystemDocument`) com nome, para que serve, quando usar e o que a IA deve procurar. Funcionário GET/download; POST 403. Sem LLM, embeddings ou `DocumentChunk`. `/documentos` dos condomínios inalterado. |
 | 0.9.31 | 25/09/2026 | Atendimento sem corte | `/atendimento`: grid `280px / 1fr / 300px` (abaixo de lg continua `1fr / 200px`). **Atualizar chamado** sai do cabeçalho da conversa e fica no bloco Chamado do contexto (mesmo ticket do selo do card; sem chamado → oculto). Composer: botão **Anexar** no lugar do seletor nativo de arquivo (ficha do chamado também, mesmo `MessageComposer`). Drawers **Editar chamado**, **Novo usuário** e **Usuário**: `fitContent` — altura do formulário, teto `100dvh`, barra de ações no fim. **Desativar** / **Reativar** usa `destructive`. Demais drawers continuam altura cheia. Sem mudança de API. |
 | 0.9.30 | 25/09/2026 | Documentos por condomínio | `/documentos` abre em cards (`GET /api/documents/summary`). Clique entra na pasta do condomínio. **Novo documento** pede nome, para que serve e arquivo; grava `condominiumId` e `ticketId` nulo. Funcionário vê e grava na pasta se tem chamado atribuído naquele condomínio. Ficha do chamado: aba Documentos só leitura (Baixar); sem **Novo documento** e sem **Enviar WhatsApp**. `ticketId` no POST é ignorado. |
 | 0.9.29 | 25/09/2026 | Envio para chat @lid | Evolution v2.2.3 trata JID `@lid` como “não existe” e responde 400. Cada arquivo em `dist` embute a checagem; `patch-lid-send.cjs` reescreve todas essas cópias no boot e o envio segue se o destino for `@lid`. Telefone que o WhatsApp não reconhece continua 400 com `exists: false`. Imagem permanece `evoapicloud/evolution-api:v2.2.3`. |
@@ -109,6 +110,7 @@ Justificativa Route Handlers: um cliente (o próprio App Router); domínio e API
   → /chamados Quadro | Lista → /chamados/[id] dossiê Caso/Linha do tempo/Documentos/Comunicação (+ Drawer Editar)
   → /prazos Todos/Hoje/Próximos/Atrasados (API Deadline)
   → /documentos grade de condomínios → pasta → Novo documento
+  → /documentos-sistema grade de categorias → pasta → Novo documento (grava só admin)
   → /conexoes (admin; mock só em development)
   → /condominios lista → /condominios/[id] hub (abas)
   → /equipe (admin; carga de chamados abertos)
@@ -121,7 +123,7 @@ Inbound: webhook Evolution ou `POST /api/dev/mock-inbound` → Conversation + Me
 | Papel | Acesso |
 |-------|--------|
 | admin | Todas as telas e APIs; cria chamado manual; cadastra equipe |
-| funcionario | Login, condomínios GET (ficha filtrada aos chamados atribuídos). Inbox das conversas dos **seus** chamados, chamados **só atribuídos**. Documentos: pastas dos condomínios em que tem chamado. **403** em triagem, não vinculados, conexões, equipe, auditoria, ticket/arquivo alheio, PATCH cadastral. Envio público imediato se `podeResponderCliente` e não `apenasRascunho`. Com `apenasRascunho` + `podeResponderCliente`: grava rascunho público para o admin aprovar. |
+| funcionario | Login, condomínios GET (ficha filtrada aos chamados atribuídos). Inbox das conversas dos **seus** chamados, chamados **só atribuídos**. Documentos de condomínio: pastas em que tem chamado. Documentos do sistema: lê e baixa; não cria categoria nem arquivo. **403** em triagem, não vinculados, conexões, equipe, auditoria, ticket/arquivo alheio, PATCH cadastral, POST de pasta do escritório. Envio público imediato se `podeResponderCliente` e não `apenasRascunho`. Com `apenasRascunho` + `podeResponderCliente`: grava rascunho público para o admin aprovar. |
 
 Autorização só no servidor (`requireSession` / `requireAdmin` / `requireTicketAccess`). Menu esconde rotas; isso **não** autoriza.
 
@@ -144,6 +146,7 @@ Single-tenant: um escritório, sem `companyId`. Contrato não permite SaaS multi
 | `/chamados/[id]` | `GET/PATCH /api/tickets/:id`, messages (poll 3s), deadlines | `app/(app)/chamados/[id]/page.tsx` |
 | `/prazos` | `GET/PATCH /api/deadlines` (`overdue`, `dueSoon`) | `app/(app)/prazos/page.tsx`, `deadline-service.ts` |
 | `/documentos` | `GET /api/documents/summary`, `GET/POST /api/documents`, `GET /api/files/...` | `app/(app)/documentos/page.tsx` |
+| `/documentos-sistema` | `GET/POST /api/system-document-categories`, `PATCH/DELETE /api/system-document-categories/:id`, `GET/POST /api/system-documents`, `GET /api/files/...` | `app/(app)/documentos-sistema/page.tsx`, `system-document-ficha-form.tsx`, `system-document-service.ts` |
 | `/conexoes` | `GET/POST /api/connections`, `GET .../qr`, `GET .../status`, `POST .../disconnect`, webhook, mock | `app/(app)/conexoes/page.tsx`, `whatsapp-session-card.tsx`, `whatsapp-service.ts` |
 | `/condominios` | `/api/condominiums`, `/api/contacts` (`?condominiumId=` opcional) | `app/(app)/condominios/page.tsx` |
 | `/condominios/[id]` | `GET/PATCH /api/condominiums/:id` | `app/(app)/condominios/[id]/page.tsx` |
@@ -257,6 +260,22 @@ PATCH `identify` / `linkCondominium` → **422** (“cadastre no condomínio ou 
 | Dialog | Tipo / Observação | Classificação | Tipo sim | Sessão | Depois do bloco Dados do documento | Sem campo Chamado | `document-ficha-form.tsx` |
 | Preview | Ficha | Metadados do banco | — | Sessão | Aside desktop / Drawer celular | Download autenticado | `documentos/page.tsx` |
 
+### 6.6b Documentos do sistema
+
+`/documentos-sistema` (Operação para todos; Administração eco só admin). Grade de **categorias** criadas pelo admin (`SystemDocumentCategory`). Clique entra na pasta. Sem condomínio, sem `DocumentKind`, sem **Enviar WhatsApp**, sem chat de IA.
+
+**Nova categoria** (Dialog, só admin): `nome` 2–80, unique. `POST /api/system-document-categories` CSRF. Duplicata 409. **Excluir** no card só se `count === 0`; senão DELETE 422 “Esvazie a categoria antes”.
+
+**Novo documento** (Dialog, só admin, só na pasta): `title` 2–160, `purpose`/`whenToUse`/`searchHints` 10–2000, arquivo jpeg/png/pdf/áudio 8 MB. `POST /api/system-documents` multipart + CSRF. GET lista com sessão. Download: se a chave for `SystemDocument`, `systemDocumentService.authorizeRead` (qualquer sessão); senão `OfficeDocument`. Audit `system_document_category.create` / `rename` / `delete` e `system_document.create`. Sem LLM. `DocumentIndexPort` continua no-op.
+
+| Aba / seção | Campo | O que é | Obrigatório | Quem | Como funciona | Regra / bloqueio | Onde olhar |
+|-------------|-------|---------|-------------|------|---------------|------------------|------------|
+| Grade | Card categoria | Pasta do escritório | — | Sessão | Nome, count; clique abre pasta | Empty “Nenhuma categoria”; busca no cliente | `documentos-sistema/page.tsx` |
+| Grade | Nova categoria / Excluir | CRUD categoria | Nome sim | Admin | POST/DELETE | Staff não vê botões; DELETE com arquivos 422 | `system-document-categories/route.ts` |
+| Pasta | Linhas | Arquivo interno | — | Sessão | Título, quando usar, data; Ver / Baixar | Teto 50 | `documentos-sistema/page.tsx` |
+| Dialog | Nome / Para que serve / Quando usar / O que a IA deve procurar / Arquivo | Ficha para RAG futuro | Sim | Admin | POST multipart | Zod 422; staff POST 403 | `system-document-ficha-form.tsx` |
+| Preview | Ficha | Quatro textos + Baixar | — | Sessão | Aside desktop / Drawer celular | Sem botão de modelo | `documentos-sistema/page.tsx` |
+
 ### 6.7 Prazos
 
 `/prazos` (Operação). Consome `GET /api/deadlines` já existente. Filtros: Todos / Hoje (cliente sobre `dueAt`) / Próximos (`dueSoon=1`, 72h) / Atrasados (`overdue=1`). Concluir = `PATCH /api/deadlines/:id` `{ done: true }`. Criar prazo continua na ficha do chamado. **Não** calcula prazo processual oficial. Sem e-mail. Sem número inventado.
@@ -288,7 +307,7 @@ Vista padrão: um cartão **WhatsApp do escritório** (primeira `evolution_baile
 
 ### 6.10 Auditoria
 
-Tabela `AuditEvent`. Ações: criar/editar usuário, reset senha, condomínio, contato, triagem, chamado, `document.create`, `message.send` / `message.send_failed`. Sem `passwordHash`/`passwordOnce`. `GET /api/audit` admin.
+Tabela `AuditEvent`. Ações: criar/editar usuário, reset senha, condomínio, contato, triagem, chamado, `document.create`, `system_document.create`, `system_document_category.create` / `rename` / `delete`, `message.send` / `message.send_failed`. Sem `passwordHash`/`passwordOnce`. `GET /api/audit` admin.
 
 ### 6.11 Interface (v0.9.5 — composição Stitch)
 
@@ -302,7 +321,7 @@ Tabela `AuditEvent`. Ações: criar/editar usuário, reset senha, condomínio, c
 - Triagem: split FILA | DECISÃO; contato/condo só leitura.
 - Chamados: Quadro e Lista (`?view=lista` em cards brancos); card com prazo se houver Deadline.
 - Ficha: abas + rail + timeline única.
-- Documentos: cards de condomínio e pasta; cadastro sem chamado.
+- Documentos: cards de condomínio e pasta; cadastro sem chamado. Documentos do sistema: cards de categoria; cadastro só admin; sem LLM.
 - Condomínio: hub com abas.
 - Equipe: coluna Chamados (abertos atribuídos). Sem último acesso.
 - Conexões: mock só em development.
@@ -338,6 +357,7 @@ Tabela `AuditEvent`. Ações: criar/editar usuário, reset senha, condomínio, c
 6. Triagem: na fila à esquerda, selecione a solicitação — a classificação fica à direita (título, categoria, prioridade, responsável + **Criar chamado**). No celular a classificação aparece acima das mensagens. O título já vem como `Nome — Categoria` em português; dá para editar. **Criar chamado** abre a ficha do chamado. Deep link `/triagem/[id]` usa o mesmo painel. Contato e condomínio já aparecem (só leitura). Resposta ao WhatsApp continua na Inbox ou na ficha. Funcionário não vê Triagem nem Não vinculados (API 403).
 7. Chamados (`/chamados`): **Quadro** ou **Lista** (`?view=lista`). Admin: **Novo chamado** abre drawer (título, condomínio, contato só daquele condo, categoria, prioridade, responsável) e, ao criar, abre a ficha. No celular, escolha o status nos chips. Clique no card abre a ficha; no desktop arrastar ou menu **Mover para** muda o status (PATCH). Filtros compactos + avançados recolhidos. Ficha `/chamados/[id]` em dossiê: abas Caso / Linha do tempo / Documentos / Comunicação. **Editar dados** abre Drawer (título, prioridade, categoria, status, responsável se admin). No celular, **Detalhes** abre o contexto (condomínio, contato, responsável). **Adicionar prazo** abre dialog. A aba Documentos só baixa o que já estava ligado ao chamado; cadastro novo é em `/documentos`. Funcionário vê e move só os seus.
 8. `/documentos`: cards de condomínio; clique abre a pasta. **Novo documento** → nome, para que serve e arquivo → **Salvar documento**. Preview no aside/drawer. Sem filtro de chamado e sem Enviar WhatsApp.
+8b. `/documentos-sistema` (Operação; Administração para admin): cards de categoria. Admin **Nova categoria** e, na pasta, **Novo documento** (nome, para que serve, quando usar, o que a IA deve procurar, arquivo). Funcionário lê e **Baixar**. Sem perguntar à IA nesta versão.
 9. Equipe: **Novo usuário** no drawer na altura do formulário; coluna **Chamados** = atribuídos não resolvidos; editar no drawer **Usuário** (Salvar / Redefinir senha / Desativar na barra inferior); **Redefinir senha** (copia uma vez; sessões antigas caem). Conexões: **Conectado** / **Aguardando QR** / **Desconectado**; **Conectar** abre o QR (atualiza sozinho ~20s; se o WhatsApp recusar, espere a imagem mudar ou **Atualizar QR**). Se o dialog disser que a Evolution não está no ar: `docker compose up -d` na pasta do portal e **Tentar de novo**. Mock só no accordion Desenvolvimento (notebook).
 10. Visão (`/`): os quatro indicadores ficam sempre (zero também conta) e, junto com os selos da lateral, atualizam sozinhos a cada 3 segundos. Cada indicador tem ícone e ação. Clique a ação para ir à fila. **Atenção** só ganha cartão quando há prazo, rascunho, envio falho ou chamado sem dono / em andamento / aguardando. A tabela **Minha operação** lista os chamados em aberto (status e prioridade reais). Prazos também estão no menu `/prazos`. Admin: **Novo Chamado** no topo abre `/chamados?novo=1` com o drawer; ao criar, vai para a ficha.
 11. VPS: hostname do Cloudflare Tunnel + `docs/deploy-vps.md`. Telas iguais; não abrir Evolution na internet.
@@ -359,6 +379,7 @@ O síndico **não** tem login neste sistema.
 - [ ] `POST /api/documents` exige kind/title/purpose/arquivo e `condominiumId` (422 sem condo); funcionário sem chamado naquele condo 403; `ticketId` na linha fica nulo
 - [ ] `/documentos` grade → pasta → Novo documento: lista/preview mostram título e tipo após F5 (sem localStorage)
 - [ ] Documento `stored`; download autenticado
+- [ ] `/documentos-sistema`: admin cria categoria e PDF; F5 mantém; funcionário GET 200 e POST 403; DELETE categoria com arquivo 422; schema sem DocumentChunk
 - [ ] `docker compose config` (Evolution ≠ PORTAL-JURIDICO)
 - [ ] Visão `/`: quatro cartões sempre, inclusive zero; Não lidas ≠ tamanho da atividade; Atenção só se count>0
 - [ ] Conectar gera imagem (não 422 “QR ainda não gerado”; log Evolution sem `microsoft-standard-WSL2` no Browser)
