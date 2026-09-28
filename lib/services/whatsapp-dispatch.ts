@@ -1,4 +1,4 @@
-import type { PrismaClient, User } from "@prisma/client";
+import { Prisma, type PrismaClient, type User } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
@@ -42,7 +42,7 @@ async function assertConversationAccess(db: PrismaClient, user: User, conversati
   }
 }
 
-export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId: string) {
+export async function deliverStoredPublicMessage(db: PrismaClient | Prisma.TransactionClient, messageId: string) {
   const message = await db.message.findFirst({
     where: { id: messageId },
     include: {
@@ -58,7 +58,6 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
   if (message.direction !== "out") {
     throw unprocessable("Somente mensagem de saída pode ser enviada");
   }
-  await assertConversationAccess(db, user, message.conversationId);
 
   const conversation = message.conversation;
   try {
@@ -112,6 +111,38 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
       include: { attachments: true, replyTo: { select: { id: true, body: true, direction: true } } },
     });
     await db.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+    return updated;
+  } catch (error) {
+    await db.message.update({
+      where: { id: message.id },
+      data: { sendStatus: "failed" },
+    });
+    if (error instanceof Error && "status" in error && (error as { status: number }).status === 422) {
+      throw error;
+    }
+    throw unprocessable("Falha no envio ao canal", {
+      messageId: message.id,
+      cause: error instanceof Error ? error.message : "provider",
+    });
+  }
+}
+
+export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId: string) {
+  const message = await db.message.findFirst({
+    where: { id: messageId },
+    select: { id: true, conversationId: true, visibility: true, direction: true, sendStatus: true },
+  });
+  if (!message) throw notFound("Mensagem não encontrada");
+  if (message.visibility === "interna") {
+    throw unprocessable("Nota interna nunca é enviada ao WhatsApp");
+  }
+  if (message.direction !== "out") {
+    throw unprocessable("Somente mensagem de saída pode ser enviada");
+  }
+  await assertConversationAccess(db, user, message.conversationId);
+
+  try {
+    const updated = await deliverStoredPublicMessage(db, messageId);
     await writeAudit(db, {
       actorId: user.id,
       action: "message.send",
@@ -122,10 +153,6 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
     });
     return updated;
   } catch (error) {
-    await db.message.update({
-      where: { id: message.id },
-      data: { sendStatus: "failed" },
-    });
     await writeAudit(db, {
       actorId: user.id,
       action: "message.send_failed",
@@ -133,13 +160,7 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
       entityId: message.id,
       after: { sendStatus: "failed" },
     });
-    if (error instanceof Error && "status" in error && (error as { status: number }).status === 422) {
-      throw error;
-    }
-    throw unprocessable("Falha no envio ao canal", {
-      messageId: message.id,
-      cause: error instanceof Error ? error.message : "provider",
-    });
+    throw error;
   }
 }
 

@@ -137,14 +137,23 @@ describe("webhook fail-closed", () => {
 });
 
 describe("schema contract", () => {
-  it("defines Ticket without vector columns or DocumentChunk", () => {
+  it("keeps embedding only on DocumentChunk and has no execute_sql tool", () => {
     const schema = readFileSync(path.join(process.cwd(), "prisma/schema.prisma"), "utf8");
+    const migration = readFileSync(
+      path.join(process.cwd(), "prisma/migrations/20260925160000_ai_operational/migration.sql"),
+      "utf8",
+    );
     expect(schema).toMatch(/model Ticket\b/);
-    expect(schema).toMatch(/model SystemDocumentCategory\b/);
-    expect(schema).toMatch(/model SystemDocument\b/);
-    expect(schema).not.toMatch(/model DocumentChunk\b/);
-    expect(schema).not.toMatch(/embedding/);
-    expect(schema).not.toMatch(/pgvector/);
+    expect(schema).toMatch(/model DocumentChunk\b/);
+    expect(schema).toMatch(/clientSendable\s+Boolean\s+@default\(false\)/);
+    const chunk = schema.match(/model DocumentChunk \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(chunk).toMatch(/embedding\s+Unsupported\("vector\(1536\)"\)/);
+    const rest = schema.replace(/model DocumentChunk \{[\s\S]*?\n\}/, "");
+    expect(rest).not.toMatch(/embedding/);
+    expect(schema).not.toMatch(/execute_sql/);
+    expect(migration).toMatch(/CREATE EXTENSION IF NOT EXISTS vector/);
+    expect(migration).not.toMatch(/execute_sql/);
+    expect(schema).not.toMatch(/AI_WHATSAPP_SEND/);
   });
 });
 

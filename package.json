@@ -1,6 +1,6 @@
 {
   "name": "portal-juridico-condominial",
-  "version": "0.9.24",
+  "version": "0.11.6",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3010",
@@ -9,8 +9,11 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "worker": "tsx --env-file=.env worker/index.ts",
     "db:migrate": "prisma migrate deploy",
+    "db:pgvector-up": "docker compose up -d juricon-postgres-dev",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "db:seed-documentos-demo": "tsx --env-file=.env prisma/seed-documentos-demo.ts",
     "db:reset-operacao": "tsx --env-file=.env prisma/reset-operacao.ts",
     "postinstall": "prisma generate"
   },
@@ -29,11 +32,13 @@
     "@tanstack/react-table": "^9.2.4",
     "@tanstack/react-virtual": "^3.14.13",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.3.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.3.0",
     "date-fns": "^4.4.0",
     "gsap": "^3.15.0",
+    "ioredis": "^6.0.0",
     "lenis": "^1.3.26",
     "lucide-react": "^1.45.0",
     "next": "16.3.5",

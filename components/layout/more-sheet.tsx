@@ -7,6 +7,7 @@ import {
   FolderOpen,
   ListChecks,
   LogOut,
+  MessageSquare,
   Plus,
   Radio,
   Ticket,
@@ -47,6 +48,7 @@ const ADMIN_ONLY: MoreSheetItem[] = [
   { href: "/equipe", label: "Equipe", icon: Users, admin: true },
   { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: true },
   { href: "/conexoes", label: "Conexões", icon: Radio, admin: true },
+  { href: "/mensagens-automaticas", label: "Mensagens automáticas", icon: MessageSquare, admin: true },
 ];
 
 export function MoreSheet({

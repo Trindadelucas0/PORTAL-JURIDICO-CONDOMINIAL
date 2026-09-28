@@ -352,6 +352,8 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
           where: { conversationId: item.conversationId, ticketId: null },
           data: { ticketId: created.id },
         });
+        const { linkConversationAiToTicket } = await import("@/lib/ai/link-ticket");
+        await linkConversationAiToTicket(tx, item.conversationId, created.id);
         await writeAudit(tx, {
           actorId: user.id,
           action: "triage.promote",
@@ -362,6 +364,18 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
         return created;
       });
       return ticket;
+    },
+
+    async promoteFromTriageAsSystem(triageId: string) {
+      const admin = await db.user.findFirst({
+        where: { role: "admin", ativo: true, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!admin) throw unprocessable("Nenhum administrador para promover a triagem");
+      return this.promoteFromTriage(admin, triageId, {
+        category: "outro",
+        priority: "media",
+      });
     },
   };
 }

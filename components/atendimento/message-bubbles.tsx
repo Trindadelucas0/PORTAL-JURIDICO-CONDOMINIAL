@@ -8,6 +8,7 @@ export type MessageBubbleItem = {
   direction: "in" | "out";
   visibility: "publica" | "interna";
   sendStatus?: string;
+  automated?: boolean;
   createdAt: string;
   attachments?: Array<{ storageKey: string; mime: string; originalName: string }>;
   replyTo?: { id: string; body: string; direction: string } | null;
@@ -144,8 +145,12 @@ export function MessageBubbles({
                         <AttachmentView key={att.storageKey} att={att} outgoing={outgoing} />
                       ))}
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                        <span>{timeOnly(m.createdAt)}</span>
-                        {outgoing && m.sendStatus === "sent" ? <span>enviado</span> : null}
+                        {m.automated ? (
+                          <span>Sistema · Automático · {timeOnly(m.createdAt)}</span>
+                        ) : (
+                          <span>{timeOnly(m.createdAt)}</span>
+                        )}
+                        {outgoing && !m.automated && m.sendStatus === "sent" ? <span>enviado</span> : null}
                         {outgoing && m.sendStatus === "failed" ? <span className="font-medium text-[var(--danger)]">Falha no envio</span> : null}
                         {outgoing && m.sendStatus === "draft" ? <span>rascunho</span> : null}
                         {m.visibility === "publica" && onReply ? (

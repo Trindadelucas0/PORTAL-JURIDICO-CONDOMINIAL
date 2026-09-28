@@ -107,6 +107,17 @@ enum ContactIdentityKind {
   lid
 }
 
+enum AutomationTrigger {
+  first_message_of_day
+}
+
+enum AutomationExecutionStatus {
+  reserved
+  sent
+  failed
+  skipped
+}
+
 model User {
   id                   String             @id @default(uuid()) @db.Uuid
   email                String             @unique
@@ -126,6 +137,7 @@ model User {
   uploadedSystemDocuments   SystemDocument[]
   conversationReads         ConversationRead[]
   auditEvents          AuditEvent[]
+  aiAuditEvents        AiAuditEvent[]
 }
 
 model SessionToken {
@@ -155,6 +167,7 @@ model Condominium {
   conversations Conversation[]
   tickets       Ticket[]
   documents     OfficeDocument[]
+  documentChunks DocumentChunk[]
 }
 
 model Contact {
@@ -173,6 +186,8 @@ model Contact {
   conversations Conversation[]
   tickets       Ticket[]
   identities    ContactIdentity[]
+  aiContactMemories AiContactMemory[]
+  automationExecutions AutomationExecution[]
 
   @@index([phoneE164])
   @@index([condominiumId])
@@ -233,6 +248,12 @@ model Conversation {
   triageItem     TriageItem?
   tickets        Ticket[]
   reads          ConversationRead[]
+  aiJobs         AiJob[]
+  aiInteractions AiInteraction[]
+  aiTicketMemory AiTicketMemory?
+  aiTicketMemoryRevisions AiTicketMemoryRevision[]
+  aiAuditEvents  AiAuditEvent[]
+  automationExecutions AutomationExecution[]
 
   @@unique([connectionId, peerPhoneE164])
   @@index([updatedAt])
@@ -252,6 +273,7 @@ model Message {
   visibility     MessageVisibility
   waMessageId    String?             @unique
   sendStatus     SendStatus          @default(pending)
+  automated      Boolean             @default(false)
   body           String
   createdAt      DateTime            @default(now())
   conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -259,6 +281,10 @@ model Message {
   replyTo        Message?            @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies        Message[]           @relation("MessageReply")
   attachments    MessageAttachment[]
+  aiDraftFor     AiInteraction?          @relation("AiDraft")
+  aiMemoryLinks  AiTicketMemoryMessage[]
+  automationInbound  AutomationExecution[] @relation("AutomationInbound")
+  automationOutbound AutomationExecution[] @relation("AutomationOutbound")
 
   @@index([conversationId, createdAt])
   @@index([ticketId])
@@ -318,6 +344,10 @@ model Ticket {
   messages       Message[]
   documents      OfficeDocument[]
   deadlines      Deadline[]
+  aiInteractions AiInteraction[]
+  aiTicketMemories AiTicketMemory[]
+  aiMemoryRevisions AiTicketMemoryRevision[]
+  aiAuditEvents  AiAuditEvent[]
 
   @@index([assignedToId])
   @@index([status])
@@ -341,10 +371,14 @@ model OfficeDocument {
   sha256        String
   ingestStatus  IngestStatus @default(stored)
   indexedAt     DateTime?
+  clientSendable Boolean     @default(false)
+  contentRevision Int        @default(1)
   createdAt     DateTime     @default(now())
   condominium   Condominium  @relation(fields: [condominiumId], references: [id])
   ticket        Ticket?      @relation(fields: [ticketId], references: [id])
   uploadedBy    User         @relation(fields: [uploadedById], references: [id])
+  chunks        DocumentChunk[]
+  aiMemoryDocuments AiTicketMemoryDocument[]
 
   @@index([condominiumId])
   @@index([ticketId])
@@ -375,6 +409,7 @@ model SystemDocument {
   createdAt     DateTime                @default(now())
   category      SystemDocumentCategory  @relation(fields: [categoryId], references: [id])
   uploadedBy    User                    @relation(fields: [uploadedById], references: [id])
+  chunks        DocumentChunk[]
 
   @@index([categoryId])
 }
@@ -408,16 +443,222 @@ model ConversationRead {
 
 model AuditEvent {
   id         String   @id @default(uuid()) @db.Uuid
-  actorId    String   @db.Uuid
+  actorId    String?  @db.Uuid
   action     String
   entityType String
   entityId   String
   beforeJson Json?
   afterJson  Json?
   createdAt  DateTime @default(now())
-  actor      User     @relation(fields: [actorId], references: [id])
+  actor      User?    @relation(fields: [actorId], references: [id])
 
   @@index([entityType, entityId])
   @@index([createdAt])
   @@index([actorId])
+}
+
+model AutomationRule {
+  id               String            @id @default(uuid()) @db.Uuid
+  nome             String
+  trigger          AutomationTrigger
+  ativo            Boolean           @default(false)
+  body             String
+  startsAt         String
+  endsAt           String
+  skipActiveTicket Boolean           @default(true)
+  activatedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  executions       AutomationExecution[]
+
+  @@unique([trigger])
+}
+
+model AutomationExecution {
+  id                String                    @id @default(uuid()) @db.Uuid
+  ruleId            String                    @db.Uuid
+  contactId         String                    @db.Uuid
+  conversationId    String                    @db.Uuid
+  businessDate      String                    @db.VarChar(10)
+  status            AutomationExecutionStatus
+  reason            String?
+  inboundMessageId  String                    @db.Uuid
+  outboundMessageId String?                   @db.Uuid
+  errorCode         String?
+  executedAt        DateTime?
+  createdAt         DateTime                  @default(now())
+  rule              AutomationRule            @relation(fields: [ruleId], references: [id])
+  contact           Contact                   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversation      Conversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  inboundMessage    Message                   @relation("AutomationInbound", fields: [inboundMessageId], references: [id], onDelete: Cascade)
+  outboundMessage   Message?                  @relation("AutomationOutbound", fields: [outboundMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([ruleId, contactId, businessDate])
+  @@index([createdAt])
+  @@index([ruleId, status])
+}
+
+model DocumentChunk {
+  id               String          @id @default(uuid()) @db.Uuid
+  officeDocumentId String?         @db.Uuid
+  systemDocumentId String?         @db.Uuid
+  condominiumId    String?         @db.Uuid
+  corpus           String
+  pageNumber       Int?
+  chunkIndex       Int
+  content          String
+  contentHash      String
+  embedding        Unsupported("vector(1536)")?
+  active           Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  officeDocument   OfficeDocument? @relation(fields: [officeDocumentId], references: [id], onDelete: Cascade)
+  systemDocument   SystemDocument? @relation(fields: [systemDocumentId], references: [id], onDelete: Cascade)
+  condominium      Condominium?    @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  citations        AiCitation[]
+
+  @@unique([officeDocumentId, contentHash])
+  @@unique([systemDocumentId, contentHash])
+  @@index([condominiumId, active])
+  @@index([systemDocumentId])
+}
+
+model AiJob {
+  id               String        @id @default(uuid()) @db.Uuid
+  type             String
+  idempotencyKey   String        @unique
+  conversationId   String?       @db.Uuid
+  officeDocumentId String?       @db.Uuid
+  status           String        @default("queued")
+  attempts         Int           @default(0)
+  runAfter         DateTime      @default(now())
+  lockedAt         DateTime?
+  lastErrorCode    String?
+  rerun            Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([conversationId])
+}
+
+model AiInteraction {
+  id              String        @id @default(uuid()) @db.Uuid
+  conversationId  String        @db.Uuid
+  ticketId        String?       @db.Uuid
+  idempotencyKey  String        @unique
+  status          String
+  riskLevel       String?
+  model           String?
+  inputTokens     Int           @default(0)
+  outputTokens    Int           @default(0)
+  costMicros      Int           @default(0)
+  draftMessageId  String?       @unique @db.Uuid
+  analysisJson    Json?
+  contextVersion  String        @default("inbound-v1")
+  createdAt       DateTime      @default(now())
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket          Ticket?       @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  draftMessage    Message?      @relation("AiDraft", fields: [draftMessageId], references: [id], onDelete: SetNull)
+  citations       AiCitation[]
+  revisions       AiTicketMemoryRevision[]
+  auditEvents     AiAuditEvent[]
+
+  @@index([conversationId, createdAt])
+  @@index([ticketId])
+}
+
+model AiCitation {
+  id            String        @id @default(uuid()) @db.Uuid
+  interactionId String        @db.Uuid
+  chunkId       String        @db.Uuid
+  rank          Int
+  distance      Float?
+  documentId    String?       @db.Uuid
+  pageNumber    Int?
+  interaction   AiInteraction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  chunk         DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([interactionId])
+  @@index([chunkId])
+}
+
+model AiTicketMemory {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @unique @db.Uuid
+  ticketId       String?      @db.Uuid
+  version        Int          @default(0)
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket         Ticket?      @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+}
+
+model AiTicketMemoryRevision {
+  id            String                   @id @default(uuid()) @db.Uuid
+  conversationId String                  @db.Uuid
+  ticketId      String?                  @db.Uuid
+  version       Int
+  interactionId String?                  @db.Uuid
+  summaryJson   Json
+  createdAt     DateTime                 @default(now())
+  conversation  Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket        Ticket?                  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  interaction   AiInteraction?           @relation(fields: [interactionId], references: [id], onDelete: SetNull)
+  messages      AiTicketMemoryMessage[]
+  documents     AiTicketMemoryDocument[]
+
+  @@unique([conversationId, version])
+  @@index([ticketId, version])
+}
+
+model AiTicketMemoryMessage {
+  revisionId String                 @db.Uuid
+  messageId  String                 @db.Uuid
+  revision   AiTicketMemoryRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  message    Message                @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([revisionId, messageId])
+}
+
+model AiTicketMemoryDocument {
+  id               String                 @id @default(uuid()) @db.Uuid
+  revisionId       String                 @db.Uuid
+  officeDocumentId String                 @db.Uuid
+  pageNumber       Int?
+  revision         AiTicketMemoryRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  officeDocument   OfficeDocument         @relation(fields: [officeDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([revisionId])
+}
+
+model AiContactMemory {
+  id                  String    @id @default(uuid()) @db.Uuid
+  contactId           String    @db.Uuid
+  fact                String
+  sourceInteractionId String?   @db.Uuid
+  confidence          String
+  status              String    @default("proposed")
+  createdAt           DateTime  @default(now())
+  contact             Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, status])
+}
+
+model AiAuditEvent {
+  id             String         @id @default(uuid()) @db.Uuid
+  action         String
+  conversationId String?        @db.Uuid
+  ticketId       String?        @db.Uuid
+  jobId          String?        @db.Uuid
+  interactionId  String?        @db.Uuid
+  actorId        String?        @db.Uuid
+  result         String
+  createdAt      DateTime       @default(now())
+  conversation   Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ticket         Ticket?        @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  interaction    AiInteraction? @relation(fields: [interactionId], references: [id], onDelete: SetNull)
+  actor          User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([ticketId, createdAt])
+  @@index([action])
 }

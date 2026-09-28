@@ -10,6 +10,7 @@ import { localDiskStorage } from "@/lib/storage/local-disk";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { writeAudit } from "@/lib/services/audit-service";
+import { mustRejectScan, scanBuffer } from "@/lib/security/clamav-scan";
 
 export const documentFichaSchema = z.object({
   kind: z.enum(DOCUMENT_KIND_VALUES),
@@ -153,6 +154,11 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       const condo = await db.condominium.findFirst({ where: { id: ficha.condominiumId, deletedAt: null } });
       if (!condo) throw notFound("Condomínio não encontrado");
 
+      const scan = await scanBuffer(input.file.buffer);
+      if (mustRejectScan(scan)) {
+        throw unprocessable(scan === "infected" ? "Arquivo recusado pelo antivírus" : "Falha ao verificar o arquivo");
+      }
+
       const stored = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
       const sha256 = createHash("sha256").update(input.file.buffer).digest("hex");
       const doc = await db.officeDocument.create({
@@ -193,12 +199,39 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       return doc;
     },
 
+    async patchClientSendable(user: User, documentId: string, clientSendable: boolean) {
+      const doc = await db.officeDocument.findFirst({ where: { id: documentId } });
+      if (!doc) throw notFound("Documento não encontrado");
+      if (doc.ticketId) {
+        await requireTicketAccess(user, doc.ticketId, db);
+      } else if (!isAdmin(user)) {
+        const condoIds = await staffAssignedCondoIds(db, user.id);
+        if (!condoIds.includes(doc.condominiumId)) {
+          throw forbidden("Sem permissão para este documento");
+        }
+      }
+      const updated = await db.officeDocument.update({
+        where: { id: doc.id },
+        data: { clientSendable },
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "document.patch",
+        entityType: "document",
+        entityId: doc.id,
+        before: { clientSendable: doc.clientSendable },
+        after: { clientSendable: updated.clientSendable },
+      });
+      return updated;
+    },
+
     async queueWhatsAppDraft(user: User, documentId: string) {
       const doc = await db.officeDocument.findFirst({
         where: { id: documentId },
         include: { ticket: { include: { conversation: { include: { contact: true } } } } },
       });
       if (!doc) throw notFound("Documento não encontrado");
+      if (!doc.clientSendable) throw unprocessable("Marque para permitir envio ao cliente");
       if (!doc.ticketId) throw unprocessable("Vincule o documento a um chamado para enviar");
       await requireTicketAccess(user, doc.ticketId, db);
       const conversationId = doc.ticket?.conversationId;

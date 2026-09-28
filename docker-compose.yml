@@ -1,5 +1,6 @@
 # Dev (notebook): docker compose up -d
 #   Evolution na porta 8080 do host; Next continua no host (pnpm dev --port 3010).
+#   Postgres do app com pgvector: docker compose up -d juricon-postgres-dev (host 5433).
 # VPS: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #   Next + Postgres Juricon; Evolution sem porta no host; webhook interno.
 services:
@@ -56,6 +57,43 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # Notebook: o Postgres Windows em 5432 não tem a extensão vector.
+  # Next/worker no host usam JURICON_POSTGRES_HOST_PORT (padrão 5433).
+  # VPS não sobe este serviço (nome diferente de juricon-postgres no prod).
+  juricon-postgres-dev:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    ports:
+      - "${JURICON_POSTGRES_HOST_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-PORTAL-JURIDICO}
+    volumes:
+      - juricon-pg-dev:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d PORTAL-JURIDICO"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Broker de jobs do Juricon. Não é cache da inbox e não é o Redis da Evolution.
+  # Sem porta publicada no host.
+  juricon-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${JURICON_REDIS_PASSWORD:-change-me-juricon-redis}
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+
 volumes:
   evolution-redis:
   evolution-pg:
+  juricon-pg-dev:

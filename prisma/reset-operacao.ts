@@ -23,6 +23,7 @@ async function main() {
   await assertPortalDatabase();
 
   const result = await prisma.$transaction(async (tx) => {
+    const automationExecutions = await tx.automationExecution.deleteMany();
     const attachments = await tx.messageAttachment.deleteMany();
     const reads = await tx.conversationRead.deleteMany();
     const deadlines = await tx.deadline.deleteMany();
@@ -58,6 +59,7 @@ async function main() {
       : { count: 0 };
 
     return {
+      automationExecutions: automationExecutions.count,
       attachments: attachments.count,
       reads: reads.count,
       deadlines: deadlines.count,

@@ -32,6 +32,11 @@ export async function mergeConversations(db: Db, keeperId: string, sourceId: str
   }
   await db.conversationRead.deleteMany({ where: { conversationId: sourceId } });
 
+  await db.automationExecution.updateMany({
+    where: { conversationId: sourceId },
+    data: { conversationId: keeperId },
+  });
+
   const sourceTriage = await db.triageItem.findUnique({ where: { conversationId: sourceId } });
   const keeperTriage = await db.triageItem.findUnique({ where: { conversationId: keeperId } });
   if (sourceTriage && keeperTriage) {

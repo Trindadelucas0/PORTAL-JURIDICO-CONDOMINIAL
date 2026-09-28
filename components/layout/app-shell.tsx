@@ -12,6 +12,7 @@ import {
   ListChecks,
   LogOut,
   Plus,
+  MessageSquare,
   Radio,
   Search,
   Ticket,
@@ -67,6 +68,7 @@ const NAV = [
       { href: "/equipe", label: "Equipe", icon: Users, admin: true },
       { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: true },
       { href: "/conexoes", label: "Conexões", icon: Radio, admin: true },
+      { href: "/mensagens-automaticas", label: "Mensagens automáticas", icon: MessageSquare, admin: true },
     ],
   },
 ];

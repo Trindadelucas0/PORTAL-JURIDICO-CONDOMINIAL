@@ -24,10 +24,8 @@ import { e164ToMaskedInput } from "@/lib/phone/mask";
 import { formatDue as formatDeadline, isOverdue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import {
-  ContactCondominiumPicker,
-  fetchAllCondominiums,
-} from "@/components/cadastro/contact-condominium-picker";
+import { ContactCondominiumPicker, fetchAllCondominiums } from "@/components/cadastro/contact-condominium-picker";
+import { AiContactMemory } from "@/components/contatos/ai-contact-memory";
 
 type Condo = {
   id: string;
@@ -76,7 +74,7 @@ type Audit = {
   id: string;
   action: string;
   createdAt: string;
-  actor: { email: string; nome: string };
+  actor: { email: string; nome: string } | null;
   beforeJson: unknown;
   afterJson: unknown;
 };
@@ -395,7 +393,7 @@ export default function CondominioFichaPage() {
                   <ul className="space-y-2 text-xs">
                     {(audit.data?.data ?? []).map((a) => (
                       <li key={a.id}>
-                        {new Date(a.createdAt).toLocaleString("pt-BR")} · {a.actor.email} · {a.action}
+                        {new Date(a.createdAt).toLocaleString("pt-BR")} · {a.actor?.email ?? "Sistema"} · {a.action}
                       </li>
                     ))}
                   </ul>
@@ -432,6 +430,7 @@ export default function CondominioFichaPage() {
             }}
           />
           {saveContact.isError ? <p className="text-sm text-[var(--danger)]">{(saveContact.error as Error).message}</p> : null}
+          {editingContact ? <AiContactMemory contactId={editingContact.id} /> : null}
           <Button
             type="submit"
             disabled={saveContact.isPending || (condoIds.length > 0 && !primaryCondoId)}

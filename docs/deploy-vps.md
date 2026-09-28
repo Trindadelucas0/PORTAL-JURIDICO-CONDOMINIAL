@@ -1,6 +1,6 @@
 # Deploy Juricon em uma VPS (Cloudflare Tunnel)
 
-Stack numa máquina só: Next + Postgres do escritório + Evolution (Redis e Postgres **dela**). Sem Redis de cache no Juricon. Sem expor 3010/8080/5432 na internet.
+Stack numa máquina só: Next + Postgres do escritório (pgvector) + worker da IA + Redis de **jobs** do Juricon + Evolution (Redis e Postgres **dela**). O `juricon-redis` não é cache da inbox. Sem expor 3010/8080/5432 na internet.
 
 Documentação de comportamento: [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) §11.
 
@@ -9,13 +9,15 @@ Documentação de comportamento: [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SIS
 | Serviço | Papel | Público? |
 |---------|--------|----------|
 | `juricon-app` | Next na porta **3000** do container | Só `127.0.0.1:3010` para o cloudflared |
-| `juricon-postgres` | Database `PORTAL-JURIDICO`, user `juricon` | Não |
+| `juricon-postgres` | Database `PORTAL-JURIDICO`, user `juricon`, imagem pgvector | Não |
+| `juricon-redis` | Broker de jobs da IA (BullMQ). Não é cache da inbox | Não |
+| `juricon-worker` | Consome a fila. Sem porta. Sem `EVOLUTION_APIKEY` | Não |
 | `evolution-api` | WhatsApp Web (Baileys) | Não (rede Docker) |
 | `evolution-postgres` | Só Evolution | Não |
 | `evolution-redis` | Fila/cache **só** da Evolution | Não |
 | `cloudflared` | Ingress HTTPS | Outbound; não é container deste compose |
 
-Notebook (dev): `docker compose up -d` — Evolution em `localhost:8080`, Next com `pnpm dev --port 3010`. Ver [`infra/evolution/README.md`](../infra/evolution/README.md).
+Notebook (dev): `docker compose up -d` — Evolution em `localhost:8080`, Next com `pnpm dev --port 3010`. Postgres do Juricon com pgvector: `docker compose up -d juricon-postgres-dev` (host **5433**; o 5432 do Windows não tem `vector`). Ver [`infra/evolution/README.md`](../infra/evolution/README.md).
 
 ## Requisitos
 
@@ -29,6 +31,7 @@ Notebook (dev): `docker compose up -d` — Evolution em `localhost:8080`, Next c
 Copiar `.env.example` → `.env` na pasta do compose. Preencher (não commitar):
 
 - `JURICON_POSTGRES_PASSWORD`
+- `JURICON_REDIS_PASSWORD` (broker de job; não reutilizar a senha da Evolution)
 - `EVOLUTION_POSTGRES_PASSWORD`
 - `EVOLUTION_APIKEY` (igual à Evolution)
 - `EVOLUTION_WEBHOOK_SECRET`
@@ -99,7 +102,8 @@ Cron diário no host. Restaurar: `psql` nos containers + `tar` em `/app/uploads`
 
 ## O que não fazer
 
-- Redis extra no Next / cache de inbox.
+- Usar Redis como cache da inbox ou publicar porta do `juricon-redis` / `evolution-redis` no host.
+- Colocar `EVOLUTION_APIKEY` no `juricon-worker`.
 - Publicar Evolution no Cloudflare.
 - `docker compose down -v` na VPS (apaga volumes).
 - Várias réplicas do Next (rate limit é in-memory).

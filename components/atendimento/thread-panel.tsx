@@ -8,6 +8,9 @@ import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
+import type { CopilotIndex } from "@/lib/ai/copilot-view";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { api } from "@/lib/client/api";
@@ -51,6 +54,7 @@ export function ThreadPanel({
   allowPublicSend,
   publicBlockedHint,
   extraInvalidateKeys = [],
+  showAiActions = false,
 }: {
   conversation?: ThreadConversation;
   hidden: boolean;
@@ -63,8 +67,10 @@ export function ThreadPanel({
   allowPublicSend: boolean;
   publicBlockedHint?: string | null;
   extraInvalidateKeys?: unknown[][];
+  showAiActions?: boolean;
 }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const conversationId = conversation?.id ?? null;
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [olderBag, setOlderBag] = useState<{ id: string | null; messages: Message[]; page: number }>({
@@ -92,6 +98,22 @@ export function ThreadPanel({
     enabled: Boolean(conversationId),
     queryFn: () => api<Message[]>(`/api/conversations/${conversationId}/messages?pageSize=50`),
     ...livePollQuery,
+  });
+
+  const aiSummary = useQuery({
+    queryKey: ["conversation-ai-summary", conversationId],
+    enabled: Boolean(showAiActions && conversationId),
+    queryFn: () => api<CopilotIndex>(`/api/conversations/${conversationId}/ai-summary`),
+    ...livePollQuery,
+  });
+  const aiOn = Boolean(showAiActions && aiSummary.data?.data.enabled);
+  const aiAnalyzing = Boolean(aiSummary.data?.data.analyzing);
+  const runAi = useMutation({
+    mutationFn: () => api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["conversation-ai-summary", conversationId] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível rodar a IA"),
   });
 
   useSyncOwnMessages(conversationId ?? undefined);
@@ -215,6 +237,32 @@ export function ThreadPanel({
             </div>
           </div>
         )}
+        {aiOn ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!conversation}
+              onClick={() => {
+                const el = document.getElementById("resumo-ia");
+                el?.scrollIntoView({ block: "nearest" });
+                el?.focus();
+              }}
+            >
+              Resumo IA
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!conversation || runAi.isPending || aiAnalyzing}
+              onClick={() => runAi.mutate()}
+            >
+              {aiAnalyzing ? "Em análise" : "Rodar IA"}
+            </Button>
+          </div>
+        ) : null}
         {showContext && onContext ? (
           <button
             type="button"

@@ -18,7 +18,7 @@ function stripSecrets(value: unknown): Prisma.InputJsonValue | undefined {
 }
 
 export type AuditInput = {
-  actorId: string;
+  actorId: string | null;
   action: string;
   entityType: string;
   entityId: string;

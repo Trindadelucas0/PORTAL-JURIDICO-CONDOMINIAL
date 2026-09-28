@@ -1,6 +1,11 @@
 import { normalizeE164 } from "@/lib/phone/e164";
 import { isLidPeer } from "@/lib/phone/identity";
 
+export type EvolutionMediaHint = {
+  mimetype?: string;
+  fileName?: string;
+};
+
 export type EvolutionInboundMessage = {
   waMessageId: string;
   fromPhone: string;
@@ -10,6 +15,7 @@ export type EvolutionInboundMessage = {
   /** ISO timestamp when WhatsApp epoch is plausible; otherwise null. */
   sentAt: string | null;
   pushName?: string | null;
+  mediaHint?: EvolutionMediaHint | null;
 };
 
 export type EvolutionWebhookResult =
@@ -63,6 +69,27 @@ export function extractMessageText(message: unknown): string {
     nestedText(message, "documentMessage") ||
     asString(message.caption) ||
     ""
+  );
+}
+
+function nestedMedia(obj: unknown, key: string): EvolutionMediaHint | null {
+  if (!isRecord(obj)) return null;
+  const inner = obj[key];
+  if (!isRecord(inner)) return null;
+  const mimetype = asString(inner.mimetype) || asString(inner.mimeType);
+  const fileName = asString(inner.fileName) || asString(inner.filename);
+  if (!mimetype && !fileName) return null;
+  return { ...(mimetype ? { mimetype } : {}), ...(fileName ? { fileName } : {}) };
+}
+
+export function extractMediaHint(message: unknown): EvolutionMediaHint | null {
+  if (!isRecord(message)) return null;
+  return (
+    nestedMedia(message, "imageMessage") ||
+    nestedMedia(message, "videoMessage") ||
+    nestedMedia(message, "documentMessage") ||
+    nestedMedia(message, "audioMessage") ||
+    nestedMedia(message, "stickerMessage")
   );
 }
 
@@ -221,6 +248,7 @@ function extractInbound(row: Record<string, unknown>):
   const waMessageId = asString(key.id);
   if (!waMessageId || !phone) return { skip: "incomplete" };
   const text = extractMessageText(row.message);
+  const mediaHint = extractMediaHint(row.message);
   const pushName = sanitizePushName(asString(row.pushName) || asString(row.pushname) || asString(row.notifyName));
   const sentAt =
     parseWhatsAppSentAt(row.messageTimestamp) ||
@@ -236,6 +264,7 @@ function extractInbound(row: Record<string, unknown>):
       fromMe,
       sentAt,
       ...(pushName ? { pushName } : {}),
+      ...(mediaHint ? { mediaHint } : {}),
     },
   };
 }

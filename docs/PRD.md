@@ -34,6 +34,7 @@
 14. [Ficha do condomínio `/condominios/[id]`](#14-ficha-do-condomínio-condominiosid)
 15. [Equipe `/equipe`](#15-equipe-equipe)
 16. [Conexões `/conexoes`](#16-conexões-conexoes)
+16b. [Mensagens automáticas `/mensagens-automaticas`](#16b-mensagens-automáticas-mensagens-automaticas)
 17. [Prazos `/prazos`](#17-prazos-prazos)
 18. [Overlays (prints)](#18-overlays-prints)
 19. [Matriz de papéis](#19-matriz-de-papéis)
@@ -156,6 +157,7 @@ flowchart TD
 │    Equipe         │                                                          │
 │    Documentos do sistema │                                                   │
 │    Conexões       │                                                          │
+│    Mensagens automáticas │                                                     │
 │ ───────────────── │                                                          │
 │ ● WA · Conectado  │                                                          │
 │ [AV] Ana Admin    │                                                          │
@@ -174,7 +176,7 @@ flowchart TD
 │                   │  (selo no chrome ainda é v0.9.5 no código)              │
 │ OPERAÇÃO          ├──────────────────────────────────────────────────────────┤
 │  Visão            │  (sem Novo Chamado; sem Triagem / Não vinc. / Equipe /   │
-│  Atendimento      │   Conexões no menu)                                      │
+│  Atendimento      │   Conexões / Mensagens automáticas no menu)              │
 │  Chamados         │                                                          │
 │  Prazos           │                                                          │
 │  Documentos       │                                                          │
@@ -214,6 +216,7 @@ flowchart TD
 │ ── Administração * ───────────── │
 │ Equipe *                         │
 │ Conexões *                       │
+│ Mensagens automáticas *          │
 │ [ Sair ]                         │
 └──────────────────────────────────┘
 ```
@@ -233,6 +236,7 @@ flowchart TD
 | Condomínios | todos | `/condominios` | — |
 | Equipe | admin | `/equipe` | — |
 | Conexões | admin | `/conexoes` | — |
+| Mensagens automáticas | admin | `/mensagens-automaticas` | Funcionário não vê no menu |
 | Buscar… | todos | `?q=` no módulo ativo (chamados, docs, triagem, não vinc., condomínios, equipe; senão atendimento) | — |
 | WhatsApp {status} | admin → link | `/conexoes` | Funcionário só vê o pill |
 | Novo Chamado | admin | `/chamados?novo=1` (abre drawer) | — |
@@ -974,6 +978,61 @@ Sem chat de IA. Sem Enviar WhatsApp.
 
 ---
 
+## 16b. Mensagens automáticas `/mensagens-automaticas`
+
+**Quem:** **só admin**. Funcionário não vê o menu e a API responde 403.
+
+### Print — lista
+
+```text
+┌─ Mensagens automáticas · Configure as respostas automáticas do atendimento ─┐
+│ [!] WhatsApp desconectado   (só se Baileys não estiver open/connected)      │
+│ ┌─ Primeira mensagem do dia ────────────────────────────── [ Inativa ] ─┐   │
+│ │ Primeiro contato recebido de cada cliente já cadastrado no dia.       │   │
+│ │ MENSAGEM                                                               │   │
+│ │ Olá, {{nome}}! …                                                       │   │
+│ │ Horário 08:00 — 18:00    Condições Atendimento ativo: não enviar      │   │
+│ │ Última execução: ainda não executou          [ Editar configuração ]  │   │
+│ └────────────────────────────────────────────────────────────────────────┘   │
+│ EXECUÇÕES RECENTES                                                           │
+│ [Hoje ▼] [Todas as regras ▼] [Todos os status ▼] [ Contato ]                │
+│ Horário | Contato | Automação | Status                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Print — editor `/mensagens-automaticas/[id]`
+
+```text
+┌─ ← Mensagens automáticas                                                     ┐
+│ Configurar automação                                                         │
+│ Nome [________________]                                                       │
+│ Gatilho  Primeira mensagem recebida do contato no dia                        │
+│ Mensagem [ textarea ]                                                        │
+│ Variáveis  [{{nome}}] [{{condominio}}] [{{protocolo}}]                       │
+│ Horário de funcionamento  [08:00] até [18:00]                                │
+│ [ ] Não enviar quando houver atendimento ativo                               │
+│ Status                                                    [ Inativa ]        │
+│ Pré-visualização                                                             │
+│ Olá, João Silva! …                                                           │
+│                                    [ Cancelar ] [ Salvar automação ]         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Controles
+
+| Rótulo | Ao clicar | Resultado | Bloqueio |
+|--------|-----------|-----------|----------|
+| Inativa / Ativa | PATCH `{ ativo }` | Liga ou desliga | Primeira ativação abre **Ativar automação?** |
+| Editar configuração | Vai ao editor | — | — |
+| `{{nome}}` / `{{condominio}}` / `{{protocolo}}` | Insere no cursor | — | Outro `{{…}}` impede salvar |
+| Salvar automação | PATCH | Grava nome, texto, horário, condição e status | Nome 2–80; horário final depois do inicial |
+| Cancelar | Volta à lista | — | — |
+| Filtros do histórico | GET executions | Enviada / Falhou / Não enviada | — |
+
+Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o salvamento.
+
+---
+
 ## 17. Prazos `/prazos`
 
 **Quem:** ambos (funcionário só dos seus chamados).
@@ -1070,6 +1129,7 @@ Sem chat de IA. Sem Enviar WhatsApp.
 | Arquivar solicitação | Arquivar (danger) | Triagem |
 | Confirmar vínculo | Confirmar vínculo | Não vinculados |
 | Desconectar WhatsApp | Desconectar (danger) | Conexões |
+| Ativar automação? | Ativar automação | Mensagens automáticas |
 | Desativar usuário / Reativar usuário | Desativar / Reativar | Equipe |
 
 Cancelar = sempre **Cancelar** (secondary).
@@ -1103,6 +1163,7 @@ Cancelar = sempre **Cancelar** (secondary).
 | `/condominios/[id]` | PATCH | leitura |
 | `/equipe` | ✓ | 403 |
 | `/conexoes` | ✓ | 403 |
+| `/mensagens-automaticas` | ✓ | 403 · oculto |
 
 Síndico: **sem login**.
 
@@ -1118,6 +1179,7 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 4. Número novo → **Não vinculados** → responder se preciso → **Vincular ao fluxo**.
 5. Trabalhar no **Atendimento** ou na ficha (**Comunicação**).
 6. **Documentos** / **Documentos do sistema** / **Prazos** / **Equipe** conforme o dia.
+6b. Admin: **Mensagens automáticas** — a regra nasce inativa; a primeira ativação pede confirmação.
 7. Visão `/` mostra o que está parado (zeros também nos quatro cartões).
 
 ---
@@ -1139,6 +1201,7 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 | `/condominios` | `app/(app)/condominios/page.tsx`, `[id]/page.tsx` |
 | `/equipe` | `app/(app)/equipe/page.tsx` |
 | `/conexoes` | `app/(app)/conexoes/page.tsx`, `whatsapp-session-card.tsx` |
+| `/mensagens-automaticas` | `app/(app)/mensagens-automaticas/page.tsx`, `[id]/page.tsx` |
 | `/prazos` | `app/(app)/prazos/page.tsx` |
 
 ---

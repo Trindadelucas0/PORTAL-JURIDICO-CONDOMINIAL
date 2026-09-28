@@ -252,6 +252,7 @@ export const whatsappService = {
           body: item.body,
           peerDisplayName: item.pushName,
           connectionType: "evolution_baileys",
+          mediaHint: item.mediaHint ?? null,
         }),
       );
     }

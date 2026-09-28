@@ -1,6 +1,6 @@
 services:
   juricon-postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: juricon
@@ -23,6 +23,8 @@ services:
     depends_on:
       juricon-postgres:
         condition: service_healthy
+      juricon-redis:
+        condition: service_started
       evolution-api:
         condition: service_started
     ports:
@@ -37,6 +39,26 @@ services:
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:?defina EVOLUTION_WEBHOOK_SECRET}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-juricon}
       EVOLUTION_WEBHOOK_URL: http://juricon-app:3000/api/webhooks/evolution
+      JURICON_REDIS_URL: redis://juricon-redis:6379
+      JURICON_REDIS_PASSWORD: ${JURICON_REDIS_PASSWORD:?defina JURICON_REDIS_PASSWORD}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_RAG_ENABLED: ${AI_RAG_ENABLED:-false}
+      AI_MEMORY_ENABLED: ${AI_MEMORY_ENABLED:-false}
+      AI_AUTO_DRAFT_ENABLED: ${AI_AUTO_DRAFT_ENABLED:-false}
+      AI_WHATSAPP_SEND_ENABLED: ${AI_WHATSAPP_SEND_ENABLED:-false}
+      AI_CREATE_TICKET_ENABLED: ${AI_CREATE_TICKET_ENABLED:-false}
+      AI_COST_MICROS_PER_TOKEN: ${AI_COST_MICROS_PER_TOKEN:-0}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      CLAMAV_URL: ${CLAMAV_URL:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_BASE_URL: ${AI_API_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_API_KEY_BACKUP: ${AI_API_KEY_BACKUP:-}
+      AI_API_BASE_URL_BACKUP: ${AI_API_BASE_URL_BACKUP:-}
+      AI_MODEL_BACKUP: ${AI_MODEL_BACKUP:-}
+      AI_MODEL_CLASSIFY: ${AI_MODEL_CLASSIFY:-}
+      AI_MODEL_MAIN: ${AI_MODEL_MAIN:-}
+      AI_MODEL_EMBED: ${AI_MODEL_EMBED:-}
     volumes:
       - juricon-uploads:/app/uploads
 
@@ -46,6 +68,51 @@ services:
     environment:
       SERVER_URL: http://evolution-api:8080
     mem_limit: 1536m
+
+  juricon-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["pnpm", "exec", "tsx", "worker/index.ts"]
+    mem_limit: 768m
+    cpus: "1"
+    depends_on:
+      juricon-postgres:
+        condition: service_healthy
+      juricon-redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      JURICON_WORKER: "1"
+      DATABASE_URL: postgresql://juricon:${JURICON_POSTGRES_PASSWORD}@juricon-postgres:5432/PORTAL-JURIDICO?schema=public
+      JURICON_REDIS_URL: redis://juricon-redis:6379
+      JURICON_REDIS_PASSWORD: ${JURICON_REDIS_PASSWORD:?defina JURICON_REDIS_PASSWORD}
+      EVOLUTION_API_URL: http://evolution-api:8080
+      EVOLUTION_APIKEY: ${EVOLUTION_APIKEY:?defina EVOLUTION_APIKEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-juricon}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_RAG_ENABLED: ${AI_RAG_ENABLED:-false}
+      AI_MEMORY_ENABLED: ${AI_MEMORY_ENABLED:-false}
+      AI_AUTO_DRAFT_ENABLED: ${AI_AUTO_DRAFT_ENABLED:-false}
+      AI_WHATSAPP_SEND_ENABLED: ${AI_WHATSAPP_SEND_ENABLED:-false}
+      AI_CREATE_TICKET_ENABLED: ${AI_CREATE_TICKET_ENABLED:-false}
+      AI_COST_MICROS_PER_TOKEN: ${AI_COST_MICROS_PER_TOKEN:-0}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      CLAMAV_URL: ${CLAMAV_URL:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_BASE_URL: ${AI_API_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_API_KEY_BACKUP: ${AI_API_KEY_BACKUP:-}
+      AI_API_BASE_URL_BACKUP: ${AI_API_BASE_URL_BACKUP:-}
+      AI_MODEL_BACKUP: ${AI_MODEL_BACKUP:-}
+      AI_MODEL_CLASSIFY: ${AI_MODEL_CLASSIFY:-}
+      AI_MODEL_MAIN: ${AI_MODEL_MAIN:-}
+      AI_MODEL_EMBED: ${AI_MODEL_EMBED:-}
+    volumes:
+      - juricon-uploads:/app/uploads
+    healthcheck:
+      disable: true
 
 volumes:
   juricon-pg:

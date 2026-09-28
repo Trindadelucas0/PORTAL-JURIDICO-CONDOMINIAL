@@ -35,6 +35,7 @@
 13. [11. Ficha do condomínio `/condominios/[id]`](#13-11-ficha-do-condomínio-condominiosid)
 14. [12. Equipe `/equipe`](#14-12-equipe-equipe)
 15. [13. Conexões `/conexoes`](#15-13-conexões-conexoes)
+15b. [13b. Mensagens automáticas `/mensagens-automaticas`](#15b-13b-mensagens-automáticas-mensagens-automaticas)
 16. [14. Prazos `/prazos`](#16-14-prazos-prazos)
 17. [Overlays](#17-overlays)
 18. [Apêndice A — Matriz de papéis](#18-apêndice-a--matriz-de-papéis)
@@ -58,6 +59,7 @@ flowchart TD
   condos --> condoId["/condominios/id"]
   shell --> equipe["/equipe"]
   shell --> conexoes["/conexoes"]
+  shell --> autoMsg["/mensagens-automaticas"]
 ```
 
 ---
@@ -180,6 +182,7 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │  Equipe         │                                                  │
 │  Docs. sistema  │                                                  │
 │  Conexões       │                                                  │
+│  Mensagens auto.│                                                  │
 │ ─────────────── │                                                  │
 │ ● WA · status   │  (admin, link → /conexoes)                       │
 │ v0.9.0          │                                                  │
@@ -201,7 +204,8 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │ Início  Inbox  Chamados  Mais      │  funcionário: Chamados no 3º
 └────────────────────────────────────┘
 + sheet: Chamados, Documentos, Documentos do sistema, Condomínios, Prazos,
-  (Triagem/Não vinc. se admin e não no bottom), Equipe, Conexões, Sair
+  (Triagem/Não vinc. se admin e não no bottom), Equipe, Conexões,
+  Mensagens automáticas, Sair
 Sidebar = Sheet offcanvas ao tocar ☰
 ```
 
@@ -221,6 +225,7 @@ Sidebar = Sheet offcanvas ao tocar ☰
 | Condomínios | Building2 | nav Link `/condominios` | Cadastro |
 | Equipe | Users | nav Link `/equipe` | Usuários (admin) |
 | Conexões | Radio | nav Link `/conexoes` | WhatsApp (admin) |
+| Mensagens automáticas | MessageSquare | nav Link `/mensagens-automaticas` | Automação (admin) |
 | Buscar… | Search (14px) | Input h-8 muted/50 | Submit → `?q=` no módulo ativo |
 | WhatsApp · {status} | dot 6px ok/warn/muted | Link texto xs | `/conexoes` (admin) |
 | Sair | LogOut | DropdownMenuItem | POST `/api/auth/logout` → `/login` |
@@ -806,6 +811,57 @@ DIALOG QR · CONFIRM Desconectar
 
 ---
 
+## 15b. 13b. Mensagens automáticas `/mensagens-automaticas`
+
+**Arquivos:** `mensagens-automaticas/page.tsx` · `[id]/page.tsx` · **admin only**.
+
+```text
+┌─ Mensagens automáticas ─────────────────────────────────────┐
+│ [Alert warning] WhatsApp desconectado                       │
+│ ┌ card ────────────────────────────────── [Inativa|Ativa] ┐ │
+│ │ nome                                                    │ │
+│ │ Primeiro contato recebido de cada cliente já cadastrado│ │
+│ │ MENSAGEM (line-clamp 4)                                 │ │
+│ │ Horário · Condições                                     │ │
+│ │ Última execução              [Editar configuração]      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ EXECUÇÕES RECENTES                                          │
+│ [Hoje][Regra][Status][Contato]                              │
+│ DataTable: Horário | Contato | Automação | Status           │
+└─────────────────────────────────────────────────────────────┘
+CONFIRM Ativar automação?  (só na primeira vez que fica Ativa)
+```
+
+```text
+┌─ ← Mensagens automáticas · Configurar automação ────────────┐
+│ Nome · Gatilho (só leitura) · Mensagem                      │
+│ [{{nome}}] [{{condominio}}] [{{protocolo}}]                 │
+│ Horário [time] até [time]                                   │
+│ checkbox Não enviar quando houver atendimento ativo         │
+│ Status [Inativa|Ativa]                                      │
+│ Pré-visualização                                            │
+│ [Cancelar] [Salvar automação]                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Rótulo | Ícone | Variant | Função |
+|--------|-------|---------|--------|
+| Inativa / Ativa | — | secondary / primary | PATCH ativo; confirma na primeira ativação |
+| Editar configuração | — | secondary | Link editor |
+| Salvar automação | — | default submit | PATCH |
+| Cancelar | — | secondary | Link lista |
+| Ativar automação | — | primary (ConfirmDialog) | Confirma a primeira ativação |
+
+**Estados:** 403 · skeleton · empty “Nenhuma automação” · alerta warning · variável inválida em danger · horário inválido.
+
+### Checklist auditoria — Mensagens automáticas
+
+- [ ] Alerta warning não cobre o card
+- [ ] Botão Ativa/Inativa largura cheia no celular
+- [ ] Pré-visualização não usa dado real do escritório
+
+---
+
 ## 16. 14. Prazos `/prazos`
 
 **Arquivo:** `app/(app)/prazos/page.tsx` · full-bleed · GET `/api/deadlines`.
@@ -857,6 +913,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 |---------|------|---------|---------|
 | Arquivar solicitação | Triagem | Arquivar | danger |
 | Desconectar WhatsApp | Conexões | Desconectar | danger |
+| Ativar automação? | Mensagens automáticas | Ativar automação | primary |
 | Desativar usuário | Equipe | Desativar | danger |
 | Confirmar vínculo | Não vinculados | Confirmar vínculo | primary |
 
@@ -889,6 +946,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | `/condominios/[id]` | PATCH | leitura |
 | `/equipe` | ✓ | 403 |
 | `/conexoes` | ✓ | 403 |
+| `/mensagens-automaticas` | ✓ | 403 · oculto |
 
 Síndico: **sem login** neste sistema.
 
@@ -908,6 +966,7 @@ Síndico: **sem login** neste sistema.
 | Building2 | Condomínios | nav |
 | Users | Equipe | nav |
 | Radio | Conexões | nav |
+| MessageSquare | Mensagens automáticas | nav |
 | Search | Header busca | 14px (`size-3.5`) |
 | LogOut | Sair | menu |
 | Eye / EyeOff | Login senha | icon-sm |

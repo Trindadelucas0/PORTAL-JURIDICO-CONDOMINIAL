@@ -15,6 +15,9 @@ import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
+import { AiAuditPanel, type AiAuditRow } from "@/components/chamados/ai-audit-panel";
+import { AiSummarySheet } from "@/components/chamados/ai-summary-sheet";
+import type { CopilotIndex } from "@/lib/ai/copilot-view";
 import { TicketDossieHeader } from "@/components/chamados/ticket-dossie-header";
 import { TicketCasePanel } from "@/components/chamados/ticket-case-panel";
 import { TicketEditDrawer } from "@/components/chamados/ticket-edit-drawer";
@@ -58,6 +61,8 @@ type Ticket = {
     ingestStatus: string;
     storageKey: string;
     createdAt?: string;
+    clientSendable?: boolean;
+    ticketId?: string | null;
   }>;
   deadlines: Deadline[];
   messages: Array<{ id: string; body: string; sendStatus: string }>;
@@ -71,6 +76,7 @@ export default function ChamadoFichaPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [tab, setTab] = useState("caso");
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [openDetalhes, setOpenDetalhes] = useState(false);
   const [openDeadline, setOpenDeadline] = useState(false);
@@ -102,6 +108,25 @@ export default function ChamadoFichaPage() {
     messageCount: threadMessages.length,
   });
 
+  const aiSummary = useQuery({
+    queryKey: ["ticket-ai-summary", id],
+    queryFn: () => api<CopilotIndex>(`/api/tickets/${id}/ai-summary`),
+    ...livePollQuery,
+  });
+  const aiEnabled = Boolean(aiSummary.data?.data.enabled);
+  const runAi = useMutation({
+    mutationFn: () => api(`/api/tickets/${id}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
+    onSuccess: () => {
+      setSummaryOpen(true);
+      void qc.invalidateQueries({ queryKey: ["ticket-ai-summary", id] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível rodar a IA"),
+  });
+  const aiAudit = useQuery({
+    queryKey: ["ticket-ai-audit", id],
+    enabled: aiEnabled && tab === "auditoria",
+    queryFn: () => api<{ enabled: boolean; events: AiAuditRow[]; tokensToday?: number }>(`/api/tickets/${id}/ai-audit`),
+  });
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -111,11 +136,20 @@ export default function ChamadoFichaPage() {
     queryKey: ["audit", "ticket", id],
     enabled: Boolean(me.data?.data.user.role === "admin"),
     queryFn: () =>
-      api<Array<{ id: string; action: string; createdAt: string; actor: { email: string } }>>(
+      api<Array<{ id: string; action: string; createdAt: string; actor: { email: string } | null }>>(
         `/api/audit?entityType=ticket&entityId=${id}`,
       ),
   });
 
+  const sendDoc = useMutation({
+    mutationFn: (documentId: string) => api(`/api/documents/${documentId}/send-draft`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Documento enviado no WhatsApp.");
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
+    },
+    onError: (error) => toast((error as Error).message),
+  });
   const send = useMutation({
     mutationFn: (input: { body: string; visibility: "publica" | "interna"; file: File | null }) => {
       const form = new FormData();
@@ -188,6 +222,14 @@ export default function ChamadoFichaPage() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+  const rejectDraft = useMutation({
+    mutationFn: (messageId: string) => api(`/api/messages/${messageId}/reject`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Rascunho rejeitado");
+      qc.invalidateQueries({ queryKey: ["ticket-messages", id] });
+      qc.invalidateQueries({ queryKey: ["ticket-ai-audit", id] });
+    },
+  });
   const approve = useMutation({
     mutationFn: (messageId: string) => api(`/api/messages/${messageId}/approve`, { method: "POST" }),
     onSuccess: () => {
@@ -211,9 +253,11 @@ export default function ChamadoFichaPage() {
           ? "Nota interna"
           : m.sendStatus === "draft"
             ? "Rascunho"
-            : m.direction === "in"
-              ? "Cliente"
-              : "WhatsApp",
+            : m.automated
+              ? "Automático"
+              : m.direction === "in"
+                ? "Cliente"
+                : "WhatsApp",
         tone: interna
           ? "interna"
           : m.sendStatus === "draft"
@@ -231,7 +275,7 @@ export default function ChamadoFichaPage() {
         kind: a.action.includes("assign") ? "assignee" : a.action.includes("status") ? "status" : "system",
         body: a.action,
         at: a.createdAt,
-        author: a.actor.email,
+        author: a.actor?.email ?? "Sistema",
         label: "Auditoria",
       });
     }
@@ -303,6 +347,11 @@ export default function ChamadoFichaPage() {
         }
         onEdit={() => setOpenEdit(true)}
         onDetalhes={() => setOpenDetalhes(true)}
+        aiAnalyzing={aiEnabled && Boolean(aiSummary.data?.data.analyzing)}
+        showAi={aiEnabled}
+        onResumo={() => setSummaryOpen(true)}
+        onRun={() => runAi.mutate()}
+        runPending={runAi.isPending}
       />
       {ticket.isLoading || !t || !contextTicket ? (
         <Skeleton className="m-4 h-48" />
@@ -316,9 +365,21 @@ export default function ChamadoFichaPage() {
                 { id: "atividade", label: "Linha do tempo" },
                 { id: "documentos", label: "Documentos", count: t.documents.length },
                 { id: "comunicacao", label: "Comunicação" },
+                ...(aiEnabled
+                  ? [
+                      { id: "resumo", label: "Resumo IA" },
+                      { id: "auditoria", label: "Auditoria" },
+                    ]
+                  : []),
               ]}
               value={tab}
-              onChange={setTab}
+              onChange={(next) => {
+                if (next === "resumo") {
+                  setSummaryOpen(true);
+                  return;
+                }
+                setTab(next);
+              }}
             />
             <SectionTabPanel id="caso" active={tab === "caso"} className="min-h-0 flex-1 overflow-y-auto p-4">
               <TicketCasePanel
@@ -348,9 +409,21 @@ export default function ChamadoFichaPage() {
                         sizeBytes={d.sizeBytes}
                         meta={d.kind ? documentKindLabel(d.kind) : undefined}
                         actions={
-                          <a className="text-primary" href={`/api/files/${d.storageKey}`}>
-                            Baixar
-                          </a>
+                          <span className="flex gap-3">
+                            <a className="text-primary" href={`/api/files/${d.storageKey}`}>
+                              Baixar
+                            </a>
+                            {d.clientSendable ? (
+                              <button
+                                type="button"
+                                className="text-primary disabled:opacity-50"
+                                disabled={sendDoc.isPending}
+                                onClick={() => sendDoc.mutate(d.id)}
+                              >
+                                Enviar
+                              </button>
+                            ) : null}
+                          </span>
                         }
                       />
                     </li>
@@ -384,8 +457,10 @@ export default function ChamadoFichaPage() {
                         key={m.id}
                         className="mx-3 mb-2"
                         body={m.body}
-                        pending={approve.isPending}
+                        pending={approve.isPending || rejectDraft.isPending}
+                        error={rejectDraft.isError ? (rejectDraft.error as Error).message : null}
                         onApprove={() => approve.mutate(m.id)}
+                        onReject={() => rejectDraft.mutate(m.id)}
                       />
                     ))
                 : null}
@@ -406,10 +481,37 @@ export default function ChamadoFichaPage() {
                 </p>
               )}
             </SectionTabPanel>
+            <SectionTabPanel id="auditoria" active={tab === "auditoria"} className="min-h-0 flex-1 overflow-y-auto p-4">
+              <AiAuditPanel
+                loading={aiAudit.isLoading}
+                error={aiAudit.isError}
+                events={aiAudit.data?.data.events ?? []}
+                tokensToday={aiAudit.data?.data.tokensToday}
+              />
+            </SectionTabPanel>
           </div>
           <TicketContextRail ticket={contextTicket} className="hidden border-l border-border lg:flex" />
         </div>
       )}
+
+      <AiSummarySheet
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        loading={aiSummary.isLoading}
+        error={Boolean(aiSummary.data?.data.error) || aiSummary.isError}
+        analyzing={Boolean(aiSummary.data?.data.analyzing)}
+        current={aiSummary.data?.data.current ?? null}
+        history={aiSummary.data?.data.history ?? []}
+        currentVersion={aiSummary.data?.data.currentVersion ?? null}
+        summaryPath={`/api/tickets/${id}/ai-summary`}
+        protocol={t?.protocol}
+        condominiumName={t?.condominium.nome}
+        draftPath={t?.conversationId ? `/api/tickets/${id}/ai-draft` : ""}
+        canSend={Boolean(user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)))}
+        onShowConversation={() => setTab("comunicacao")}
+        onRun={() => runAi.mutate()}
+        runPending={runAi.isPending}
+      />
 
       <TicketEditDrawer
         open={openEdit}

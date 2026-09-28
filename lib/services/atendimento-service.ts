@@ -24,6 +24,8 @@ import {
   schedulePeerProfileEnrichment,
 } from "@/lib/services/peer-avatar-service";
 import { messageWindow } from "@/lib/api/pagination";
+import { enqueueInboundJob, enqueueMediaDownloadJob } from "@/lib/ai/enqueue";
+import { processInbound } from "@/lib/services/automation-service";
 
 export type InboundPayload = {
   waMessageId: string;
@@ -33,6 +35,7 @@ export type InboundPayload = {
   peerDisplayName?: string | null;
   connectionId?: string;
   connectionType?: ChannelType;
+  mediaHint?: { mimetype?: string; fileName?: string } | null;
 };
 
 export type IngestResult = {
@@ -357,6 +360,43 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         conversation.id,
         inboundPeerEnrichOptions(conversation.peerPhoneE164, conversation.peerAvatarKey, payload.waMessageId),
       );
+
+      try {
+        await enqueueInboundJob(db, {
+          created: true,
+          inOperationalFlow: isInOperationalFlow(contact),
+          condominiumId: conversation.condominiumId,
+          messageId: message.id,
+          conversationId: conversation.id,
+        });
+      } catch (error) {
+        const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : "ERROR";
+        console.error(`[ai] enqueue errorCode=${code}`);
+      }
+
+      if (payload.mediaHint) {
+        try {
+          await enqueueMediaDownloadJob(db, {
+            waMessageId: payload.waMessageId,
+            conversationId: conversation.id,
+          });
+        } catch (error) {
+          const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : "ERROR";
+          console.error(`[ai] media enqueue errorCode=${code}`);
+        }
+      }
+
+      try {
+        await processInbound(db, {
+          messageId: message.id,
+          conversationId: conversation.id,
+          contactId: conversation.contactId,
+          createdAt: message.createdAt,
+        });
+      } catch (error) {
+        const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : "ERROR";
+        console.error(`[automation] errorCode=${code}`);
+      }
 
       return {
         created: true,

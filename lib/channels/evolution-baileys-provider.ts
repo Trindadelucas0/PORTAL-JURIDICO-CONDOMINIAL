@@ -82,6 +82,66 @@ export async function evoFetch(url: string, init?: RequestInit): Promise<Respons
   }
 }
 
+export type InboundMediaPayload = {
+  buffer: Buffer;
+  mimetype: string;
+  fileName: string;
+};
+
+function asRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickBase64(json: unknown): { base64: string; mimetype?: string; fileName?: string } | null {
+  if (!asRecord(json)) return null;
+  const nested = asRecord(json.base64) ? json.base64 : json;
+  const raw =
+    (typeof json.base64 === "string" && json.base64) ||
+    (asRecord(nested) && typeof nested.base64 === "string" ? nested.base64 : null) ||
+    (typeof json.data === "string" ? json.data : null);
+  if (!raw) return null;
+  const mimetype =
+    (typeof json.mimetype === "string" && json.mimetype) ||
+    (typeof json.mimeType === "string" && json.mimeType) ||
+    (asRecord(nested) && typeof nested.mimetype === "string" ? nested.mimetype : undefined);
+  const fileName =
+    (typeof json.fileName === "string" && json.fileName) ||
+    (typeof json.filename === "string" && json.filename) ||
+    undefined;
+  return { base64: raw, mimetype, fileName };
+}
+
+export async function fetchInboundMediaBase64(waMessageId: string): Promise<InboundMediaPayload> {
+  const base = evoBase();
+  const key = evoKey();
+  if (!base || !key) {
+    throw unprocessable("Evolution Baileys não configurada (URL/APIKEY ausentes)");
+  }
+  const url = `${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance())}`;
+  const res = await evoFetch(url, {
+    method: "POST",
+    headers: headers(true),
+    body: JSON.stringify({ message: { key: { id: waMessageId } } }),
+  });
+  const json = (await res.json().catch(() => null)) as unknown;
+  if (!res.ok) {
+    throw unprocessable("Falha ao baixar mídia da Evolution", { status: res.status });
+  }
+  const picked = pickBase64(json);
+  if (!picked) {
+    throw unprocessable("Mídia sem base64");
+  }
+  const buffer = Buffer.from(picked.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+  if (!buffer.length) {
+    throw unprocessable("Mídia vazia");
+  }
+  return {
+    buffer,
+    mimetype: picked.mimetype || "application/octet-stream",
+    fileName: picked.fileName || "arquivo",
+  };
+}
+
 function parseQrPayload(json: {
   code?: string;
   pairingCode?: string;

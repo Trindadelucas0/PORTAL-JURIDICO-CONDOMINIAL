@@ -37,6 +37,7 @@ yarn-error.log*
 # local media
 /uploads
 /backups
+/.pgdump
 
 # vercel
 .vercel

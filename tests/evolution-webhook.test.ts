@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractMessageText,
+  extractMediaHint,
   interpretEvolutionWebhook,
   maybeDumpEvolutionWebhookBody,
   phoneFromWhatsAppLid,
@@ -355,6 +356,13 @@ describe("interpretEvolutionWebhook", () => {
 describe("extractMessageText", () => {
   it("prefers caption on image when conversation is absent", () => {
     expect(extractMessageText({ imageMessage: { caption: "foto" } })).toBe("foto");
+  });
+
+  it("extracts mediaHint without binary", () => {
+    expect(extractMediaHint({ documentMessage: { mimetype: "application/pdf", fileName: "ata.pdf" } })).toEqual({
+      mimetype: "application/pdf",
+      fileName: "ata.pdf",
+    });
   });
 });
 

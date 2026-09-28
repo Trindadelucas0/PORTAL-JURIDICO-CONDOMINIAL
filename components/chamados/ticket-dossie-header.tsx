@@ -23,11 +23,21 @@ export function TicketDossieHeader({
   loading,
   onEdit,
   onDetalhes,
+  aiAnalyzing,
+  showAi,
+  onResumo,
+  onRun,
+  runPending,
 }: {
   ticket: DossieHeaderTicket | null;
   loading?: boolean;
   onEdit: () => void;
   onDetalhes?: () => void;
+  aiAnalyzing?: boolean;
+  showAi?: boolean;
+  onResumo?: () => void;
+  onRun?: () => void;
+  runPending?: boolean;
 }) {
   return (
     <header className="shrink-0 border-b border-border px-4 py-3">
@@ -36,6 +46,16 @@ export function TicketDossieHeader({
           ← Chamados
         </Link>
         <div className="flex flex-wrap items-center gap-2">
+          {showAi ? (
+            <>
+              <Button type="button" size="sm" variant="secondary" onClick={onResumo} disabled={loading || !ticket}>
+                Resumo IA
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={onRun} disabled={loading || !ticket || runPending || aiAnalyzing}>
+                {aiAnalyzing ? "Em análise" : "Rodar IA"}
+              </Button>
+            </>
+          ) : null}
           {onDetalhes ? (
             <Button type="button" size="sm" variant="ghost" className="lg:hidden" onClick={onDetalhes}>
               Detalhes
@@ -53,6 +73,11 @@ export function TicketDossieHeader({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight tabular-nums">#{ticket.protocol}</h1>
             <StatusBadge status={ticket.status} />
+            {aiAnalyzing ? (
+              <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                Em análise pela IA
+              </span>
+            ) : null}
             <PriorityIndicator priority={ticket.priority} />
           </div>
           <p className="mt-1 text-sm font-medium text-foreground">{ticket.title}</p>

@@ -33,6 +33,8 @@ type Doc = {
   ingestStatus: string;
   storageKey: string;
   createdAt?: string;
+  ticketId?: string | null;
+  clientSendable?: boolean;
   condominium: { id?: string; nome: string };
 };
 
@@ -45,6 +47,25 @@ type Summary = {
 };
 
 function DocumentSideFicha({ doc }: { doc: Doc }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [clientSendable, setClientSendable] = useState(Boolean(doc.clientSendable));
+  const patchSend = useMutation({
+    mutationFn: (next: boolean) =>
+      api(`/api/documents/${doc.id}`, { method: "PATCH", body: JSON.stringify({ clientSendable: next }) }),
+    onSuccess: (_res, next) => {
+      setClientSendable(next);
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error) => toast((error as Error).message),
+  });
+  const sendDraft = useMutation({
+    mutationFn: () => api(`/api/documents/${doc.id}/send-draft`, { method: "POST" }),
+    onSuccess: () => toast("Documento enviado no WhatsApp."),
+    onError: (error) => toast((error as Error).message),
+  });
+  const canSend = clientSendable && Boolean(doc.ticketId);
+
   return (
     <div className="space-y-4 text-sm">
       <div>
@@ -82,6 +103,27 @@ function DocumentSideFicha({ doc }: { doc: Doc }) {
           </dd>
         </div>
       </dl>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={clientSendable}
+          disabled={patchSend.isPending}
+          onChange={(e) => patchSend.mutate(e.target.checked)}
+        />
+        <span>Pode enviar ao cliente</span>
+      </label>
+      {!clientSendable ? (
+        <p className="text-xs text-muted-foreground">Marque para permitir envio ao cliente</p>
+      ) : null}
+      <Button
+        type="button"
+        className="w-full"
+        disabled={!canSend || sendDraft.isPending || patchSend.isPending}
+        onClick={() => sendDraft.mutate()}
+      >
+        {sendDraft.isPending ? "Enviando…" : "Enviar no WhatsApp"}
+      </Button>
       <a
         className="inline-flex h-9 w-full items-center justify-center rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-[var(--brand-soft)]"
         href={`/api/files/${doc.storageKey}`}
@@ -335,7 +377,7 @@ export default function DocumentosPage() {
             </div>
           </div>
           <aside className="hidden rounded-[var(--radius)] border border-border bg-card p-4 md:block">
-            {preview ? <DocumentSideFicha doc={preview} /> : <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>}
+            {preview ? <DocumentSideFicha key={preview.id} doc={preview} /> : <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>}
           </aside>
         </div>
       )}

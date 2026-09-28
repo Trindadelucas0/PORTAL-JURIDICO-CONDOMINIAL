@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { FilterBar, FilterChip } from "@/components/ui/filter-bar";
 import { ThreadPanel, type ThreadConversation } from "@/components/atendimento/thread-panel";
+import { AiContextSummary } from "@/components/atendimento/ai-context-summary";
 import { WorkspacePane, WorkspaceShell } from "@/components/workspace/workspace-shell";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
@@ -100,9 +101,14 @@ function InboxInner() {
 
   const me = useQuery({
     queryKey: ["me"],
-    queryFn: () => api<{ user: { role: string } }>("/api/auth/me"),
+    queryFn: () =>
+      api<{ user: { role: string; podeResponderCliente: boolean; apenasRascunho: boolean } }>("/api/auth/me"),
   });
-  const admin = me.data?.data.user.role === "admin";
+  const meUser = me.data?.data.user;
+  const admin = meUser?.role === "admin";
+  const canSend = Boolean(
+    meUser && (meUser.role === "admin" || (meUser.podeResponderCliente && !meUser.apenasRascunho)),
+  );
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -289,10 +295,11 @@ function InboxInner() {
             publicBlockedHint={
               current && current.connection.status !== "open" ? "WhatsApp não está conectado." : null
             }
+            showAiActions
           />
         </WorkspacePane>
         <WorkspacePane>
-          <ContextPane conversation={current} onEditTicket={setEditTicketId} />
+          <ContextPane conversation={current} onEditTicket={setEditTicketId} canSend={canSend} />
         </WorkspacePane>
       </WorkspaceShell>
       <TicketEditDrawer
@@ -330,9 +337,11 @@ function InboxInner() {
 function ContextPane({
   conversation,
   onEditTicket,
+  canSend,
 }: {
   conversation?: Conversation;
   onEditTicket: (id: string) => void;
+  canSend: boolean;
 }) {
   return (
     <ContextSummary>
@@ -410,6 +419,11 @@ function ContextPane({
               <p>—</p>
             )}
           </ContextBlock>
+          <AiContextSummary
+            conversationId={conversation.id}
+            canSend={canSend}
+            draftPath={`/api/conversations/${conversation.id}/ai-draft`}
+          />
           <ExpandableRow title="Mais informações" summary="Histórico e documentos no chamado">
             <p className="text-xs text-muted-foreground">
               Documentos e prazos ficam na ficha do chamado. Origem: {conversation.connection.label}.

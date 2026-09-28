@@ -446,10 +446,13 @@ describe("escritorio operacional", () => {
 });
 
 describe("document index port", () => {
-  it("is a no-op without embeddings", async () => {
+  it("stays a no-op when AI_RAG_ENABLED is off", async () => {
+    const prev = process.env.AI_RAG_ENABLED;
+    delete process.env.AI_RAG_ENABLED;
     const res = await noopDocumentIndex.enqueue({ documentId: "x", storageKey: "k" });
     expect(res.queued).toBe(false);
     expect(res.reason).toBe("noop");
+    if (prev) process.env.AI_RAG_ENABLED = prev;
   });
 });
 
