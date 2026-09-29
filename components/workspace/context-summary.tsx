@@ -1,11 +1,14 @@
 "use client";
 
+import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ContextSummary({
   title = "Contexto",
   onBack,
   onCollapse,
+  wide,
+  onToggleWide,
   children,
   footer,
   hidden,
@@ -14,6 +17,8 @@ export function ContextSummary({
   title?: string;
   onBack?: () => void;
   onCollapse?: () => void;
+  wide?: boolean;
+  onToggleWide?: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
   hidden?: boolean;
@@ -27,8 +32,27 @@ export function ContextSummary({
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-        {onBack ? (
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        {onToggleWide ? (
+          <span className="flex">
+            <button
+              type="button"
+              className="hidden min-h-8 shrink-0 items-center gap-1 rounded-[6px] border border-border bg-secondary px-2.5 text-xs font-medium whitespace-nowrap text-[var(--brand)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)] hover:bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)] lg:inline-flex"
+              aria-expanded={Boolean(wide)}
+              aria-label={wide ? "Recolher contexto" : "Expandir contexto"}
+              onClick={onToggleWide}
+            >
+              <ChevronLeft
+                className={cn(
+                  "size-4 shrink-0 transition-transform duration-[var(--motion-normal)]",
+                  wide && "rotate-180",
+                )}
+                aria-hidden
+              />
+              {wide ? "Recolher" : "Expandir"}
+            </button>
+          </span>
+        ) : onBack ? (
           <button type="button" className="text-sm text-[var(--brand)] xl:hidden" onClick={onBack}>
             ← Conversa
           </button>

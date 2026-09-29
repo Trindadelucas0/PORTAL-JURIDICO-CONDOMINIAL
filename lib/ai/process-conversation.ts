@@ -6,7 +6,7 @@ import { prismaErrorCode } from "@/lib/ai/errors";
 import { keepCitations } from "@/lib/ai/citations";
 import { decideTurn, type ServerFallback } from "@/lib/ai/decide-turn";
 import { isAiAutoDraftEnabled, isAiEnabled, isAiMemoryEnabled, aiPromptVersion } from "@/lib/ai/flags";
-import { loadInboundForJobs } from "@/lib/ai/inbound-messages";
+import { loadInboundForJobs, loadSelectedMessages, selectedIdsForJobs } from "@/lib/ai/inbound-messages";
 import { insertInteractionOnce } from "@/lib/ai/interaction";
 import { shouldDispatchAiDraft, shouldPromoteTriageAsSystem } from "@/lib/ai/auto-actions";
 import { gateClientDraft } from "@/lib/ai/client-draft-guard";
@@ -14,13 +14,14 @@ import { buildAnalysisFluxo, canalLabel, ingestaoFromGroups, type AnalysisFluxo,
 import { acceptedFactsForContact, normalizeContactFacts, proposedContactFacts } from "@/lib/ai/contact-memory";
 import { advanceMemoryPointer, interactionKey } from "@/lib/ai/memory";
 import type { SummaryJson } from "@/lib/ai/output";
-import { buildModelPackage, packageContainsSecret } from "@/lib/ai/package";
+import { buildModelPackage, packageContainsSecret, packageMessages } from "@/lib/ai/package";
 import { systemPromptFor } from "@/lib/ai/prompts/select";
 import {
   FALLBACK_DOCUMENT_CONFLICT,
   FALLBACK_HUMAN_REVIEW,
   FALLBACK_INJECTION,
   FALLBACK_UNAVAILABLE,
+  SELECTED_MESSAGES_RULE,
 } from "@/lib/ai/prompts/inbound-v2";
 import { createAiProviderFromEnv, type AiProvider } from "@/lib/ai/provider";
 import { retrieveForConversation, type RetrievalChunk, type RetrievalResult } from "@/lib/ai/retriever";
@@ -77,11 +78,14 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     });
     const ambiguous = openTickets.length > 1;
     const ticketId = openTickets.length === 1 ? openTickets[0].id : null;
-    const inbound = await loadInboundForJobs(
+    const selectedIds = selectedIdsForJobs(jobs);
+    const selected = selectedIds ? await loadSelectedMessages(db.message, conversationId, selectedIds) : null;
+    const inbound = selected ?? await loadInboundForJobs(
       db.message,
       conversationId,
       jobs.map((job) => job.idempotencyKey),
     );
+    const messageLimit = selected ? selected.length : undefined;
     const messageIds = inbound.map((row) => row.id);
     const joined = inbound.map((row) => row.body).join("\n").slice(0, 4000);
     const intent = classifyLocal(joined);
@@ -110,7 +114,11 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     const ingestao = ingestaoFromGroups(
       ingestGroups.map((row) => ({ ingestStatus: row.ingestStatus, count: row._count._all })),
     );
-    const mensagem = await loadTriggerMessage(db, inbound, conversation);
+    const mensagem = await loadTriggerMessage(
+      db,
+      selected ? selected.filter((row) => row.direction === "in") : inbound,
+      conversation,
+    );
     let memorySummary: string | null = null;
     let memoryCreatedAt: string | null = null;
     if (isAiMemoryEnabled() && currentVersion > 0) {
@@ -122,12 +130,21 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       memoryCreatedAt = current?.createdAt ? current.createdAt.toISOString() : null;
     }
     const contactFacts = await acceptedFactsForContact(db, conversation.contact?.id);
+    const rule = conversation.condominiumId
+      ? await db.aiCondominiumRule.findFirst({
+          where: { condominiumId: conversation.condominiumId },
+          orderBy: { version: "desc" },
+          select: { body: true },
+        })
+      : null;
+    const condominiumRule = rule?.body?.trim() ? rule.body : null;
     const fluxoBase = {
       retrieval,
       ingestao,
       mensagem,
       condominioNome: conversation.condominium?.nome ?? null,
       mensagensCarregadas: inbound.length,
+      mensagensNoPacote: selected ? packageMessages(inbound, messageLimit).length : null,
       memorySummary,
       memoryVersion: currentVersion,
       memoryCreatedAt,
@@ -240,14 +257,16 @@ export async function processConversation(db: PrismaClient, conversationId: stri
 
     const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
     const packed = buildModelPackage({
-      system: systemPromptFor(),
+      system: selected ? `${systemPromptFor()}\n${SELECTED_MESSAGES_RULE}` : systemPromptFor(),
       model: modelName,
       condominiumName: conversation.condominium?.nome || "Condomínio",
       city: conversation.condominium?.cidadeUf ?? null,
       memorySummary,
       contactFacts,
+      condominiumRule,
       messages: inbound,
-      chunks: chunks.map((row) => ({ id: row.id, content: row.content })),
+      messageLimit,
+      chunks: chunks.map((row) => ({ id: row.id, content: row.content, corpus: row.corpus })),
     });
     if (packageContainsSecret(JSON.stringify(packed))) {
       await finishJobs(db, jobIds, "succeeded", "secret_blocked");
@@ -636,6 +655,7 @@ type FluxoBase = {
   mensagem: AnalysisFluxo["mensagem"];
   condominioNome: string | null;
   mensagensCarregadas: number;
+  mensagensNoPacote: number | null;
   memorySummary: string | null;
   memoryVersion: number;
   memoryCreatedAt: string | null;
@@ -651,6 +671,7 @@ function fluxoParado(
     condominioIdentificado: true,
     mensagem: base.mensagem,
     mensagensCarregadas: base.mensagensCarregadas,
+    mensagensNoPacote: base.mensagensNoPacote,
     memorySummary: base.memorySummary,
     memoryVersion: base.memoryVersion,
     memoryCreatedAt: base.memoryCreatedAt,
@@ -802,7 +823,7 @@ async function audit(
 }
 
 async function claimQueuedInbound(db: PrismaClient, conversationId: string) {
-  const rows = await db.$queryRaw<Array<{ id: string; idempotencyKey: string; createdAt: Date }>>`
+  const rows = await db.$queryRaw<Array<{ id: string; idempotencyKey: string; payload: unknown; createdAt: Date }>>`
     UPDATE "AiJob"
     SET status = 'running',
         "lockedAt" = NOW(),
@@ -811,7 +832,7 @@ async function claimQueuedInbound(db: PrismaClient, conversationId: string) {
       AND type = 'ai.inbound'
       AND status = 'queued'
       AND "runAfter" <= NOW()
-    RETURNING id, "idempotencyKey", "createdAt"
+    RETURNING id, "idempotencyKey", payload, "createdAt"
   `;
   return rows.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }

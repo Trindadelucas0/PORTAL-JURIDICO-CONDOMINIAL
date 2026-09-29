@@ -7,7 +7,8 @@ import { api } from "@/lib/client/api";
 import type { DocumentosPorIngestao } from "@/lib/ai/analysis-snapshot";
 import { presentCopilotRevision, type CopilotFonte, type CopilotRevisionView } from "@/lib/ai/copilot-view";
 import { documentKindLabel } from "@/lib/documents/kinds";
-import { formatWhen } from "@/lib/ui-labels";
+import { formatWhen, PRIORITY_TONE, STATUS_TONE } from "@/lib/ui-labels";
+import { cn } from "@/lib/utils";
 
 const BAND: Record<string, string> = {
   alta: "Alta",
@@ -77,8 +78,19 @@ export function AiSummaryBody({
   );
 }
 
-function SectionTitle({ children }: { children: string }) {
-  return <h3 className="text-xs font-medium tracking-wide text-muted-foreground">{children}</h3>;
+function SectionTitle({ children, className }: { children: string; className?: string }) {
+  return <h3 className={cn("text-xs font-medium tracking-wide text-muted-foreground", className)}>{children}</h3>;
+}
+
+const FAIXA_TOM = {
+  neutro: "border-border bg-card",
+  aviso: "border-[#fde68a] bg-[var(--status-andamento-bg)]",
+  acao: "border-[#a7f3d0] border-l-2 border-l-[var(--status-resolvido)] bg-[var(--status-resolvido-bg)]",
+  interno: "border-border border-l-2 border-l-[var(--brand)] bg-[var(--page)]",
+} as const;
+
+function Faixa({ tom = "neutro", children }: { tom?: keyof typeof FAIXA_TOM; children: React.ReactNode }) {
+  return <section className={cn("mt-3 min-w-0 rounded-[8px] border px-3 py-3", FAIXA_TOM[tom])}>{children}</section>;
 }
 
 export function MensagemCliente({
@@ -91,14 +103,14 @@ export function MensagemCliente({
   const mensagem = revision.mensagem;
   const quando = mensagem?.createdAt && !Number.isNaN(new Date(mensagem.createdAt).getTime()) ? formatWhen(mensagem.createdAt) : null;
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>MENSAGEM DO CLIENTE</SectionTitle>
       {mensagem ? (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
             {[mensagem.remetente, quando, mensagem.canal].filter(Boolean).join(" · ")}
           </p>
-          <blockquote className="mt-2 border border-border px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+          <blockquote className="mt-2 rounded-[6px] border-l-2 border-l-[var(--channel-whatsapp)] bg-[var(--surface-2)] px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap">
             “{mensagem.body}”
           </blockquote>
         </>
@@ -110,7 +122,7 @@ export function MensagemCliente({
           Ver conversa completa
         </button>
       ) : null}
-    </section>
+    </Faixa>
   );
 }
 
@@ -119,8 +131,8 @@ export function AnaliseInterrompida({ revision }: { revision: CopilotRevisionVie
   const faltando = revision.pendencias.split("\n").map((line) => line.trim()).filter(Boolean);
   const motivo = motivoTexto(revision.contextoUtilizado.documentosMotivo ?? revision.contextoUtilizado.ragMotivo, revision.contextoUtilizado.registrado);
   return (
-    <section className="border-b border-border py-4">
-      <SectionTitle>ANÁLISE INTERROMPIDA</SectionTitle>
+    <Faixa tom="aviso">
+      <SectionTitle className="font-semibold text-[var(--status-andamento)]">ANÁLISE INTERROMPIDA</SectionTitle>
       <p className="mt-2 text-sm leading-relaxed">
         A IA não encontrou evidências suficientes para sustentar uma resposta segura.
       </p>
@@ -147,7 +159,7 @@ export function AnaliseInterrompida({ revision }: { revision: CopilotRevisionVie
       ) : (
         <p className="mt-1 text-sm text-muted-foreground">—</p>
       )}
-    </section>
+    </Faixa>
   );
 }
 
@@ -158,7 +170,7 @@ export function Entendimento({ revision }: { revision: CopilotRevisionView }) {
   const percent = revision.tecnica.confiancaPercentual;
   const baixa = revision.tecnica.confianca === "baixa" || revision.tecnica.confianca === "insuficiente";
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>ENTENDIMENTO</SectionTitle>
       <p className="mt-2 text-sm leading-relaxed">
         {revision.problema || "Não foi possível determinar o problema com as informações disponíveis."}
@@ -177,14 +189,18 @@ export function Entendimento({ revision }: { revision: CopilotRevisionView }) {
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Risco</dt>
-          <dd className="mt-1 text-sm">{riskLabel(revision.tecnica.risco)}</dd>
+          <dd className="mt-1 text-sm">
+            <RiskBadge value={revision.tecnica.risco} />
+          </dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Confiança</dt>
-          <dd className="mt-1 text-sm">{confidenceLabel(revision.tecnica.confianca, percent)}</dd>
+          <dd className="mt-1 text-sm">
+            <ConfidenceBadge confianca={revision.tecnica.confianca} percentual={percent} />
+          </dd>
         </div>
       </dl>
-    </section>
+    </Faixa>
   );
 }
 
@@ -217,8 +233,25 @@ export function ContextoUtilizado({
     if (recorte === "tecnico") return !CONTAGENS_CONTEXTO.has(label);
     return true;
   });
+  if (recorte === "contagens") {
+    return (
+      <Faixa>
+        <SectionTitle>CONTEXTO UTILIZADO</SectionTitle>
+        <dl className="mt-2 grid grid-cols-2 gap-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0 rounded-[6px] bg-[var(--surface-2)] px-2.5 py-2">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className={cn("mt-0.5 break-words", /^\d+$/.test(value) ? "text-base font-semibold tabular" : "text-xs")}>
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Faixa>
+    );
+  }
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>CONTEXTO UTILIZADO</SectionTitle>
       <dl className="mt-2">
         {rows.map(([label, value]) => (
@@ -228,14 +261,14 @@ export function ContextoUtilizado({
           </div>
         ))}
       </dl>
-    </section>
+    </Faixa>
   );
 }
 
 export function DocumentosConsultados({ revision }: { revision: CopilotRevisionView }) {
   const ctx = revision.contextoUtilizado;
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>DOCUMENTOS CONSULTADOS</SectionTitle>
       {revision.fontes.length === 0 ? (
         <div className="mt-2 space-y-1">
@@ -254,7 +287,7 @@ export function DocumentosConsultados({ revision }: { revision: CopilotRevisionV
           ))}
         </div>
       )}
-    </section>
+    </Faixa>
   );
 }
 
@@ -271,7 +304,7 @@ function DocumentoCard({ fonte, condominio }: { fonte: CopilotFonte; condominio:
     condominio,
   ].filter(Boolean);
   return (
-    <article className="border border-border px-3 py-3">
+    <article className="rounded-[6px] border border-border bg-[var(--page)] px-3 py-3">
       <h4 className="text-sm font-medium">{fonte.titulo}</h4>
       {meta.length ? <p className="mt-1 text-xs text-muted-foreground">{meta.join(" · ")}</p> : null}
       {trecho ? (
@@ -299,14 +332,14 @@ function DocumentoCard({ fonte, condominio }: { fonte: CopilotFonte; condominio:
 
 export function EvidenciaUtilizada({ revision }: { revision: CopilotRevisionView }) {
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>EVIDÊNCIA UTILIZADA</SectionTitle>
       {revision.fontes.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">Nenhuma evidência citada.</p>
       ) : (
         <div className="mt-2 space-y-3">
           {revision.fontes.map((fonte, index) => (
-            <article key={`${fonte.titulo}-ev-${index}`} className="border border-border px-3 py-3">
+            <article key={`${fonte.titulo}-ev-${index}`} className="rounded-[6px] border border-border bg-[var(--page)] px-3 py-3">
               <h4 className="text-sm font-medium">{fonte.titulo}</h4>
               <p className="mt-1 text-xs text-muted-foreground">
                 {fonte.pagina != null ? `Página ${fonte.pagina}` : "Página não registrada"}
@@ -321,7 +354,7 @@ export function EvidenciaUtilizada({ revision }: { revision: CopilotRevisionView
           ))}
         </div>
       )}
-    </section>
+    </Faixa>
   );
 }
 
@@ -329,10 +362,13 @@ export function RespostaSugerida({
   revision,
   draftPath,
   canSend,
+  variant = "section",
 }: {
   revision: CopilotRevisionView;
   draftPath?: string;
   canSend?: boolean;
+  /** `bar`: faixa acima do campo de mensagem do Atendimento, sem título de seção. */
+  variant?: "section" | "bar";
 }) {
   const qc = useQueryClient();
   const texto = revision.resposta.texto;
@@ -375,59 +411,74 @@ export function RespostaSugerida({
     },
   });
   const erro = (save.error || send.error) instanceof Error ? ((save.error || send.error) as Error).message : null;
+  const bar = variant === "bar";
 
-  return (
-    <section className="border-b border-border py-4">
-      <SectionTitle>RESPOSTA SUGERIDA</SectionTitle>
-      {texto || editing ? (
-        <div className="mt-2 border border-border px-3 py-3">
+  const content = (
+    <>
+      {editing ? (
+        <textarea
+          className={cn("w-full bg-transparent text-sm leading-relaxed", bar ? "min-h-20" : "min-h-28")}
+          value={draft}
+          aria-label="Editar resposta sugerida"
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      ) : (
+        <p className={cn("text-sm leading-relaxed whitespace-pre-wrap break-words", bar && "max-h-32 overflow-y-auto")}>{texto}</p>
+      )}
+      {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
+      {enviada ? <p className="mt-2 text-xs text-muted-foreground">Esta resposta já foi enviada.</p> : null}
+      {!enviada && draftPath ? (
+        <div className={cn("flex flex-wrap gap-2", bar ? "mt-2" : "mt-3")}>
           {editing ? (
-            <textarea
-              className="min-h-28 w-full bg-transparent text-sm leading-relaxed"
-              value={draft}
-              aria-label="Editar resposta sugerida"
-              onChange={(event) => setDraft(event.target.value)}
-            />
+            <>
+              <Button type="button" size="sm" className="min-h-11" disabled={save.isPending || !draft.trim()} onClick={() => save.mutate()}>
+                {save.isPending ? "Salvando…" : "Salvar"}
+              </Button>
+              <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => { setDraft(texto ?? ""); setEditing(false); }}>
+                Cancelar
+              </Button>
+            </>
           ) : (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{texto}</p>
+            <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => setEditing(true)}>
+              Editar resposta
+            </Button>
           )}
-          {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
-          {enviada ? <p className="mt-2 text-xs text-muted-foreground">Esta resposta já foi enviada.</p> : null}
-          {!enviada && draftPath ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {editing ? (
-                <>
-                  <Button type="button" size="sm" className="min-h-11" disabled={save.isPending || !draft.trim()} onClick={() => save.mutate()}>
-                    {save.isPending ? "Salvando…" : "Salvar"}
-                  </Button>
-                  <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => { setDraft(texto ?? ""); setEditing(false); }}>
-                    Cancelar
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => setEditing(true)}>
-                  Editar resposta
-                </Button>
-              )}
-              {canSend && !editing ? (
-                <Button type="button" size="sm" className="min-h-11" disabled={send.isPending} onClick={() => send.mutate()}>
-                  {send.isPending ? "Enviando…" : "Enviar ao cliente"}
-                </Button>
-              ) : null}
-            </div>
+          {canSend && !editing ? (
+            <Button type="button" size="sm" className="min-h-11" disabled={send.isPending} onClick={() => send.mutate()}>
+              {send.isPending ? "Enviando…" : "Enviar ao cliente"}
+            </Button>
           ) : null}
         </div>
+      ) : null}
+    </>
+  );
+
+  if (bar) {
+    if (!texto && !editing) return null;
+    return (
+      <div className="shrink-0 border-t border-border bg-[var(--status-aguardando-bg)] px-3 py-2">
+        <p className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Resposta sugerida</p>
+        <div className="mt-1 min-w-0">{content}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Faixa>
+      <SectionTitle>RESPOSTA SUGERIDA</SectionTitle>
+      {texto || editing ? (
+        <div className="mt-2 rounded-[6px] border border-border bg-[var(--status-aguardando-bg)] px-3 py-3">{content}</div>
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">Nenhum rascunho foi gravado nesta versão.</p>
       )}
-    </section>
+    </Faixa>
   );
 }
 
 export function AnaliseInterna({ revision }: { revision: CopilotRevisionView }) {
   const faltando = revision.status === "abstained" ? [] : revision.pendencias.split("\n").map((line) => line.trim()).filter(Boolean);
   return (
-    <section className="border-b border-border border-l-2 border-l-[var(--brand)] bg-[var(--page)] py-4 pl-3">
+    <Faixa tom="interno">
       <SectionTitle>ANÁLISE INTERNA</SectionTitle>
       <p className="mt-1 text-xs font-medium tracking-wide text-[var(--brand)]">Uso interno</p>
       <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{revision.analise || "—"}</p>
@@ -447,16 +498,16 @@ export function AnaliseInterna({ revision }: { revision: CopilotRevisionView }) 
           </ul>
         </>
       ) : null}
-    </section>
+    </Faixa>
   );
 }
 
 export function ProximaAcao({ revision }: { revision: CopilotRevisionView }) {
   return (
-    <section className="border-b border-border py-4">
-      <SectionTitle>PRÓXIMA AÇÃO</SectionTitle>
+    <Faixa tom="acao">
+      <SectionTitle className="font-semibold text-[var(--status-resolvido)]">PRÓXIMA AÇÃO</SectionTitle>
       <p className="mt-2 text-sm leading-relaxed">{revision.proximaAcao || "—"}</p>
-    </section>
+    </Faixa>
   );
 }
 
@@ -465,7 +516,7 @@ export function MemoriaUtilizada({ revision }: { revision: CopilotRevisionView }
   if (!memoria || (!memoria.resumo && memoria.fatos.length === 0)) return null;
   const quando = memoria.origemEm && !Number.isNaN(new Date(memoria.origemEm).getTime()) ? formatWhen(memoria.origemEm) : null;
   return (
-    <section className="border-b border-border py-4">
+    <Faixa>
       <SectionTitle>MEMÓRIA UTILIZADA</SectionTitle>
       {memoria.resumo ? <p className="mt-2 text-sm leading-relaxed">{memoria.resumo}</p> : null}
       {memoria.fatos.length ? (
@@ -480,7 +531,7 @@ export function MemoriaUtilizada({ revision }: { revision: CopilotRevisionView }
           {[memoria.versaoOrigem ? `Versão ${memoria.versaoOrigem}` : null, quando].filter(Boolean).join(" · ")}
         </p>
       ) : null}
-    </section>
+    </Faixa>
   );
 }
 
@@ -497,12 +548,22 @@ export function ExecucaoAnalise({ revision }: { revision: CopilotRevisionView })
     ["Citations", exec.citations],
   ] as const;
   return (
-    <section className="py-4">
+    <Faixa>
       <SectionTitle>EXECUÇÃO DA ANÁLISE</SectionTitle>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        {itens.map(([label, value]) => `${label} ${exec.registrado ? MARCA[value] ?? "não registrado" : "não registrado"}`).join(" · ")}
-      </p>
-    </section>
+      <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs leading-relaxed text-muted-foreground">
+        {itens.map(([label, value]) => {
+          const marca = exec.registrado ? value : "nao_registrado";
+          return (
+            <li key={label}>
+              {label}{" "}
+              <span className={cn(marca === "ok" && "font-medium text-[var(--ok)]", marca === "falhou" && "font-medium text-[var(--danger)]")}>
+                {MARCA[marca] ?? "não registrado"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Faixa>
   );
 }
 
@@ -532,6 +593,36 @@ function ingestResumo(value: DocumentosPorIngestao | null): string | null {
   ].filter(Boolean);
   if (!parts.length) return null;
   return `No condomínio: ${parts.join(", ")}.`;
+}
+
+const TOM_VERDE = STATUS_TONE.resolvido.pill;
+const TOM_AMBAR = STATUS_TONE.em_andamento.pill;
+const TOM_CINZA = STATUS_TONE.aguardando.pill;
+const TOM_VERMELHO = PRIORITY_TONE.urgente.pill;
+
+const RISCO_TOM: Record<string, string> = { baixo: TOM_VERDE, medio: TOM_AMBAR, alto: TOM_VERMELHO };
+const CONFIANCA_TOM: Record<string, string> = {
+  alta: TOM_VERDE,
+  media: TOM_CINZA,
+  baixa: TOM_AMBAR,
+  insuficiente: TOM_AMBAR,
+};
+
+function Selo({ tom, children }: { tom: string | undefined; children: string }) {
+  if (!tom) return <>{children}</>;
+  return (
+    <span className={cn("inline-flex max-w-full items-center rounded px-2 py-0.5 text-[11px] font-semibold break-words", tom)}>
+      {children}
+    </span>
+  );
+}
+
+export function RiskBadge({ value }: { value: string }) {
+  return <Selo tom={RISCO_TOM[value]}>{riskLabel(value)}</Selo>;
+}
+
+export function ConfidenceBadge({ confianca, percentual }: { confianca: string; percentual: number | null }) {
+  return <Selo tom={CONFIANCA_TOM[confianca]}>{confidenceLabel(confianca, percentual)}</Selo>;
 }
 
 export function riskLabel(value: string): string {

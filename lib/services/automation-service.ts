@@ -227,6 +227,7 @@ export async function processInbound(
       where: { id: execution.id },
       data: { status: "failed", errorCode: "send_failed", executedAt: new Date() },
     }).catch(() => undefined);
+    await auditExecution(db, execution, "failed", { errorCode: "send_failed" }).catch(() => undefined);
     console.error(`[automation] errorCode=${code}`);
   }
 }

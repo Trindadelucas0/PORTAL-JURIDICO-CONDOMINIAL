@@ -146,7 +146,7 @@ flowchart TD
 | Main padded | `px-5 py-5 md:px-6 md:py-6`, max 1440px |
 | Bottom nav mobile | `fixed`, `grid-cols-4`, `border-t`, `pb-16` no main |
 | Item lista ativo | `border-l-2` brand + `bg color-mix(brand 6%, white)` |
-| Workspace Inbox | `280px / 1fr / 300px` (lg) |
+| Workspace Inbox | `280px / 1fr / 300px` (lg); com **Expandir**: `280px / 1fr / max(300px, min(640px, 100% − 600px))` |
 | Workspace Unlinked | `280px / 1fr / 240px` (xl) |
 | Workspace Triagem | `240–320px / 1fr` (lg) |
 
@@ -329,12 +329,12 @@ Sidebar = Sheet offcanvas ao tocar ☰
 ## 5. 3. Inbox `/atendimento`
 
 **Arquivos:** `app/(app)/atendimento/page.tsx` · `thread-panel.tsx` · `workspace-shell.tsx`  
-**Full-bleed · h = `100dvh - 3rem` · grid 280 / 1fr / 300 (abaixo de lg: restante / 200).**
+**Full-bleed · h = `100dvh - 3rem` · grid 280 / 1fr / 300 (abaixo de lg: restante / 200). Em lg+, **Expandir** leva o contexto a `max(300px, min(640px, 100% − 600px))` com transição; a thread fica com no mínimo 320px.**
 
 ```text
 ┌─ Atendimento ── [Todas] [Não lidas] [Triagem] ──────────────┐
 ├─ 280px ──────┬─ thread 1fr ──────────────┬─ 300px contexto ─┤
-│ Buscar…      │ ← Conversas (mobile)      │ Contexto         │
+│ Buscar…      │ ← Conversas (mobile)      │ ‹ Expandir       │
 │              │ Nome contato              │ contato + fone   │
 │ ● Nome       │ condo · canal        DEV  │ Condomínio       │
 │   preview    │                           │ Chamado #PROT    │
@@ -374,7 +374,7 @@ MOBILE: (lista | thread) à esquerda + contexto fixo à direita
 
 - [ ] Larguras 280/300 vs conteúdo truncado
 - [ ] Composer: Anexar + Enviar visíveis, wrap gap-2
-- [ ] Bolhas vs nota interna amber
+- [x] Bolhas no padrão WhatsApp: enviada verde, recebida branca, falha vermelho claro, fundo bege; nota interna âmbar
 - [ ] FilterChip ativo vs hierarquia título
 - [ ] Atualizar chamado no contexto, não no cabeçalho
 
@@ -641,7 +641,7 @@ Sem selo ICP, páginas ou hash. Campos só os que a API devolve.
 └────────────────────────────────────────────────────────────┘
 ```
 
-Só admin: Nova categoria, Excluir vazia, Novo documento. Sem LLM.
+Só admin: Nova categoria, Excluir vazia, Novo documento. Sem chat de LLM nesta tela; arquivo indexado entra na análise do atendimento como regra geral.
 
 ### Checklist auditoria — Documentos do sistema
 

@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { isAiRagEnabled } from "@/lib/ai/flags";
 import { isUniqueConflict, prismaErrorCode } from "@/lib/ai/errors";
+import { officeDocumentRagEligible } from "@/lib/ai/rag-eligibility";
 
 export type IndexEnqueueInput = {
   documentId: string;
@@ -24,9 +25,18 @@ export async function enqueueDocumentIndex(
   try {
     const doc = await db.officeDocument.findFirst({
       where: { id: input.documentId },
-      select: { id: true, contentRevision: true },
+      select: {
+        id: true,
+        contentRevision: true,
+        ragEnabled: true,
+        effectiveFrom: true,
+        effectiveUntil: true,
+        mime: true,
+        kind: true,
+      },
     });
     if (!doc) return { queued: false, reason: "error" };
+    if (!officeDocumentRagEligible(doc)) return { queued: false, reason: "noop" };
     await db.aiJob.create({
       data: {
         type: "ai.document.ingest",
@@ -43,6 +53,39 @@ export async function enqueueDocumentIndex(
   } catch (error) {
     if (isUniqueConflict(error)) return { queued: true, reason: "queued" };
     console.error(`[ai] document index errorCode=${prismaErrorCode(error)}`);
+    return { queued: false, reason: "error" };
+  }
+}
+
+export function systemDocumentIndexKey(systemDocumentId: string) {
+  return `system-document:${systemDocumentId}`;
+}
+
+export async function enqueueSystemDocumentIndex(
+  systemDocumentId: string,
+  db: PrismaClient = defaultPrisma,
+): Promise<IndexEnqueueResult> {
+  if (!isAiRagEnabled()) return { queued: false, reason: "noop" };
+  try {
+    const doc = await db.systemDocument.findFirst({ where: { id: systemDocumentId }, select: { id: true } });
+    if (!doc) return { queued: false, reason: "error" };
+    await db.aiJob.create({
+      data: {
+        type: "ai.system_document.ingest",
+        idempotencyKey: systemDocumentIndexKey(doc.id),
+        officeDocumentId: null,
+        payload: { systemDocumentId: doc.id },
+        status: "queued",
+      },
+    });
+    await db.systemDocument.update({
+      where: { id: doc.id },
+      data: { ingestStatus: "pending_index" },
+    });
+    return { queued: true, reason: "queued" };
+  } catch (error) {
+    if (isUniqueConflict(error)) return { queued: true, reason: "queued" };
+    console.error(`[ai] system document index errorCode=${prismaErrorCode(error)}`);
     return { queued: false, reason: "error" };
   }
 }

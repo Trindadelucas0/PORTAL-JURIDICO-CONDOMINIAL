@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fe4835c8-9fc4-4c68-af1b-e0d1c483d1d6",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\01-mensagem-resposta.workflow.json",
+  "output": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\01-mensagem-resposta.html",
+  "specification": {
+    "sha256": "f3f414eb589e6701581e9ad17b693c3610b9879bc1c872412f064a7c9af7c918",
+    "bytes": 32879
+  },
+  "artifact": {
+    "sha256": "dbe2ce1cd5bfa1493fc365a55b00044726eb9268f2bd7ab3bb5f01b713729345",
+    "bytes": 761344
+  }
+}

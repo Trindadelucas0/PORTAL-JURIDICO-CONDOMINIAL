@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "dataflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\02-documento-fonte.dataflow.json",
+    "sha256": "420e03ec31f62663fb35875e519d013171202dd14ed54a300a8f6db2bb700324",
+    "bytes": 31584
+  },
+  "artifact": {
+    "path": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\02-documento-fonte.html",
+    "sha256": "c3078e51280e34c5cc127df6a1f685448edbfe4e2489de94f2c80dcfb5f95e15",
+    "bytes": 753832
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\02-documento-fonte.finalize.json",
+    "summaryReceipt": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\02-documento-fonte.finalize-summary.json",
+    "browserCheckReceipt": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\02-documento-fonte.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-09-28T19:16:17.693Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2420
+}

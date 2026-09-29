@@ -237,7 +237,7 @@ export function TriageAnalysisPanel({
       <div
         ref={threadScrollRef}
         onScroll={onThreadScroll}
-        className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto bg-[var(--chat-wallpaper)] px-3 py-3"
       >
         {messagesQ.isLoading ? <Skeleton className="h-20" /> : null}
         {messagesQ.isError ? (

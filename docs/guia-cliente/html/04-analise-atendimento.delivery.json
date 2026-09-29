@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "33dce030-43f3-4626-b461-f8f9a2a716a0",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\04-analise-atendimento.lifecycle.json",
+  "output": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\04-analise-atendimento.html",
+  "specification": {
+    "sha256": "6788904f18d96de4747e6212c37f771b0dfac32bc123e6ee2c4265b6b98166f3",
+    "bytes": 32811
+  },
+  "artifact": {
+    "sha256": "dee7cc437a2070814f966543c175485dde5dce17f9a5a59a4a9e22909bdafff2",
+    "bytes": 763281
+  }
+}

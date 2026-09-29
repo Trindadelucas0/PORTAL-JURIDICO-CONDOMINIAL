@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6b1f09cb-44c2-45bd-99ab-e2e6e04ad301",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\03-nao-vinculado.workflow.json",
+  "output": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\03-nao-vinculado.html",
+  "specification": {
+    "sha256": "42e148f23db57af89a601983855874cd0791d999de60c398b75838ca98ca2722",
+    "bytes": 33249
+  },
+  "artifact": {
+    "sha256": "b5655d27ac10ca4b2ef23958c07d4d05e6acce05644df21bd6b84c8c6d9a8c33",
+    "bytes": 759564
+  }
+}

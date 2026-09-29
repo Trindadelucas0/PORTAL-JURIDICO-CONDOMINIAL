@@ -59,6 +59,8 @@ export type FluxoBuildInput = {
   condominioIdentificado: boolean;
   mensagem: FluxoMensagem | null;
   mensagensCarregadas: number;
+  /** Mensagens marcadas que entraram no pacote. Sem seleção, vale o teto de 12. */
+  mensagensNoPacote?: number | null;
   memorySummary: string | null;
   memoryVersion: number | null;
   memoryCreatedAt: string | null;
@@ -146,7 +148,10 @@ export function buildAnalysisFluxo(input: FluxoBuildInput): AnalysisFluxo {
     mensagem: input.mensagem,
     condominioNome: input.condominioNome?.trim() ? input.condominioNome.trim() : null,
     condominioIdentificado: input.condominioIdentificado,
-    mensagensAnalisadas: Math.min(Math.max(0, input.mensagensCarregadas), MODEL_MESSAGE_LIMIT),
+    mensagensAnalisadas:
+      input.mensagensNoPacote != null
+        ? Math.max(0, input.mensagensNoPacote)
+        : Math.min(Math.max(0, input.mensagensCarregadas), MODEL_MESSAGE_LIMIT),
     memoriaUtilizada,
     documentosDisponiveis: ingestao ? somaIngestao(ingestao) : 0,
     documentosRecuperados: documentosDistintos(input.chunks),

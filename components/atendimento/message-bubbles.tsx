@@ -1,3 +1,4 @@
+import { isHumanReviewFallback } from "@/lib/ai/prompts/inbound-v2";
 import { groupMessagesByDayAndSender } from "@/lib/ui/message-groups";
 import { formatWhen } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -38,18 +39,28 @@ function timeOnly(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Rascunho com a frase de revisão humana não é resposta ao cliente: não vira bolha. */
+export function isHiddenReviewDraft(m: Pick<MessageBubbleItem, "body" | "direction" | "visibility" | "sendStatus">): boolean {
+  return m.visibility === "publica" && m.direction === "out" && m.sendStatus === "draft" && isHumanReviewFallback(m.body);
+}
+
 export function MessageBubbles({
   messages,
   onReply,
   onResend,
   resendPending,
+  selectedIds,
+  onToggleSelect,
 }: {
   messages: MessageBubbleItem[];
   onReply?: (message: MessageBubbleItem) => void;
   onResend?: (messageId: string) => void;
   resendPending?: boolean;
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelect?: (messageId: string) => void;
 }) {
-  const days = groupMessagesByDayAndSender(messages);
+  const days = groupMessagesByDayAndSender(messages.filter((m) => !isHiddenReviewDraft(m)));
+  const selectable = Boolean(selectedIds && onToggleSelect);
 
   return (
     <div className="space-y-5">
@@ -57,7 +68,7 @@ export function MessageBubbles({
         <div key={day.dayKey} className="space-y-3">
           <div className="flex items-center gap-3" role="separator" aria-label={day.label}>
             <span className="h-px flex-1 bg-border" />
-            <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{day.label}</span>
+            <span className="text-[11px] font-medium tracking-wide text-[var(--bubble-meta)] uppercase">{day.label}</span>
             <span className="h-px flex-1 bg-border" />
           </div>
           {day.clusters.map((cluster) => {
@@ -67,7 +78,7 @@ export function MessageBubbles({
                   {cluster.items.map((m) => (
                     <div
                       key={m.id}
-                      className="animar-entrada w-full border-l-2 border-amber-500/70 bg-amber-50/80 px-3 py-2 text-sm text-amber-950"
+                      className="animar-entrada w-full border-l-2 border-amber-500/70 bg-amber-50 px-3 py-2 text-sm text-amber-950"
                     >
                       <span className="mr-1.5 text-[10px] font-semibold tracking-wide text-amber-700 uppercase">
                         Interno
@@ -113,6 +124,7 @@ export function MessageBubbles({
             }
 
             const outgoing = cluster.side === "out" || cluster.side === "failed";
+            const failed = cluster.side === "failed";
             return (
               <div
                 key={cluster.key}
@@ -120,19 +132,19 @@ export function MessageBubbles({
               >
                 {cluster.items.map((m, idx) => {
                   const first = idx === 0;
-                  const last = idx === cluster.items.length - 1;
+                  const selected = Boolean(selectedIds?.has(m.id));
                   return (
                     <div
                       key={m.id}
                       className={cn(
-                        "animar-entrada px-2.5 py-1.5 text-sm leading-snug",
-                        outgoing
-                          ? "bg-[color-mix(in_srgb,var(--brand)_10%,white)] text-foreground"
-                          : "bg-muted/60 text-foreground",
-                        first && last && "rounded-md",
-                        first && !last && (outgoing ? "rounded-t-md rounded-bl-md" : "rounded-t-md rounded-br-md"),
-                        !first && last && (outgoing ? "rounded-b-md rounded-tl-md" : "rounded-b-md rounded-tr-md"),
-                        !first && !last && (outgoing ? "rounded-l-md" : "rounded-r-md"),
+                        "animar-entrada rounded-lg border px-2.5 py-1.5 text-sm leading-snug text-foreground shadow-sm",
+                        failed
+                          ? "border-red-200 bg-red-50"
+                          : outgoing
+                            ? "border-[var(--bubble-out-border)] bg-[var(--bubble-out)]"
+                            : "border-border bg-card",
+                        first && (outgoing ? "rounded-tr-none" : "rounded-tl-none"),
+                        selected && "ring-1 ring-[var(--brand)]",
                       )}
                     >
                       {m.replyTo ? (
@@ -140,11 +152,20 @@ export function MessageBubbles({
                           {m.replyTo.body}
                         </p>
                       ) : null}
+                      {selectable ? (
+                        <input
+                          type="checkbox"
+                          className="mr-1.5 size-3.5 cursor-pointer align-[-2px] accent-[var(--brand)]"
+                          checked={selected}
+                          aria-label={`Marcar mensagem das ${timeOnly(m.createdAt)} para o resumo`}
+                          onChange={() => onToggleSelect?.(m.id)}
+                        />
+                      ) : null}
                       <span className="whitespace-pre-wrap">{m.body}</span>
                       {(m.attachments ?? []).map((att) => (
                         <AttachmentView key={att.storageKey} att={att} outgoing={outgoing} />
                       ))}
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-[var(--bubble-meta)]">
                         {m.automated ? (
                           <span>Sistema · Automático · {timeOnly(m.createdAt)}</span>
                         ) : (

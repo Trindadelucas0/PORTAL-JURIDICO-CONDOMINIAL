@@ -7,6 +7,7 @@ import { conflict, forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { writeAudit } from "@/lib/services/audit-service";
+import { enqueueSystemDocumentIndex } from "@/lib/search/document-index-port";
 
 export const categoryNomeSchema = z.object({
   nome: z.string().trim().min(2).max(80),
@@ -184,6 +185,7 @@ export function createSystemDocumentService(db: PrismaClient = defaultPrisma) {
           originalName: doc.originalName,
         },
       });
+      await enqueueSystemDocumentIndex(doc.id, db);
       return doc;
     },
 

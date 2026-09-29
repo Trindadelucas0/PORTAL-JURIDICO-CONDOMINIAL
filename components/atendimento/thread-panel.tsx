@@ -8,10 +8,12 @@ import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
-import type { CopilotIndex } from "@/lib/ai/copilot-view";
+import { RespostaSugerida } from "@/components/chamados/ai-summary-body";
+import { presentCopilotRevision, type CopilotIndex } from "@/lib/ai/copilot-view";
+import { isHumanReviewFallback } from "@/lib/ai/prompts/inbound-v2";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
+import { isHiddenReviewDraft, MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
@@ -32,6 +34,8 @@ export type ThreadConversation = {
 };
 
 type Message = MessageBubbleItem;
+
+const NO_SELECTION: ReadonlySet<string> = new Set();
 
 function mergeById(older: Message[], newer: Message[]): Message[] {
   const map = new Map<string, Message>();
@@ -80,15 +84,33 @@ export function ThreadPanel({
   });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
+  const [selectionBag, setSelectionBag] = useState<{ id: string | null; ids: ReadonlySet<string> }>({
+    id: conversationId,
+    ids: new Set(),
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number | null>(null);
 
   const older = olderBag.id === conversationId ? olderBag.messages : [];
   const olderPage = olderBag.id === conversationId ? olderBag.page : 1;
+  const selectedIds = selectionBag.id === conversationId ? selectionBag.ids : NO_SELECTION;
+
+  const toggleSelect = useCallback(
+    (messageId: string) => {
+      setSelectionBag((prev) => {
+        const ids = new Set(prev.id === conversationId ? prev.ids : []);
+        if (ids.has(messageId)) ids.delete(messageId);
+        else ids.add(messageId);
+        return { id: conversationId, ids };
+      });
+    },
+    [conversationId],
+  );
 
   useLayoutEffect(() => {
     if (olderBag.id === conversationId) return;
     setOlderBag({ id: conversationId, messages: [], page: 1 });
+    setSelectionBag({ id: conversationId, ids: new Set() });
     setOlderError(null);
     setReplyTo(null);
   }, [conversationId, olderBag.id]);
@@ -108,8 +130,12 @@ export function ThreadPanel({
   });
   const aiOn = Boolean(showAiActions && aiSummary.data?.data.enabled);
   const aiAnalyzing = Boolean(aiSummary.data?.data.analyzing);
+  const aiCurrent = aiOn && aiSummary.data?.data.current ? presentCopilotRevision(aiSummary.data.data.current) : null;
+  const suggested = aiCurrent?.resposta.texto?.trim() ?? "";
+  const showSuggestedBar = Boolean(aiCurrent && suggested && !isHumanReviewFallback(suggested));
   const runAi = useMutation({
-    mutationFn: () => api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
+    mutationFn: (messageIds: string[]) =>
+      api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify({ messageIds }) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["conversation-ai-summary", conversationId] });
     },
@@ -208,6 +234,7 @@ export function ThreadPanel({
 
   const user = me.data?.data.user;
   const canApprove = user?.role === "admin";
+  const canSend = Boolean(user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)));
 
   return (
     <section className={cn("flex h-full min-h-0 flex-col overflow-hidden", hidden && "hidden lg:flex")}>
@@ -256,10 +283,10 @@ export function ThreadPanel({
               type="button"
               size="sm"
               variant="secondary"
-              disabled={!conversation || runAi.isPending || aiAnalyzing}
-              onClick={() => runAi.mutate()}
+              disabled={!conversation || runAi.isPending || aiAnalyzing || selectedIds.size === 0}
+              onClick={() => runAi.mutate([...selectedIds])}
             >
-              {aiAnalyzing ? "Em análise" : "Rodar IA"}
+              {aiAnalyzing ? "Em análise" : `Gerar resumo (${selectedIds.size})`}
             </Button>
           </div>
         ) : null}
@@ -281,7 +308,7 @@ export function ThreadPanel({
           <div
             ref={scrollRef}
             onScroll={onScroll}
-            className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto px-4 py-3"
+            className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto bg-[var(--chat-wallpaper)] px-4 py-3"
           >
             {messages.isLoading ? <Skeleton className="h-20" /> : null}
             {!messages.isLoading ? (
@@ -304,13 +331,15 @@ export function ThreadPanel({
                   onReply={(m) => setReplyTo(m)}
                   onResend={canApprove ? (id) => resend.mutate(id) : undefined}
                   resendPending={resend.isPending}
+                  selectedIds={aiOn ? selectedIds : undefined}
+                  onToggleSelect={aiOn ? toggleSelect : undefined}
                 />
               </div>
             ) : null}
           </div>
           {canApprove
             ? allMessages
-                .filter((m) => m.visibility === "publica" && m.sendStatus === "draft")
+                .filter((m) => m.visibility === "publica" && m.sendStatus === "draft" && !isHiddenReviewDraft(m))
                 .slice(0, 1)
                 .map((m) => (
                   <ApprovalPanel
@@ -332,6 +361,14 @@ export function ThreadPanel({
             </div>
           ) : null}
           {resend.isError && !canApprove ? <ErrorBanner message={(resend.error as Error).message} /> : null}
+          {showSuggestedBar && aiCurrent && conversationId ? (
+            <RespostaSugerida
+              revision={aiCurrent}
+              draftPath={`/api/conversations/${conversationId}/ai-draft`}
+              canSend={canSend}
+              variant="bar"
+            />
+          ) : null}
           <MessageComposer
             user={user}
             allowPublicSend={allowPublicSend}

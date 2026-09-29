@@ -1,11 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
 import {
   AnaliseInterna,
   AnaliseInterrompida,
+  ConfidenceBadge,
   ContextoUtilizado,
   DocumentosConsultados,
   EvidenciaUtilizada,
@@ -14,31 +15,20 @@ import {
   MemoriaUtilizada,
   MensagemCliente,
   ProximaAcao,
-  RespostaSugerida,
-  confidenceLabel,
+  RiskBadge,
   intentLabel,
-  riskLabel,
 } from "@/components/chamados/ai-summary-body";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
 import { presentCopilotRevision, type CopilotHistoryItem, type CopilotIndex, type CopilotRevisionView } from "@/lib/ai/copilot-view";
 import { formatWhen } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 
-export function AiContextSummary({
-  conversationId,
-  canSend,
-  draftPath,
-}: {
-  conversationId: string;
-  canSend: boolean;
-  draftPath: string;
-}) {
-  const qc = useQueryClient();
-  const toast = useToast();
+const MARCAR_E_GERAR = "Marque mensagens no chat e use Gerar resumo.";
+
+export function AiContextSummary({ conversationId }: { conversationId: string }) {
   const [open, setOpen] = useState(false);
   const summaryPath = `/api/conversations/${conversationId}/ai-summary`;
 
@@ -51,14 +41,6 @@ export function AiContextSummary({
     enabled: Boolean(conversationId),
     queryFn: () => api<CopilotIndex>(summaryPath),
     ...livePollQuery,
-  });
-
-  const runAi = useMutation({
-    mutationFn: () => api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["conversation-ai-summary", conversationId] });
-    },
-    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível rodar a IA"),
   });
 
   if (summary.data?.data.enabled === false) return null;
@@ -85,16 +67,7 @@ export function AiContextSummary({
     return (
       <ResumoShell>
         <p className="mt-2 text-sm text-[var(--muted)]">Não foi possível gerar o resumo.</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="mt-2"
-          disabled={runAi.isPending}
-          onClick={() => runAi.mutate()}
-        >
-          {runAi.isPending ? "Em análise" : "Tentar novamente"}
-        </Button>
+        <p className="mt-1 text-sm text-[var(--muted)]">{MARCAR_E_GERAR}</p>
       </ResumoShell>
     );
   }
@@ -103,16 +76,7 @@ export function AiContextSummary({
     return (
       <ResumoShell>
         <p className="mt-2 text-sm text-[var(--muted)]">Análise ainda não realizada.</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="mt-2"
-          disabled={runAi.isPending || analyzing}
-          onClick={() => runAi.mutate()}
-        >
-          {runAi.isPending || analyzing ? "Em análise" : "Rodar IA"}
-        </Button>
+        <p className="mt-1 text-sm text-[var(--muted)]">{MARCAR_E_GERAR}</p>
       </ResumoShell>
     );
   }
@@ -141,14 +105,7 @@ export function AiContextSummary({
       </button>
       {open ? (
         <div id="resumo-ia-detalhes" className="min-w-0 overflow-x-hidden [&_blockquote]:break-words [&_dd]:break-words [&_h4]:break-words [&_p]:break-words">
-          <Detalhes
-            live={live}
-            summaryPath={summaryPath}
-            history={history}
-            currentVersion={currentVersion}
-            draftPath={draftPath}
-            canSend={canSend}
-          />
+          <Detalhes live={live} summaryPath={summaryPath} history={history} currentVersion={currentVersion} />
         </div>
       ) : null}
     </ResumoShell>
@@ -161,11 +118,11 @@ function ResumoShell({ children }: { children: ReactNode }) {
       id="resumo-ia"
       tabIndex={-1}
       aria-labelledby="resumo-ia-titulo"
-      className="min-w-0 overflow-x-hidden rounded-[8px] border border-[var(--border)] bg-[var(--card)] p-3 text-[var(--ink)] focus:outline-2 focus:outline-offset-2 focus:outline-[var(--brand)]"
+      className="min-w-0 overflow-x-hidden rounded-[8px] border border-[#bfdbfe] bg-[var(--status-aberto-bg)] p-3 text-[var(--ink)] focus:outline-2 focus:outline-offset-2 focus:outline-[var(--brand)]"
     >
       <div className="flex items-center gap-1.5">
-        <Sparkles className="size-3.5 shrink-0 text-[var(--brand)]" aria-hidden />
-        <h3 id="resumo-ia-titulo" className="text-[11px] font-semibold tracking-wider text-[var(--muted)] uppercase">
+        <Sparkles className="size-3.5 shrink-0 text-[var(--status-aberto)]" aria-hidden />
+        <h3 id="resumo-ia-titulo" className="text-[11px] font-semibold tracking-wider text-[var(--status-aberto)] uppercase">
           Resumo IA
         </h3>
       </div>
@@ -179,25 +136,29 @@ function Sintese({ revision }: { revision: CopilotRevisionView }) {
   const confianca = revision.tecnica.confianca?.trim();
   return (
     <>
-      <p className="mt-2 line-clamp-4 text-sm leading-relaxed break-words">
-        {revision.problema || "Não foi possível determinar o problema com as informações disponíveis."}
+      <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
+        {revision.contexto.trim() ||
+          revision.problema ||
+          "Não foi possível determinar o problema com as informações disponíveis."}
       </p>
-      <dl className="mt-2 space-y-1 text-xs">
-        <div className="flex min-w-0 justify-between gap-3">
+      <dl className="mt-3 space-y-1.5 rounded-[8px] border border-[#bfdbfe] bg-card px-3 py-2 text-xs">
+        <div className="flex min-w-0 items-center justify-between gap-3">
           <dt className="text-[var(--muted)]">Intenção</dt>
           <dd className="min-w-0 text-right break-words">{intentLabel(revision.tecnica.intencao)}</dd>
         </div>
         {risco ? (
-          <div className="flex min-w-0 justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <dt className="text-[var(--muted)]">Risco</dt>
-            <dd className="min-w-0 text-right break-words">{riskLabel(risco)}</dd>
+            <dd className="min-w-0 text-right">
+              <RiskBadge value={risco} />
+            </dd>
           </div>
         ) : null}
         {confianca ? (
-          <div className="flex min-w-0 justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <dt className="text-[var(--muted)]">Confiança</dt>
-            <dd className="min-w-0 text-right break-words">
-              {confidenceLabel(confianca, revision.tecnica.confiancaPercentual)}
+            <dd className="min-w-0 text-right">
+              <ConfidenceBadge confianca={confianca} percentual={revision.tecnica.confiancaPercentual} />
             </dd>
           </div>
         ) : null}
@@ -211,15 +172,11 @@ function Detalhes({
   summaryPath,
   history,
   currentVersion,
-  draftPath,
-  canSend,
 }: {
   live: CopilotRevisionView;
   summaryPath: string;
   history: CopilotHistoryItem[];
   currentVersion: number | null;
-  draftPath: string;
-  canSend: boolean;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -265,7 +222,6 @@ function Detalhes({
           <ContextoUtilizado revision={revision} recorte="contagens" />
           <EvidenciaUtilizada revision={revision} />
           <ProximaAcao revision={revision} />
-          <RespostaSugerida revision={revision} draftPath={draftPath} canSend={canSend} />
           <MensagemCliente revision={revision} />
           <AnaliseInterna revision={revision} />
           <DocumentosConsultados revision={revision} />

@@ -1,12 +1,18 @@
 import { prisma } from "@/lib/db/prisma";
 import { processConversation } from "@/lib/ai/process-conversation";
 import { retentionIdempotencyKey, runRetentionPurge } from "@/lib/ai/retention";
-import { ingestOfficeDocument } from "./ingest-document";
+import { ingestOfficeDocument, ingestSystemDocument } from "./ingest-document";
 import { downloadInboundMedia } from "./download-inbound-media";
 
 const GLOBAL_CONCURRENCY = 2;
 let active = 0;
 const running = new Set<string>();
+
+function systemDocumentIdFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as { systemDocumentId?: unknown }).systemDocumentId;
+  return typeof value === "string" && value.trim() ? value : null;
+}
 
 async function rescueStale() {
   const cutoff = new Date(Date.now() - 3 * 60 * 1000);
@@ -62,6 +68,29 @@ async function tick() {
         await prisma.aiJob.update({ where: { id: job.id }, data: { status: "running", lockedAt: new Date() } });
         try {
           await ingestOfficeDocument(prisma, documentId);
+          await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+        } catch {
+          await prisma.aiJob.update({
+            where: { id: job.id },
+            data: { status: "failed", lockedAt: null, lastErrorCode: "INGEST" },
+          });
+        }
+      })().finally(() => {
+        active -= 1;
+      });
+      continue;
+    }
+    if (job.type === "ai.system_document.ingest") {
+      const systemDocumentId = systemDocumentIdFromPayload(job.payload);
+      if (!systemDocumentId) {
+        await prisma.aiJob.update({ where: { id: job.id }, data: { status: "failed", lastErrorCode: "PAYLOAD" } });
+        continue;
+      }
+      active += 1;
+      void (async () => {
+        await prisma.aiJob.update({ where: { id: job.id }, data: { status: "running", lockedAt: new Date() } });
+        try {
+          await ingestSystemDocument(prisma, systemDocumentId);
           await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
         } catch {
           await prisma.aiJob.update({

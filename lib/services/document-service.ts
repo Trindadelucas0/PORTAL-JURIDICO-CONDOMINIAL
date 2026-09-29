@@ -7,7 +7,9 @@ import { isAdmin } from "@/lib/auth/guards";
 import { requireTicketAccess } from "@/lib/auth/ticket-access";
 import { DOCUMENT_KIND_VALUES, type DocumentKindValue } from "@/lib/documents/kinds";
 import { localDiskStorage } from "@/lib/storage/local-disk";
+import { isMarkdownFile } from "@/lib/storage/provider";
 import { noopDocumentIndex } from "@/lib/search/document-index-port";
+import { officeDocumentRagEligible } from "@/lib/ai/rag-eligibility";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { writeAudit } from "@/lib/services/audit-service";
 import { mustRejectScan, scanBuffer } from "@/lib/security/clamav-scan";
@@ -26,6 +28,15 @@ export const documentFichaSchema = z.object({
 });
 
 export type DocumentFichaInput = z.infer<typeof documentFichaSchema>;
+
+function isUtf8Text(buffer: Buffer) {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    return !text.includes("\u0000");
+  } catch {
+    return false;
+  }
+}
 
 async function staffAssignedCondoIds(db: PrismaClient, userId: string) {
   const tickets = await db.ticket.findMany({
@@ -159,8 +170,24 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         throw unprocessable(scan === "infected" ? "Arquivo recusado pelo antivírus" : "Falha ao verificar o arquivo");
       }
 
-      const stored = await localDiskStorage.save(input.file.buffer, input.file.name, input.file.mime);
+      const markdown = isMarkdownFile(input.file.name, input.file.mime);
+      if (markdown && !isUtf8Text(input.file.buffer)) {
+        throw unprocessable("Arquivo .md precisa ser texto UTF-8");
+      }
+      const stored = await localDiskStorage.save(
+        input.file.buffer,
+        input.file.name,
+        markdown ? "text/markdown" : input.file.mime,
+        { officeDocument: true },
+      );
       const sha256 = createHash("sha256").update(input.file.buffer).digest("hex");
+      const ragEnabled = officeDocumentRagEligible({
+        ragEnabled: true,
+        effectiveFrom: null,
+        effectiveUntil: null,
+        mime: stored.mime,
+        kind: ficha.kind,
+      });
       const doc = await db.officeDocument.create({
         data: {
           condominiumId: condo.id,
@@ -176,6 +203,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
           originalName: stored.originalName,
           sha256,
           ingestStatus: "stored",
+          ragEnabled,
         },
       });
       await noopDocumentIndex.enqueue({ documentId: doc.id, storageKey: doc.storageKey });
@@ -223,6 +251,49 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         after: { clientSendable: updated.clientSendable },
       });
       return updated;
+    },
+
+    async patchRagEnabled(user: User, documentId: string, ragEnabled: boolean) {
+      if (!isAdmin(user)) throw forbidden("Somente administradores ligam a busca da IA");
+      const doc = await db.officeDocument.findFirst({ where: { id: documentId } });
+      if (!doc) throw notFound("Documento não encontrado");
+      if (ragEnabled && !officeDocumentRagEligible({ ...doc, ragEnabled: true })) {
+        throw unprocessable("Áudio e documento fora da vigência não entram na busca");
+      }
+      const updated = await db.officeDocument.update({
+        where: { id: doc.id },
+        data: { ragEnabled },
+      });
+      if (!ragEnabled) {
+        await db.documentChunk.updateMany({
+          where: { officeDocumentId: doc.id },
+          data: { active: false },
+        });
+        if (updated.ingestStatus === "pending_index" || updated.ingestStatus === "indexed") {
+          await db.officeDocument.update({
+            where: { id: doc.id },
+            data: { ingestStatus: "stored" },
+          });
+        }
+      } else {
+        await noopDocumentIndex.enqueue({ documentId: doc.id, storageKey: doc.storageKey });
+        await db.aiJob.updateMany({
+          where: {
+            type: "ai.document.ingest",
+            idempotencyKey: `document:${doc.id}:rev:${doc.contentRevision}`,
+          },
+          data: { status: "queued", lockedAt: null, lastErrorCode: null, runAfter: new Date() },
+        });
+      }
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "document.rag",
+        entityType: "document",
+        entityId: doc.id,
+        before: { ragEnabled: doc.ragEnabled },
+        after: { ragEnabled },
+      });
+      return db.officeDocument.findFirstOrThrow({ where: { id: doc.id } });
     },
 
     async queueWhatsAppDraft(user: User, documentId: string) {

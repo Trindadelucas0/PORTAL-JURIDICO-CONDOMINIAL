@@ -146,6 +146,7 @@ describe("schema contract", () => {
     expect(schema).toMatch(/model Ticket\b/);
     expect(schema).toMatch(/model DocumentChunk\b/);
     expect(schema).toMatch(/clientSendable\s+Boolean\s+@default\(false\)/);
+    expect(schema).toMatch(/ragEnabled\s+Boolean\s+@default\(true\)/);
     const chunk = schema.match(/model DocumentChunk \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(chunk).toMatch(/embedding\s+Unsupported\("vector\(1536\)"\)/);
     const rest = schema.replace(/model DocumentChunk \{[\s\S]*?\n\}/, "");

@@ -14,6 +14,8 @@
     "db:pgvector-up": "docker compose up -d juricon-postgres-dev",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "db:seed-documentos-demo": "tsx --env-file=.env prisma/seed-documentos-demo.ts",
+    "db:backfill-rag": "tsx --env-file=.env prisma/backfill-rag-vigencia.ts",
+    "db:backfill-system-docs": "tsx --env-file=.env prisma/backfill-system-document-ingest.ts",
     "db:reset-operacao": "tsx --env-file=.env prisma/reset-operacao.ts",
     "postinstall": "prisma generate"
   },

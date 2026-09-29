@@ -5,6 +5,7 @@ import {
   isAllowedMime,
   MAX_UPLOAD_BYTES,
   sanitizeFileName,
+  type SaveOptions,
   type StorageProvider,
   type StoredFile,
 } from "@/lib/storage/provider";
@@ -13,11 +14,11 @@ import { unprocessable } from "@/lib/api/errors";
 const ROOT = path.join(process.cwd(), "uploads");
 
 export class LocalDiskStorage implements StorageProvider {
-  async save(buffer: Buffer, originalName: string, mime: string): Promise<StoredFile> {
+  async save(buffer: Buffer, originalName: string, mime: string, options: SaveOptions = {}): Promise<StoredFile> {
     if (buffer.length > MAX_UPLOAD_BYTES) {
       throw unprocessable("Arquivo excede 8 MB");
     }
-    if (!isAllowedMime(mime)) {
+    if (!isAllowedMime(mime, options)) {
       throw unprocessable("Tipo de arquivo não permitido");
     }
     const safe = sanitizeFileName(originalName);

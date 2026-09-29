@@ -35,6 +35,7 @@ type Doc = {
   createdAt?: string;
   ticketId?: string | null;
   clientSendable?: boolean;
+  ragEnabled?: boolean;
   condominium: { id?: string; nome: string };
 };
 
@@ -49,12 +50,27 @@ type Summary = {
 function DocumentSideFicha({ doc }: { doc: Doc }) {
   const toast = useToast();
   const qc = useQueryClient();
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api<{ user: { role: string } }>("/api/auth/me"),
+  });
+  const admin = me.data?.data.user.role === "admin";
   const [clientSendable, setClientSendable] = useState(Boolean(doc.clientSendable));
+  const [ragEnabled, setRagEnabled] = useState(Boolean(doc.ragEnabled));
   const patchSend = useMutation({
     mutationFn: (next: boolean) =>
       api(`/api/documents/${doc.id}`, { method: "PATCH", body: JSON.stringify({ clientSendable: next }) }),
     onSuccess: (_res, next) => {
       setClientSendable(next);
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error) => toast((error as Error).message),
+  });
+  const patchRag = useMutation({
+    mutationFn: (next: boolean) =>
+      api(`/api/documents/${doc.id}`, { method: "PATCH", body: JSON.stringify({ ragEnabled: next }) }),
+    onSuccess: (_res, next) => {
+      setRagEnabled(next);
       qc.invalidateQueries({ queryKey: ["documents"] });
     },
     onError: (error) => toast((error as Error).message),
@@ -115,6 +131,18 @@ function DocumentSideFicha({ doc }: { doc: Doc }) {
       </label>
       {!clientSendable ? (
         <p className="text-xs text-muted-foreground">Marque para permitir envio ao cliente</p>
+      ) : null}
+      {admin ? (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={ragEnabled}
+            disabled={patchRag.isPending}
+            onChange={(e) => patchRag.mutate(e.target.checked)}
+          />
+          <span>Permitir busca da IA</span>
+        </label>
       ) : null}
       <Button
         type="button"

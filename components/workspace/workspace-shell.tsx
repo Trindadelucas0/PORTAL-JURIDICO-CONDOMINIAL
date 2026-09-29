@@ -5,16 +5,24 @@ export function WorkspaceShell({
   className,
   cols = "inbox",
   contextOpen = true,
+  contextWide = false,
 }: {
   children: React.ReactNode;
   className?: string;
   cols?: "inbox" | "triage" | "two" | "unlinked";
   contextOpen?: boolean;
+  contextWide?: boolean;
 }) {
   const grid =
     cols === "inbox"
       ? contextOpen
-        ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[280px_minmax(0,1fr)_300px]"
+        ? cn(
+            "grid-cols-[minmax(0,1fr)_200px] lg:transition-[grid-template-columns] lg:duration-[var(--motion-normal)] lg:ease-[var(--ease-out)]",
+            // A conversa (coluna do meio) nunca fica abaixo de 320px: 280px da lista + 320px.
+            contextWide
+              ? "lg:grid-cols-[280px_minmax(0,1fr)_max(300px,min(640px,calc(100%_-_600px)))]"
+              : "lg:grid-cols-[280px_minmax(0,1fr)_300px]",
+          )
         : "grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]"
       : cols === "unlinked"
         ? "grid-cols-[minmax(0,1fr)_200px] lg:grid-cols-[280px_minmax(0,1fr)_240px]"

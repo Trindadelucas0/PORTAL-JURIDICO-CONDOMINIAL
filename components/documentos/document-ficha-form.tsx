@@ -106,7 +106,7 @@ export function DocumentFichaForm({
             id="doc-file"
             type="file"
             className="mt-1 w-full text-sm"
-            accept="image/jpeg,image/png,application/pdf,audio/*"
+            accept="image/jpeg,image/png,application/pdf,audio/*,.md,text/markdown"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
             required
           />

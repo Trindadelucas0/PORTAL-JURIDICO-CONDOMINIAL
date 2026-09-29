@@ -168,6 +168,7 @@ model Condominium {
   tickets       Ticket[]
   documents     OfficeDocument[]
   documentChunks DocumentChunk[]
+  aiRules       AiCondominiumRule[]
 }
 
 model Contact {
@@ -373,10 +374,18 @@ model OfficeDocument {
   indexedAt     DateTime?
   clientSendable Boolean     @default(false)
   contentRevision Int        @default(1)
+  ragEnabled    Boolean      @default(true)
+  effectiveFrom DateTime?
+  effectiveUntil DateTime?
+  ragPriority   Int          @default(0)
+  version       Int          @default(1)
+  supersedesDocumentId String? @db.Uuid
   createdAt     DateTime     @default(now())
   condominium   Condominium  @relation(fields: [condominiumId], references: [id])
   ticket        Ticket?      @relation(fields: [ticketId], references: [id])
   uploadedBy    User         @relation(fields: [uploadedById], references: [id])
+  supersedesDocument OfficeDocument? @relation("DocumentVersion", fields: [supersedesDocumentId], references: [id])
+  supersededBy  OfficeDocument[] @relation("DocumentVersion")
   chunks        DocumentChunk[]
   aiMemoryDocuments AiTicketMemoryDocument[]
 
@@ -406,6 +415,8 @@ model SystemDocument {
   sizeBytes     Int
   originalName  String
   sha256        String
+  ingestStatus  IngestStatus            @default(stored)
+  indexedAt     DateTime?
   createdAt     DateTime                @default(now())
   category      SystemDocumentCategory  @relation(fields: [categoryId], references: [id])
   uploadedBy    User                    @relation(fields: [uploadedById], references: [id])
@@ -498,6 +509,18 @@ model AutomationExecution {
   @@index([ruleId, status])
 }
 
+model AiCondominiumRule {
+  id            String      @id @default(uuid()) @db.Uuid
+  condominiumId String      @db.Uuid
+  version       Int
+  body          String
+  createdAt     DateTime    @default(now())
+  condominium   Condominium @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+
+  @@unique([condominiumId, version])
+  @@index([condominiumId, version])
+}
+
 model DocumentChunk {
   id               String          @id @default(uuid()) @db.Uuid
   officeDocumentId String?         @db.Uuid
@@ -534,6 +557,7 @@ model AiJob {
   lockedAt         DateTime?
   lastErrorCode    String?
   rerun            Boolean       @default(false)
+  payload          Json?
   createdAt        DateTime      @default(now())
   conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 

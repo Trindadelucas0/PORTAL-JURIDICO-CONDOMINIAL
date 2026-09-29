@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "a56f580c-12c3-4345-ba66-4facf1a2e86d",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\05-chamado.lifecycle.json",
+  "output": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\05-chamado.html",
+  "specification": {
+    "sha256": "f04af74477a6ce5282c989d1222078caeca97e13820a36271a65cd6ff1ddd0b4",
+    "bytes": 32930
+  },
+  "artifact": {
+    "sha256": "3fe57663c5d72f54116daa53adf472e4bdcefee6ca70c14124d8e1aaef6f8c6d",
+    "bytes": 764076
+  }
+}

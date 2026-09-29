@@ -90,6 +90,25 @@ export default function CondominioFichaPage() {
   const [tab, setTab] = useState<TabId>("contatos");
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/auth/me") });
   const admin = me.data?.data.user.role === "admin";
+  const rule = useQuery({
+    queryKey: ["condo-ai-rule", id],
+    enabled: admin,
+    queryFn: () => api<{ version: number; body: string }>(`/api/condominiums/${id}/ai-rule`),
+  });
+  const [ruleDraft, setRuleDraft] = useState<string | null>(null);
+  const saveRule = useMutation({
+    mutationFn: () =>
+      api(`/api/condominiums/${id}/ai-rule`, {
+        method: "POST",
+        body: JSON.stringify({ body: ruleDraft ?? rule.data?.data.body ?? "" }),
+      }),
+    onSuccess: () => {
+      setRuleDraft(null);
+      toast("Regra gravada. Ela não autoriza acesso a outro condomínio.");
+      void qc.invalidateQueries({ queryKey: ["condo-ai-rule", id] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível gravar a regra"),
+  });
   const q = useQuery({ queryKey: ["condominium", id], queryFn: () => api<Condo>(`/api/condominiums/${id}`) });
   const audit = useQuery({
     queryKey: ["audit", "condominium", id],
@@ -258,6 +277,24 @@ export default function CondominioFichaPage() {
             ) : null}
             {save.isError ? <p className="mt-2 text-sm text-[var(--danger)]">{(save.error as Error).message}</p> : null}
           </section>
+          {admin ? (
+            <section className="border-b border-border p-4">
+              <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                Regra para a IA
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Texto do condomínio. Não substitui a política do sistema e não libera documento de outro condomínio.
+              </p>
+              <textarea
+                className="mt-3 min-h-24 w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                value={ruleDraft ?? rule.data?.data.body ?? ""}
+                onChange={(e) => setRuleDraft(e.target.value)}
+              />
+              <Button className="mt-3" type="button" disabled={saveRule.isPending} onClick={() => saveRule.mutate()}>
+                Salvar regra
+              </Button>
+            </section>
+          ) : null}
           <SectionTabs
             value={tab}
             onChange={(id) => setTab(id as TabId)}

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { isAiEnabled } from "@/lib/ai/flags";
 import { isUniqueConflict, prismaErrorCode } from "@/lib/ai/errors";
+import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { INBOUND_DEBOUNCE_MS, wakeInbound } from "@/lib/ai/queue";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -64,9 +65,20 @@ export function jobKeysNeedLatestInbound(keys: string[]): boolean {
   return keys.length === 0 || keys.every((key) => !isMessageUuid(key));
 }
 
+/** Ids marcados no Atendimento, lidos do `AiJob.payload`. Payload nulo ou inválido = sem seleção. */
+export function payloadMessageIds(payload: unknown): string[] | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const raw = (payload as { messageIds?: unknown }).messageIds;
+  if (!Array.isArray(raw)) return null;
+  const ids = [...new Set(raw.filter((id): id is string => typeof id === "string" && isMessageUuid(id)))];
+  if (!ids.length) return null;
+  return ids.slice(0, SELECTED_MESSAGE_LIMIT);
+}
+
 export async function enqueueManualInbound(
   db: Db,
   conversationId: string,
+  messageIds?: string[],
 ): Promise<{ queued: boolean }> {
   if (!isAiEnabled()) return { queued: false };
   try {
@@ -77,6 +89,7 @@ export async function enqueueManualInbound(
         conversationId,
         status: "queued",
         runAfter: new Date(),
+        ...(messageIds?.length ? { payload: { messageIds } } : {}),
       },
     });
   } catch (error) {

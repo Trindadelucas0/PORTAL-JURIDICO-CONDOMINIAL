@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { conversationIdentityLabel, conversationPhoneLabel } from "@/lib/phone/display";
 import { ExpandableRow } from "@/components/ui/expandable-row";
 import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
-import { formatAge, STATUS_LABEL } from "@/lib/ui-labels";
+import { formatAge, STATUS_LABEL, STATUS_TONE } from "@/lib/ui-labels";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -67,6 +67,7 @@ function InboxInner() {
   const [filter, setFilter] = useState<Filter>("all");
   const [mobilePane, setMobilePane] = useState<"list" | "thread">("list");
   const [editTicketId, setEditTicketId] = useState<string | null>(null);
+  const [contextWide, setContextWide] = useState(false);
   const list = useQuery({
     queryKey: ["conversations", q, filter],
     queryFn: () => {
@@ -106,9 +107,6 @@ function InboxInner() {
   });
   const meUser = me.data?.data.user;
   const admin = meUser?.role === "admin";
-  const canSend = Boolean(
-    meUser && (meUser.role === "admin" || (meUser.podeResponderCliente && !meUser.apenasRascunho)),
-  );
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -171,7 +169,7 @@ function InboxInner() {
           </FilterChip>
         </FilterBar>
       </div>
-      <WorkspaceShell cols="inbox" contextOpen>
+      <WorkspaceShell cols="inbox" contextOpen contextWide={contextWide}>
         <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             <p className="mb-2 px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Conversas</p>
@@ -299,7 +297,12 @@ function InboxInner() {
           />
         </WorkspacePane>
         <WorkspacePane>
-          <ContextPane conversation={current} onEditTicket={setEditTicketId} canSend={canSend} />
+          <ContextPane
+            conversation={current}
+            onEditTicket={setEditTicketId}
+            wide={contextWide}
+            onToggleWide={() => setContextWide((value) => !value)}
+          />
         </WorkspacePane>
       </WorkspaceShell>
       <TicketEditDrawer
@@ -334,23 +337,27 @@ function InboxInner() {
   );
 }
 
+const CONTEXT_CARD = "min-w-0 rounded-[8px] border border-border bg-card p-3";
+
 function ContextPane({
   conversation,
   onEditTicket,
-  canSend,
+  wide,
+  onToggleWide,
 }: {
   conversation?: Conversation;
   onEditTicket: (id: string) => void;
-  canSend: boolean;
+  wide: boolean;
+  onToggleWide: () => void;
 }) {
   return (
-    <ContextSummary>
+    <ContextSummary wide={wide} onToggleWide={onToggleWide}>
       {!conversation ? (
         <p className="text-muted-foreground">Selecione uma conversa.</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Contexto do contato</p>
-          <div className="flex items-center gap-3">
+          <div className={cn(CONTEXT_CARD, "flex min-w-0 items-center gap-3")}>
             <PeerAvatar
               name={conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
               avatarUrl={conversation.peerAvatarUrl}
@@ -358,7 +365,7 @@ function ContextPane({
             />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Contato</p>
-              <p className="font-medium">
+              <p className="font-medium break-words">
                 {conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -366,65 +373,77 @@ function ContextPane({
               </p>
             </div>
           </div>
-          <ContextBlock label="Condomínio">
-            {conversation.condominium?.nome ? (
-              <Link href="/condominios" className="text-[var(--brand)]">
-                {conversation.condominium.nome}
-              </Link>
-            ) : (
-              <p>—</p>
-            )}
-          </ContextBlock>
-          <ContextBlock label="Chamado">
-            {conversation.tickets?.length ? (
-              <div className="space-y-2">
-                {conversation.tickets.map((t) => (
-                  <Link key={t.id} className="block text-[var(--brand)]" href={`/chamados/${t.id}`}>
-                    #{t.protocol} · {STATUS_LABEL[t.status] || t.status}
-                  </Link>
-                ))}
-                {pickTicketForCard(conversation.tickets) ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    onClick={() => {
-                      const ticket = pickTicketForCard(conversation.tickets);
-                      if (ticket) onEditTicket(ticket.id);
-                    }}
-                  >
-                    <Pencil data-icon="inline-start" />
-                    Atualizar chamado
-                  </Button>
-                ) : null}
-              </div>
-            ) : (
-              <p>Nenhum chamado ainda</p>
-            )}
-          </ContextBlock>
-          <ContextBlock label="Triagem">
-            {conversation.triageItem ? (
-              <p>
-                {STATUS_LABEL[conversation.triageItem.status] || conversation.triageItem.status}
-                {conversation.triageItem.status === "aberto" ? (
-                  <>
-                    {" · "}
+          <div className={CONTEXT_CARD}>
+            <ContextBlock label="Condomínio">
+              {conversation.condominium?.nome ? (
+                <Link href="/condominios" className="text-[var(--brand)]">
+                  {conversation.condominium.nome}
+                </Link>
+              ) : (
+                <p>—</p>
+              )}
+            </ContextBlock>
+          </div>
+          <div className={CONTEXT_CARD}>
+            <ContextBlock label="Chamado">
+              {conversation.tickets?.length ? (
+                <div className="space-y-2">
+                  {conversation.tickets.map((t) => (
+                    <Link
+                      key={t.id}
+                      className="flex flex-wrap items-center gap-2 text-[var(--brand)]"
+                      href={`/chamados/${t.id}`}
+                    >
+                      #{t.protocol}
+                      <StatusBadge status={t.status} />
+                    </Link>
+                  ))}
+                  {pickTicketForCard(conversation.tickets) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() => {
+                        const ticket = pickTicketForCard(conversation.tickets);
+                        if (ticket) onEditTicket(ticket.id);
+                      }}
+                    >
+                      <Pencil data-icon="inline-start" />
+                      Atualizar chamado
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Nenhum chamado ainda</p>
+              )}
+            </ContextBlock>
+          </div>
+          <div className={CONTEXT_CARD}>
+            <ContextBlock label="Triagem">
+              {conversation.triageItem ? (
+                <p className="flex flex-wrap items-center gap-2">
+                  {STATUS_TONE[conversation.triageItem.status] ? (
+                    <StatusBadge status={conversation.triageItem.status} />
+                  ) : (
+                    STATUS_LABEL[conversation.triageItem.status] || conversation.triageItem.status
+                  )}
+                  {conversation.triageItem.status === "aberto" ? (
                     <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
                       Analisar
                     </Link>
-                  </>
-                ) : null}
-              </p>
-            ) : (
-              <p>—</p>
-            )}
-          </ContextBlock>
-          <AiContextSummary
-            conversationId={conversation.id}
-            canSend={canSend}
-            draftPath={`/api/conversations/${conversation.id}/ai-draft`}
-          />
-          <ExpandableRow title="Mais informações" summary="Histórico e documentos no chamado">
+                  ) : null}
+                </p>
+              ) : (
+                <p>—</p>
+              )}
+            </ContextBlock>
+          </div>
+          <AiContextSummary conversationId={conversation.id} />
+          <ExpandableRow
+            title="Mais informações"
+            summary="Histórico e documentos no chamado"
+            className="rounded-[8px] border border-border bg-card px-3"
+          >
             <p className="text-xs text-muted-foreground">
               Documentos e prazos ficam na ficha do chamado. Origem: {conversation.connection.label}.
             </p>

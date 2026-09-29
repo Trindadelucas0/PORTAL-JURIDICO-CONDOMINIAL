@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c91dab73-13a7-4b22-8b63-c9bfd24ab33b",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\diagramas\\02-documento-fonte.dataflow.json",
+  "output": "C:\\Users\\trind\\Desktop\\condominio-advogada\\PORTAL JURIDICO CONDOMINIAL\\docs\\guia-cliente\\html\\02-documento-fonte.html",
+  "specification": {
+    "sha256": "420e03ec31f62663fb35875e519d013171202dd14ed54a300a8f6db2bb700324",
+    "bytes": 31584
+  },
+  "artifact": {
+    "sha256": "c3078e51280e34c5cc127df6a1f685448edbfe4e2489de94f2c80dcfb5f95e15",
+    "bytes": 753832
+  }
+}

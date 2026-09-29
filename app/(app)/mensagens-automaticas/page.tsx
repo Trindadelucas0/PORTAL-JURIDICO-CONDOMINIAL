@@ -119,7 +119,7 @@ export default function MensagensAutomaticasPage() {
         <ErrorBanner message="Falha ao carregar automações." onRetry={() => rules.refetch()} />
       ) : null}
 
-      {!rules.isLoading && items.length === 0 ? (
+      {!rules.isLoading && !rules.isError && items.length === 0 ? (
         <EmptyState title="Nenhuma automação" hint="A regra inicial aparece depois da atualização do banco." />
       ) : null}
 
@@ -202,7 +202,7 @@ export default function MensagensAutomaticasPage() {
       {executions.isError ? (
         <ErrorBanner message="Falha ao carregar o histórico." onRetry={() => executions.refetch()} />
       ) : null}
-      {!executions.isLoading && (executions.data?.data.length ?? 0) === 0 ? (
+      {!executions.isLoading && !executions.isError && (executions.data?.data.length ?? 0) === 0 ? (
         <EmptyState title="Nenhuma execução neste período" />
       ) : null}
       {(executions.data?.data.length ?? 0) > 0 ? (

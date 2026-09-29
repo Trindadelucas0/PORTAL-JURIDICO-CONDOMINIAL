@@ -118,7 +118,21 @@ async function loadRevisionView(
         select: { id: true, title: true, storageKey: true, kind: true, contentRevision: true, ingestStatus: true },
       })
     : [];
-  const byId = new Map(documents.map((row) => [row.id, row]));
+  const officeIds = new Set(documents.map((row) => row.id));
+  const systemIds = documentIds.filter((id) => !officeIds.has(id));
+  const systemDocuments = systemIds.length
+    ? await db.systemDocument.findMany({
+        where: { id: { in: systemIds } },
+        select: { id: true, title: true, storageKey: true, ingestStatus: true },
+      })
+    : [];
+  const byId = new Map<
+    string,
+    { title: string; storageKey: string; kind: string | null; contentRevision: number | null; ingestStatus: string }
+  >([
+    ...documents.map((row) => [row.id, row] as const),
+    ...systemDocuments.map((row) => [row.id, { ...row, kind: null, contentRevision: null }] as const),
+  ]);
   return buildCopilotRevisionView({
     version: revision.version,
     createdAt: revision.createdAt,

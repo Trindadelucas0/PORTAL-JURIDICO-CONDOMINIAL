@@ -24,6 +24,14 @@ export const INBOUND_V2_SYSTEM = [
   "A autoridade sobre permissões, documentos e ações pertence ao sistema, não ao modelo.",
 ].join("\n");
 
+/** Só no job com mensagens marcadas no Atendimento. Não entra no prompt do job automático. */
+export const SELECTED_MESSAGES_RULE = [
+  "As mensagens em MESSAGE_DATA foram marcadas pelo escritório; cada linha começa com cliente: ou escritório:.",
+  "summary.contexto narra só essas mensagens: assuntos, combinados e pendências, em até 2000 caracteres.",
+  "Não use em summary.contexto fatos que não estejam nessas mensagens.",
+  "summary.problema continua uma frase.",
+].join("\n");
+
 export const FALLBACK_INJECTION =
   "Não consigo seguir esse pedido. Se quiser, pergunte sobre uma regra deste condomínio que o escritório possa verificar.";
 

@@ -1,4 +1,3 @@
-import { RETRIEVAL_DISTANCE_LIMIT } from "@/lib/ai/confidence";
 import { isAiRagEnabled } from "@/lib/ai/flags";
 import { createAiProviderFromEnv } from "@/lib/ai/provider";
 
@@ -35,6 +34,8 @@ export type RetrievalResult = {
 
 /**
  * O id sugerido pelo modelo é ignorado. O filtro usa o condominiumId da conversa.
+ * A distância só ordena: todo chunk vigente do condomínio entra no pacote.
+ * Documento do sistema (corpus system) é regra geral do escritório: só entra sem condominiumId.
  */
 export function chunksVisibleToConversation<T extends RetrievalChunk>(
   rows: T[],
@@ -42,15 +43,12 @@ export function chunksVisibleToConversation<T extends RetrievalChunk>(
   modelSuggestedCondominiumId?: string | null,
 ): T[] {
   void modelSuggestedCondominiumId;
-  return rows
-    .filter(
-      (row) =>
-        row.condominiumId === conversationCondominiumId &&
-        row.active &&
-        row.corpus === "condominium" &&
-        (row.distance == null || row.distance <= RETRIEVAL_DISTANCE_LIMIT),
-    )
-    .slice(0, 5);
+  return rows.filter((row) => {
+    if (!row.active) return false;
+    if (row.corpus === "condominium") return row.condominiumId === conversationCondominiumId;
+    if (row.corpus === "system") return row.condominiumId === null;
+    return false;
+  });
 }
 
 type ChunkRow = {
@@ -60,6 +58,7 @@ type ChunkRow = {
   active: boolean;
   content: string;
   officeDocumentId: string | null;
+  systemDocumentId?: string | null;
   pageNumber: number | null;
   distance: number | string | null;
   documentTitle?: string | null;
@@ -90,17 +89,6 @@ function emptyResult(motivo: RagMotivo): RetrievalResult {
   return { chunks: [], motivo, candidatos: 0 };
 }
 
-function motivoDepoisDoFiltro(rows: RetrievalChunk[], visible: RetrievalChunk[], condominiumId: string): RagMotivo {
-  if (visible.length > 0) return "concluido";
-  if (rows.length === 0) return "nenhum_chunk";
-  const mesmoCondo = rows.filter(
-    (row) => row.condominiumId === condominiumId && row.active && row.corpus === "condominium",
-  );
-  const soDistancia =
-    mesmoCondo.length > 0 && mesmoCondo.every((row) => row.distance != null && row.distance > RETRIEVAL_DISTANCE_LIMIT);
-  return soDistancia ? "similaridade_abaixo_limite" : "nenhum_chunk";
-}
-
 function mapRow(row: ChunkRow): RetrievalChunk {
   const title = row.documentTitle?.trim() ? row.documentTitle.trim() : null;
   return {
@@ -109,7 +97,7 @@ function mapRow(row: ChunkRow): RetrievalChunk {
     corpus: row.corpus,
     active: row.active,
     content: row.content,
-    documentId: row.officeDocumentId,
+    documentId: row.officeDocumentId ?? row.systemDocumentId ?? null,
     pageNumber: row.pageNumber,
     distance: row.distance == null ? null : Number(row.distance),
     title,
@@ -159,26 +147,43 @@ export async function retrieveForConversation(
       c.active,
       c.content,
       c."officeDocumentId",
+      c."systemDocumentId",
       c."pageNumber",
       (c.embedding <=> ${literal}::vector) AS distance,
-      d.title AS "documentTitle",
+      COALESCE(d.title, s.title) AS "documentTitle",
       d.kind::text AS "documentKind",
       d."contentRevision",
-      d."ingestStatus"::text AS "ingestStatus"
+      COALESCE(d."ingestStatus", s."ingestStatus")::text AS "ingestStatus"
     FROM "DocumentChunk" c
     LEFT JOIN "OfficeDocument" d ON d.id = c."officeDocumentId"
+    LEFT JOIN "SystemDocument" s ON s.id = c."systemDocumentId"
     WHERE c."condominiumId" = ${condoId}::uuid
       AND c.active = true
       AND c.corpus = 'condominium'
       AND c.embedding IS NOT NULL
+      AND d."ragEnabled" = true
+      AND (d."effectiveFrom" IS NULL OR d."effectiveFrom" <= NOW())
+      AND (d."effectiveUntil" IS NULL OR d."effectiveUntil" > NOW())
+      AND NOT EXISTS (
+        SELECT 1 FROM "OfficeDocument" newer
+        WHERE newer."supersedesDocumentId" = d.id
+          AND newer."ragEnabled" = true
+      )
+    OR (
+      c.corpus = 'system'
+      AND c."condominiumId" IS NULL
+      AND c."systemDocumentId" IS NOT NULL
+      AND s."ingestStatus" = 'indexed'
+      AND c.embedding IS NOT NULL
+      AND c.active = true
+    )
     ORDER BY c.embedding <=> ${literal}::vector
-    LIMIT 5
   `;
   const mapped = rows.map(mapRow);
   const visible = chunksVisibleToConversation(mapped, conversation.condominiumId, modelSuggestedCondominiumId);
   return {
     chunks: visible,
-    motivo: motivoDepoisDoFiltro(mapped, visible, conversation.condominiumId),
+    motivo: visible.length > 0 ? "concluido" : "nenhum_chunk",
     candidatos: rows.length,
   };
 }

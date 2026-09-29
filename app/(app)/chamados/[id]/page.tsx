@@ -13,10 +13,11 @@ import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FileItem } from "@/components/ui/file-item";
 import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
 import { MessageComposer } from "@/components/atendimento/message-composer";
-import { MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
+import { isHiddenReviewDraft, MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
 import { AiAuditPanel, type AiAuditRow } from "@/components/chamados/ai-audit-panel";
 import { AiSummarySheet } from "@/components/chamados/ai-summary-sheet";
+import { TicketAiShadow } from "@/components/chamados/ticket-ai-shadow";
 import type { CopilotIndex } from "@/lib/ai/copilot-view";
 import { TicketDossieHeader } from "@/components/chamados/ticket-dossie-header";
 import { TicketCasePanel } from "@/components/chamados/ticket-case-panel";
@@ -382,6 +383,12 @@ export default function ChamadoFichaPage() {
               }}
             />
             <SectionTabPanel id="caso" active={tab === "caso"} className="min-h-0 flex-1 overflow-y-auto p-4">
+              <TicketAiShadow
+                loading={aiSummary.isLoading}
+                error={aiSummary.isError}
+                analyzing={Boolean(aiSummary.data?.data.analyzing)}
+                current={aiSummary.data?.data.current ?? null}
+              />
               <TicketCasePanel
                 category={t.category}
                 createdAt={t.createdAt}
@@ -435,7 +442,7 @@ export default function ChamadoFichaPage() {
               <div
                 ref={threadScrollRef}
                 onScroll={onThreadScroll}
-                className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto px-4 py-3"
+                className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto bg-[var(--chat-wallpaper)] px-4 py-3"
               >
                 {messages.isLoading ? <Skeleton className="h-24" /> : null}
                 {!messages.isLoading ? (
@@ -450,7 +457,7 @@ export default function ChamadoFichaPage() {
               </div>
               {admin
                 ? threadMessages
-                    .filter((m) => m.visibility === "publica" && m.sendStatus === "draft")
+                    .filter((m) => m.visibility === "publica" && m.sendStatus === "draft" && !isHiddenReviewDraft(m))
                     .slice(0, 1)
                     .map((m) => (
                       <ApprovalPanel
