@@ -1,26 +1,38 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { completeValidJson } from "@/lib/ai/complete-json";
+import { completeValidJson, isPermanentJobError } from "@/lib/ai/complete-json";
 import { otherCondominiumNamed } from "@/lib/ai/condo-name";
 import { confidenceBand } from "@/lib/ai/confidence";
 import { prismaErrorCode } from "@/lib/ai/errors";
 import { keepCitations } from "@/lib/ai/citations";
 import { decideTurn, type ServerFallback } from "@/lib/ai/decide-turn";
 import { isAiAutoDraftEnabled, isAiEnabled, isAiMemoryEnabled, aiPromptVersion } from "@/lib/ai/flags";
-import { loadInboundForJobs, loadSelectedMessages, selectedIdsForJobs } from "@/lib/ai/inbound-messages";
-import { insertInteractionOnce } from "@/lib/ai/interaction";
+import {
+  loadInboundForJobs,
+  loadSelectedMessages,
+  relatoSplitForJobs,
+  selectedIdsForJobs,
+  type SelectedRow,
+} from "@/lib/ai/inbound-messages";
+import { insertInteractionOnce, insertInteractionOnceReplacingJsonFailure } from "@/lib/ai/interaction";
 import { shouldDispatchAiDraft, shouldPromoteTriageAsSystem } from "@/lib/ai/auto-actions";
 import { gateClientDraft } from "@/lib/ai/client-draft-guard";
 import { buildAnalysisFluxo, canalLabel, ingestaoFromGroups, type AnalysisFluxo, type FluxoMarcador } from "@/lib/ai/analysis-snapshot";
 import { acceptedFactsForContact, normalizeContactFacts, proposedContactFacts } from "@/lib/ai/contact-memory";
 import { advanceMemoryPointer, interactionKey } from "@/lib/ai/memory";
-import type { SummaryJson } from "@/lib/ai/output";
+import { EMPTY_SUMMARY, mergePartialSummary, type SummaryJson, type SummaryTurn } from "@/lib/ai/output";
 import { buildModelPackage, packageContainsSecret, packageMessages } from "@/lib/ai/package";
 import { systemPromptFor } from "@/lib/ai/prompts/select";
+import { PUBLIC_REPLY_REWRITE } from "@/lib/ai/prompts/inbound-v3";
+import { publicReplyPendencia, revisarRespostaPublica } from "@/lib/ai/public-reply-guard";
 import {
+  EMPTY_CLIENT_DRAFT_REWRITE,
   FALLBACK_DOCUMENT_CONFLICT,
   FALLBACK_HUMAN_REVIEW,
   FALLBACK_INJECTION,
   FALLBACK_UNAVAILABLE,
+  MARKED_MESSAGES_RULE,
+  RELATO_MESSAGES_RULE,
+  RELATO_ONLY_RULE,
   SELECTED_MESSAGES_RULE,
 } from "@/lib/ai/prompts/inbound-v2";
 import { createAiProviderFromEnv, type AiProvider } from "@/lib/ai/provider";
@@ -28,15 +40,6 @@ import { retrieveForConversation, type RetrievalChunk, type RetrievalResult } fr
 import { classifyLocal } from "@/lib/ai/router";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { ticketService } from "@/lib/services/ticket-service";
-
-const EMPTY_SUMMARY: SummaryJson = {
-  contexto: "",
-  problema: "",
-  documentos: "",
-  analise: "",
-  pendencias: "",
-  proximaAcao: "",
-};
 
 export async function processConversation(db: PrismaClient, conversationId: string, provider: AiProvider | null = createAiProviderFromEnv()) {
   const started = Date.now();
@@ -78,15 +81,32 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     });
     const ambiguous = openTickets.length > 1;
     const ticketId = openTickets.length === 1 ? openTickets[0].id : null;
-    const selectedIds = selectedIdsForJobs(jobs);
-    const selected = selectedIds ? await loadSelectedMessages(db.message, conversationId, selectedIds) : null;
+    const split = relatoSplitForJobs(jobs);
+    const relato = split?.relatoIds.length
+      ? (await loadSelectedMessages(db.message, conversationId, split.relatoIds)).filter((row) => row.direction === "in")
+      : [];
+    const marks = split?.markIds.length ? await loadSelectedMessages(db.message, conversationId, split.markIds) : [];
+    if (split && marks.length === 0) {
+      await processRelatoOnly(db, provider, {
+        conversationId,
+        ticketId,
+        jobIds,
+        relato,
+        condominiumName: conversation.condominium?.nome || "Condomínio",
+        city: conversation.condominium?.cidadeUf ?? null,
+      });
+      return;
+    }
+    const selectedIds = split ? null : selectedIdsForJobs(jobs);
+    const selected = split ? marks : selectedIds ? await loadSelectedMessages(db.message, conversationId, selectedIds) : null;
+    const allowAbstainDraft = Boolean(selected?.length);
     const inbound = selected ?? await loadInboundForJobs(
       db.message,
       conversationId,
       jobs.map((job) => job.idempotencyKey),
     );
     const messageLimit = selected ? selected.length : undefined;
-    const messageIds = inbound.map((row) => row.id);
+    const messageIds = [...new Set([...inbound.map((row) => row.id), ...relato.map((row) => row.id)])];
     const joined = inbound.map((row) => row.body).join("\n").slice(0, 4000);
     const intent = classifyLocal(joined);
     const retrieval = await retrieveForConversation(
@@ -105,7 +125,21 @@ export async function processConversation(db: PrismaClient, conversationId: stri
 
     const memory = await db.aiTicketMemory.findUnique({ where: { conversationId } });
     const currentVersion = memory?.version ?? 0;
-    const key = interactionKey(messageIds.length ? messageIds : jobIds);
+    const key = split
+      ? interactionKey([...inbound.map((row) => row.id), ...relato.map((row) => `relato:${row.id}`)])
+      : interactionKey(messageIds.length ? messageIds : jobIds);
+    const previous = split ? await loadPreviousTurn(db, conversationId, currentVersion) : null;
+    /** Com relato separado, `contexto` só muda quando o modelo narrou `<RELATO_DATA>`. */
+    const splitSummary = (summary: SummaryJson, fromRelato: boolean): SummaryJson =>
+      split
+        ? mergePartialSummary({
+            fromRelato,
+            fromMarks: true,
+            next: { summary, analysis: EMPTY_ANALYSIS, clientDraft: null },
+            previous,
+            emptyAnalysis: EMPTY_ANALYSIS,
+          }).summary
+        : summary;
     const ingestGroups = await db.officeDocument.groupBy({
       by: ["ingestStatus"],
       where: { condominiumId: conversation.condominiumId },
@@ -159,11 +193,12 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        allowAbstainDraft,
         chunks: [],
         draftText: null,
         abstain: true,
         injection: false,
-        summary: { ...EMPTY_SUMMARY, pendencias: "Limite diário da IA.", analise: "Limite diário." },
+        summary: splitSummary({ ...EMPTY_SUMMARY, pendencias: "Limite diário da IA.", analise: "Limite diário." }, false),
         analysis: { intencao: intent, risco: "medio", conflitos: [], motivoEscalonamento: "limite_diario", confianca: "insuficiente" },
         model: null,
         inputTokens: 0,
@@ -182,19 +217,20 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        allowAbstainDraft,
         chunks,
         draftText: intent === "injection" ? FALLBACK_INJECTION : null,
         abstain: true,
         injection: intent === "injection",
         serverFallback: intent === "injection" ? "injection" : null,
-        summary: {
+        summary: splitSummary({
           contexto: ambiguous ? "Há mais de um chamado aberto nesta conversa." : "Pedido fora do atendimento.",
           problema: ambiguous ? "A IA não escolhe o chamado." : joined.slice(0, 500),
           documentos: "",
           analise: intent === "injection" ? "injection_signal" : "ABSTAIN",
           pendencias: ambiguous ? "Humano escolhe o chamado." : "",
           proximaAcao: ambiguous ? "Escolher o chamado na ficha." : "Aguardar o humano.",
-        },
+        }, false),
         analysis: {
           intencao: intent,
           risco: "alto",
@@ -219,16 +255,17 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        allowAbstainDraft,
         chunks,
         draftText: null,
         abstain: true,
         injection: false,
-        summary: {
+        summary: splitSummary({
           ...EMPTY_SUMMARY,
           contexto: intent === "saudacao" ? "Saudação sem pergunta." : FALLBACK_UNAVAILABLE,
           pendencias: provider ? "" : FALLBACK_UNAVAILABLE,
           analise: "ABSTAIN",
-        },
+        }, false),
         analysis: {
           intencao: intent,
           risco: "baixo",
@@ -256,8 +293,12 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     );
 
     const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
-    const packed = buildModelPackage({
-      system: selected ? `${systemPromptFor()}\n${SELECTED_MESSAGES_RULE}` : systemPromptFor(),
+    const packageInput = {
+      system: split
+        ? [systemPromptFor(), MARKED_MESSAGES_RULE, relato.length ? RELATO_MESSAGES_RULE : ""].filter(Boolean).join("\n")
+        : selected
+          ? `${systemPromptFor()}\n${SELECTED_MESSAGES_RULE}`
+          : systemPromptFor(),
       model: modelName,
       condominiumName: conversation.condominium?.nome || "Condomínio",
       city: conversation.condominium?.cidadeUf ?? null,
@@ -266,8 +307,10 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       condominiumRule,
       messages: inbound,
       messageLimit,
+      relato,
       chunks: chunks.map((row) => ({ id: row.id, content: row.content, corpus: row.corpus })),
-    });
+    };
+    const packed = buildModelPackage(packageInput);
     if (packageContainsSecret(JSON.stringify(packed))) {
       await finishJobs(db, jobIds, "succeeded", "secret_blocked");
       await audit(db, { action: "ACTION_BLOCKED", conversationId, ticketId, result: "secret_blocked" });
@@ -279,7 +322,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       user: packed.user,
       model: modelName,
       maxTokens: 1200,
-      timeoutMs: 25000,
+      timeoutMs: 70000,
     });
     if (!valid.ok) {
       await persistTurn(db, {
@@ -289,18 +332,21 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        allowAbstainDraft,
         chunks,
         draftText: null,
         abstain: true,
         injection: false,
         serverFallback: "human_review",
-        summary: {
+        summary: splitSummary({
           ...EMPTY_SUMMARY,
           contexto: "A saída do modelo não passou na validação.",
-          pendencias: "JSON inválido após retry.",
+          pendencias: valid.reason
+            ? `JSON inválido após retry. ${valid.reason}`
+            : "JSON inválido após retry.",
           analise: FALLBACK_HUMAN_REVIEW,
           proximaAcao: "Revisão humana.",
-        },
+        }, false),
         analysis: {
           intencao: intent,
           risco: "alto",
@@ -316,20 +362,62 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       });
       return;
     }
-    const { parsed, completion } = valid;
+    const activeProvider = provider;
+    let jsonForReview = valid;
+    let extraInput = 0;
+    let extraOutput = 0;
+    if (allowAbstainDraft && !valid.parsed.clientDraft?.trim()) {
+      const filled = await completeValidJson(activeProvider, {
+        system: `${packed.system}\n${EMPTY_CLIENT_DRAFT_REWRITE}`,
+        user: packed.user,
+        model: modelName,
+        maxTokens: 1200,
+        timeoutMs: 70000,
+      });
+      if (filled.ok && filled.parsed.clientDraft?.trim()) {
+        extraInput += valid.completion.inputTokens;
+        extraOutput += valid.completion.outputTokens;
+        jsonForReview = filled;
+      } else if (filled.ok) {
+        extraInput += filled.completion.inputTokens;
+        extraOutput += filled.completion.outputTokens;
+      }
+    }
+    const revisao = await revisarRespostaPublica({
+      first: jsonForReview,
+      mensagemCliente: joined,
+      skip: Boolean(jsonForReview.parsed.analysis.injectionSignal) || (jsonForReview.parsed.abstain && !allowAbstainDraft),
+      regenerate: async (rejectedDraft) => {
+        const retry = buildModelPackage({ ...packageInput, rejectedDraft });
+        if (packageContainsSecret(JSON.stringify(retry))) return { ok: false, reason: "secret_blocked" };
+        return completeValidJson(activeProvider, {
+          system: `${retry.system}\n${PUBLIC_REPLY_REWRITE}`,
+          user: retry.user,
+          model: modelName,
+          maxTokens: 1200,
+          timeoutMs: 70000,
+        });
+      },
+    });
+    for (const result of revisao.trail) {
+      await audit(db, { action: "PUBLIC_REPLY", conversationId, ticketId, result });
+    }
+    const { parsed, completion, raw } = revisao.output;
+    const publicDiscarded = revisao.verdict.status === "reprovar";
     const allowed = new Set(chunks.map((row) => row.id));
     const cited = keepCitations(parsed.citations, allowed);
     const distanceById = new Map(chunks.map((row) => [row.id, row.distance ?? null]));
     const band = confidenceBand(cited.map((row) => distanceById.get(row.chunkId)));
     const injectionFromModel = Boolean(parsed.analysis.injectionSignal);
-    const forceAbstain = parsed.abstain || injectionFromModel || band === "insuficiente" || Boolean(namedOther);
+    const forceAbstain =
+      parsed.abstain || injectionFromModel || band === "insuficiente" || Boolean(namedOther) || publicDiscarded;
     const conflitos = [
       ...parsed.analysis.conflitos,
       ...(namedOther ? ["outro_condominio"] : []),
     ];
     const proposedDraft = injectionFromModel
       ? FALLBACK_INJECTION
-      : namedOther && forceAbstain
+      : (namedOther && forceAbstain) || publicDiscarded
         ? null
         : parsed.clientDraft || null;
     const gated = gateClientDraft({
@@ -338,11 +426,22 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       injection: injectionFromModel,
     });
     const draftText = gated.draftText;
-    const serverFallback: ServerFallback | null = injectionFromModel ? "injection" : gated.leaked ? "human_review" : null;
-    const summary = namedOther
-      ? { ...parsed.summary, pendencias: parsed.summary.pendencias || FALLBACK_DOCUMENT_CONFLICT }
-      : parsed.summary;
-    const rawActions = readRawActions(valid.raw);
+    const serverFallback: ServerFallback | null = injectionFromModel
+      ? "injection"
+      : gated.leaked || publicDiscarded
+        ? "human_review"
+        : null;
+    const summary = splitSummary(
+      namedOther
+        ? { ...parsed.summary, pendencias: parsed.summary.pendencias || FALLBACK_DOCUMENT_CONFLICT }
+        : parsed.summary,
+      relato.length > 0,
+    );
+    const avisos = [
+      gated.leaked ? "Rascunho não publicado: o texto parecia análise interna." : null,
+      publicReplyPendencia(revisao.verdict),
+    ].filter((line): line is string => Boolean(line));
+    const rawActions = readRawActions(raw);
     await persistTurn(db, {
       conversationId,
       ticketId,
@@ -350,16 +449,14 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       messageIds,
       jobIds,
       currentVersion,
+      allowAbstainDraft,
       chunks,
       draftText,
       abstain: (forceAbstain && !injectionFromModel) || gated.leaked,
       injection: injectionFromModel,
       serverFallback,
-      summary: gated.leaked
-        ? {
-            ...summary,
-            pendencias: [summary.pendencias, "Rascunho não publicado: o texto parecia análise interna."].filter(Boolean).join("\n"),
-          }
+      summary: avisos.length
+        ? { ...summary, pendencias: [summary.pendencias, ...avisos].filter(Boolean).join("\n") }
         : summary,
       analysis: {
         ...parsed.analysis,
@@ -367,13 +464,15 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         confianca: band,
         motivoEscalonamento: namedOther
           ? "outro_condominio"
-          : gated.leaked
-            ? "rascunho_interno"
-            : parsed.analysis.motivoEscalonamento,
+          : publicDiscarded
+            ? "resposta_publica"
+            : gated.leaked
+              ? "rascunho_interno"
+              : parsed.analysis.motivoEscalonamento,
       },
       model: completion.model,
-      inputTokens: completion.inputTokens,
-      outputTokens: completion.outputTokens,
+      inputTokens: revisao.inputTokens + extraInput,
+      outputTokens: revisao.outputTokens + extraOutput,
       extraActions: rawActions,
       cited,
       contactFacts: normalizeContactFacts(parsed.contactFacts),
@@ -392,12 +491,13 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         ticketId,
         durationMs: Date.now() - started,
         model: completion.model,
-        inputTokens: completion.inputTokens,
-        outputTokens: completion.outputTokens,
+        inputTokens: revisao.inputTokens + extraInput,
+        outputTokens: revisao.outputTokens + extraOutput,
         status: "succeeded",
         errorCode: null,
         riskLevel: parsed.analysis.risco,
         chunkCount: chunks.length,
+        publicReply: revisao.trail.join(",") || "ok",
       }),
     );
   } catch (error) {
@@ -406,7 +506,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       : error instanceof SyntaxError || error instanceof Error && error.name === "ZodError"
         ? "ZOD"
         : prismaErrorCode(error);
-    const permanent = code === "ZOD" || code === "AI_BASE_BLOCKED";
+    const permanent = isPermanentJobError(code);
     if (jobIds.length) {
       const rows = await db.aiJob.findMany({ where: { id: { in: jobIds } }, select: { attempts: true } });
       const attempts = Math.max(...rows.map((row) => row.attempts), 1);
@@ -453,6 +553,7 @@ type PersistInput = {
   contactFacts?: string[];
   contactId?: string | null;
   fluxo: AnalysisFluxo;
+  allowAbstainDraft?: boolean;
 };
 
 async function persistTurn(db: PrismaClient, input: PersistInput) {
@@ -468,6 +569,7 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
     expectedVersion: input.currentVersion,
     draftText: input.draftText,
     summary: input.summary,
+    allowAbstainDraft: input.allowAbstainDraft,
   });
   for (const action of decision.blockedActions) {
     await audit(db, {
@@ -478,7 +580,7 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
     });
   }
 
-  const claim = await insertInteractionOnce(db, {
+  const claim = await insertInteractionOnceReplacingJsonFailure(db, {
     conversation: { connect: { id: input.conversationId } },
     ...(input.ticketId ? { ticket: { connect: { id: input.ticketId } } } : {}),
     idempotencyKey: input.key,
@@ -525,7 +627,10 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
       interactionId: interaction.id,
       result: "draft",
     });
-    if (shouldDispatchAiDraft({ injection: input.injection, serverFallback: input.serverFallback })) {
+    if (
+      !input.abstain &&
+      shouldDispatchAiDraft({ injection: input.injection, serverFallback: input.serverFallback })
+    ) {
       const admin = await firstAdminUser(db);
       if (admin) {
         try {
@@ -622,6 +727,242 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
 
   await maybePromoteTriage(db, input);
   await finishJobs(db, input.jobIds, "succeeded", null);
+}
+
+type TurnAnalysis = PersistInput["analysis"];
+
+const EMPTY_ANALYSIS: TurnAnalysis = {
+  intencao: "",
+  risco: "",
+  conflitos: [],
+  motivoEscalonamento: null,
+  confianca: "",
+};
+
+type PreviousTurn = SummaryTurn<TurnAnalysis> & {
+  draftSent: boolean;
+  status: string | null;
+  summaryJson: Record<string, unknown>;
+  citations: Array<{ chunkId: string; rank: number; distance: number | null; documentId: string | null; pageNumber: number | null }>;
+};
+
+/** Revisão corrente, para copiar o lado (relato ou marcas) que a execução não gerou. */
+async function loadPreviousTurn(db: PrismaClient, conversationId: string, version: number): Promise<PreviousTurn | null> {
+  if (version < 1) return null;
+  const row = await db.aiTicketMemoryRevision.findFirst({
+    where: { conversationId, version },
+    select: {
+      summaryJson: true,
+      interaction: {
+        select: {
+          status: true,
+          draftMessage: { select: { body: true, sendStatus: true } },
+          citations: {
+            orderBy: { rank: "asc" },
+            select: { chunkId: true, rank: true, distance: true, documentId: true, pageNumber: true },
+          },
+        },
+      },
+    },
+  });
+  if (!row) return null;
+  const json = asRecord(row.summaryJson);
+  const tecnica = asRecord(json.tecnica);
+  const draft = row.interaction?.draftMessage ?? null;
+  const clientDraft = Object.prototype.hasOwnProperty.call(json, "respostaSugerida")
+    ? textOrNull(json.respostaSugerida)
+    : textOrNull(draft?.body);
+  return {
+    summary: {
+      contexto: text(json.contexto),
+      problema: text(json.problema),
+      documentos: text(json.documentos),
+      analise: text(json.analise),
+      pendencias: text(json.pendencias),
+      proximaAcao: text(json.proximaAcao),
+    },
+    analysis: {
+      intencao: text(tecnica.intencao),
+      risco: text(tecnica.risco),
+      conflitos: Array.isArray(tecnica.conflitos) ? tecnica.conflitos.filter((item): item is string => typeof item === "string") : [],
+      motivoEscalonamento: textOrNull(tecnica.motivoEscalonamento),
+      confianca: text(tecnica.confianca),
+    },
+    clientDraft,
+    draftSent: draft?.sendStatus === "sent",
+    status: row.interaction?.status ?? null,
+    summaryJson: json,
+    citations: row.interaction?.citations ?? [],
+  };
+}
+
+/**
+ * Atendimento sem marca: só `contexto` sai do modelo (`<RELATO_DATA>`). Intenção, análise, documentos,
+ * fluxo e resposta sugerida vêm da revisão corrente. Não cria rascunho nem chama WhatsApp.
+ * Saídas antecipadas (injection, sem provedor, limite, JSON inválido) não gravam revisão.
+ */
+async function processRelatoOnly(
+  db: PrismaClient,
+  provider: AiProvider | null,
+  input: {
+    conversationId: string;
+    ticketId: string | null;
+    jobIds: string[];
+    relato: SelectedRow[];
+    condominiumName: string;
+    city: string | null;
+  },
+) {
+  const { conversationId, ticketId, jobIds, relato } = input;
+  const stop = async (code: string) => {
+    await finishJobs(db, jobIds, "failed", code);
+    await audit(db, { action: "ABSTAIN", conversationId, ticketId, result: `relato:${code}` });
+  };
+  if (!relato.length) return stop("sem_mensagens");
+  const joined = relato.map((row) => row.body).join("\n").slice(0, 4000);
+  if (classifyLocal(joined) === "injection") return stop("injection_signal");
+  if (!provider) return stop("sem_provedor");
+  if (await overDailyBudget(db, ticketId, conversationId)) return stop("limite_diario");
+
+  const memory = await db.aiTicketMemory.findUnique({ where: { conversationId } });
+  const currentVersion = memory?.version ?? 0;
+  const previous = await loadPreviousTurn(db, conversationId, currentVersion);
+  const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
+  const packed = buildModelPackage({
+    system: [systemPromptFor(), RELATO_MESSAGES_RULE, RELATO_ONLY_RULE].join("\n"),
+    model: modelName,
+    condominiumName: input.condominiumName,
+    city: input.city,
+    memorySummary: null,
+    messages: [],
+    relato,
+    chunks: [],
+  });
+  if (packageContainsSecret(JSON.stringify(packed))) {
+    await finishJobs(db, jobIds, "succeeded", "secret_blocked");
+    await audit(db, { action: "ACTION_BLOCKED", conversationId, ticketId, result: "secret_blocked" });
+    return;
+  }
+  const valid = await completeValidJson(provider, {
+    system: packed.system,
+    user: packed.user,
+    model: modelName,
+    maxTokens: 1200,
+    timeoutMs: 70000,
+  });
+  if (!valid.ok) return stop("json_invalido");
+
+  const merged = mergePartialSummary({
+    fromRelato: true,
+    fromMarks: false,
+    next: { summary: valid.parsed.summary, analysis: EMPTY_ANALYSIS, clientDraft: null },
+    previous,
+    emptyAnalysis: EMPTY_ANALYSIS,
+  });
+  await persistRelatoTurn(db, {
+    conversationId,
+    ticketId,
+    jobIds,
+    relatoIds: relato.map((row) => row.id),
+    currentVersion,
+    previous,
+    merged,
+    model: valid.completion.model,
+    inputTokens: valid.completion.inputTokens,
+    outputTokens: valid.completion.outputTokens,
+  });
+}
+
+async function persistRelatoTurn(
+  db: PrismaClient,
+  input: {
+    conversationId: string;
+    ticketId: string | null;
+    jobIds: string[];
+    relatoIds: string[];
+    currentVersion: number;
+    previous: PreviousTurn | null;
+    merged: SummaryTurn<TurnAnalysis>;
+    model: string | null;
+    inputTokens: number;
+    outputTokens: number;
+  },
+) {
+  const { merged, previous } = input;
+  const decision = decideTurn({
+    autoDraft: false,
+    memoryEnabled: isAiMemoryEnabled(),
+    abstain: true,
+    injection: false,
+    requestedActions: ["WRITE_TICKET_MEMORY"],
+    interactionExists: false,
+    currentVersion: input.currentVersion,
+    expectedVersion: input.currentVersion,
+    draftText: null,
+    summary: merged.summary,
+  });
+  const key = interactionKey(input.relatoIds.map((id) => `relato:${id}`));
+  const claim = await insertInteractionOnce(db, {
+    conversation: { connect: { id: input.conversationId } },
+    ...(input.ticketId ? { ticket: { connect: { id: input.ticketId } } } : {}),
+    idempotencyKey: key,
+    status: previous?.status ?? "succeeded",
+    riskLevel: merged.analysis.risco === "alto" ? "HIGH" : merged.analysis.risco === "baixo" ? "LOW" : "MEDIUM",
+    model: input.model,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    contextVersion: aiPromptVersion(),
+    analysisJson: { ...merged.analysis, injectionSignal: false },
+  });
+  if (claim === "duplicate") {
+    await finishJobs(db, input.jobIds, "succeeded", "duplicate_interaction");
+    return;
+  }
+  const interaction = await db.aiInteraction.findUnique({ where: { idempotencyKey: key } });
+  if (interaction && previous?.citations.length) {
+    await db.aiCitation.createMany({
+      data: previous.citations.map((row) => ({ ...row, interactionId: interaction.id })),
+    });
+  }
+  if (decision.writeMemory && interaction) {
+    const wrote = await advanceMemoryPointer(db, input.conversationId, input.currentVersion, input.ticketId);
+    if (wrote && decision.memoryVersion) {
+      const base = previous?.summaryJson ?? { tecnica: { ...EMPTY_ANALYSIS, trechos: [] } };
+      const revision = await db.aiTicketMemoryRevision.create({
+        data: {
+          conversationId: input.conversationId,
+          ticketId: input.ticketId,
+          version: decision.memoryVersion,
+          interactionId: interaction.id,
+          summaryJson: { ...base, ...merged.summary, respostaSugerida: merged.clientDraft } as Prisma.InputJsonValue,
+        },
+      });
+      await db.aiTicketMemoryMessage.createMany({
+        data: input.relatoIds.map((messageId) => ({ revisionId: revision.id, messageId })),
+      });
+      await audit(db, {
+        action: "MEMORY_CREATED",
+        conversationId: input.conversationId,
+        ticketId: input.ticketId,
+        interactionId: interaction.id,
+        result: `v${decision.memoryVersion}:relato`,
+      });
+    }
+  }
+  await finishJobs(db, input.jobIds, "succeeded", null);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return {};
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function summaryPayload(input: PersistInput): Prisma.InputJsonValue {

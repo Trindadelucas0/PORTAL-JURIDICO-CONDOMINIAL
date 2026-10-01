@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/api/errors";
 import { buildAnalysisFluxo } from "@/lib/ai/analysis-snapshot";
-import { enqueueManualInbound, jobKeysNeedLatestInbound, payloadMessageIds } from "@/lib/ai/enqueue";
-import { loadInboundForJobs, loadSelectedMessages, selectedIdsForJobs } from "@/lib/ai/inbound-messages";
+import { enqueueManualInbound, jobKeysNeedLatestInbound, payloadMessageIds, payloadRelatoMessageIds } from "@/lib/ai/enqueue";
+import { loadInboundForJobs, loadSelectedMessages, relatoSplitForJobs, selectedIdsForJobs } from "@/lib/ai/inbound-messages";
 import { startManualAiRun } from "@/lib/ai/manual-run";
 import { buildModelPackage, MESSAGE_DATA_CHAR_LIMIT, packageMessages } from "@/lib/ai/package";
 
@@ -194,6 +194,136 @@ describe("disparo manual da IA", () => {
     const rows = Array.from({ length: 20 }, (_, i) => ({ body: `m${i}` }));
     expect(packageMessages(rows)).toHaveLength(12);
     expect(packageMessages(rows)[0]).toBe("m8");
+  });
+
+  it("relato e marcas gravam as duas chaves no payload; relato só aceita inbound desta conversa", async () => {
+    process.env.AI_ENABLED = "true";
+    const created: Array<{ payload?: unknown }> = [];
+    const counts: Array<{ where: Record<string, unknown> }> = [];
+    const db = {
+      message: {
+        count: async (args: { where: { id: { in: string[] } } }) => {
+          counts.push(args);
+          return args.where.id.in.length;
+        },
+      },
+      aiJob: {
+        create: async (args: { data: { payload?: unknown } }) => {
+          created.push(args.data);
+          return { id: "j" };
+        },
+      },
+    };
+    await startManualAiRun(db as never, {
+      conversationId: "c1",
+      condominiumId: "condo",
+      messageIds: [ID_OUT],
+      relatoMessageIds: [ID_IN],
+    });
+    expect(counts[0]?.where).toEqual({ conversationId: "c1", direction: "in", id: { in: [ID_IN] } });
+    expect(created[0]?.payload).toEqual({ messageIds: [ID_OUT], relatoMessageIds: [ID_IN] });
+
+    await startManualAiRun(db as never, { conversationId: "c1", condominiumId: "condo", messageIds: [], relatoMessageIds: [ID_IN] });
+    expect(created[1]?.payload).toEqual({ messageIds: [], relatoMessageIds: [ID_IN] });
+  });
+
+  it("relato com id de outra conversa ou mensagem do escritório responde 422 e não enfileira", async () => {
+    process.env.AI_ENABLED = "true";
+    let queued = 0;
+    const db = {
+      message: { count: async () => 0 },
+      aiJob: {
+        create: async () => {
+          queued += 1;
+          return { id: "j" };
+        },
+      },
+    };
+    const base = { conversationId: "c1", condominiumId: "condo" };
+    await expect(startManualAiRun(db as never, { ...base, relatoMessageIds: [ID_OUTRA] })).rejects.toMatchObject({
+      status: 422,
+      message: "Mensagem marcada não pertence a esta conversa",
+    });
+    await expect(startManualAiRun(db as never, { ...base, messageIds: [], relatoMessageIds: [ID_OUT] })).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(queued).toBe(0);
+  });
+
+  it("relato e marcas vazios, relato inválido ou com mais de 40 respondem 422", async () => {
+    process.env.AI_ENABLED = "true";
+    let queued = 0;
+    const db = {
+      message: { count: async () => 1 },
+      aiJob: {
+        create: async () => {
+          queued += 1;
+          return { id: "j" };
+        },
+      },
+    };
+    const base = { conversationId: "c1", condominiumId: "condo" };
+    await expect(startManualAiRun(db as never, { ...base, messageIds: [], relatoMessageIds: [] })).rejects.toMatchObject({ status: 422 });
+    await expect(startManualAiRun(db as never, { ...base, relatoMessageIds: ["nao-uuid"] })).rejects.toMatchObject({ status: 422 });
+    const many = Array.from({ length: 41 }, (_, i) => `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`);
+    await expect(startManualAiRun(db as never, { ...base, relatoMessageIds: many })).rejects.toMatchObject({ status: 422 });
+    expect(queued).toBe(0);
+  });
+
+  it("chamada sem as chaves (ficha do chamado) continua sem payload e exige inbound", async () => {
+    process.env.AI_ENABLED = "true";
+    const created: Array<{ payload?: unknown }> = [];
+    const counts: Array<{ where: Record<string, unknown> }> = [];
+    const db = {
+      message: {
+        count: async (args: { where: Record<string, unknown> }) => {
+          counts.push(args);
+          return 3;
+        },
+      },
+      aiJob: {
+        create: async (args: { data: { payload?: unknown } }) => {
+          created.push(args.data);
+          return { id: "j" };
+        },
+      },
+    };
+    await startManualAiRun(db as never, { conversationId: "c1", condominiumId: "condo" });
+    expect(counts[0]?.where).toEqual({ conversationId: "c1", direction: "in" });
+    expect(created[0]).not.toHaveProperty("payload");
+  });
+
+  it("worker separa relato e marcas só quando o job tem relatoMessageIds", () => {
+    expect(payloadRelatoMessageIds({ messageIds: [ID_IN] })).toBeNull();
+    expect(payloadRelatoMessageIds(null)).toBeNull();
+    expect(payloadRelatoMessageIds({ relatoMessageIds: [] })).toEqual([]);
+    expect(payloadRelatoMessageIds({ relatoMessageIds: [ID_IN, ID_IN, "x"] })).toEqual([ID_IN]);
+    expect(relatoSplitForJobs([{ payload: null }, { payload: { messageIds: [ID_OUT] } }])).toBeNull();
+    expect(relatoSplitForJobs([{ payload: { messageIds: [], relatoMessageIds: [ID_IN] } }])).toEqual({
+      relatoIds: [ID_IN],
+      markIds: [],
+    });
+    expect(relatoSplitForJobs([{ payload: { messageIds: [ID_OUT], relatoMessageIds: [] } }])).toEqual({
+      relatoIds: [],
+      markIds: [ID_OUT],
+    });
+  });
+
+  it("pacote com relato leva <RELATO_DATA> separado de <MESSAGE_DATA>; sem relato não tem o bloco", () => {
+    const base = { system: "s", model: "m", condominiumName: "Alpha", city: null, memorySummary: null, chunks: [] };
+    const withRelato = buildModelPackage({
+      ...base,
+      messages: [{ body: "escritório: marcada" }],
+      messageLimit: 1,
+      relato: [{ body: "cliente: não aberta" }],
+    });
+    const messageBlock = withRelato.user.slice(withRelato.user.indexOf("<MESSAGE_DATA>"), withRelato.user.indexOf("</MESSAGE_DATA>"));
+    const relatoBlock = withRelato.user.slice(withRelato.user.indexOf("<RELATO_DATA>"), withRelato.user.indexOf("</RELATO_DATA>"));
+    expect(messageBlock).toContain("marcada");
+    expect(messageBlock).not.toContain("não aberta");
+    expect(relatoBlock).toContain("cliente: não aberta");
+    const without = buildModelPackage({ ...base, messages: [{ body: "m" }] });
+    expect(without.user).not.toContain("RELATO_DATA");
   });
 
   it("mensagensAnalisadas usa a contagem do pacote na seleção", () => {

@@ -84,13 +84,15 @@ export function ContextSummary({
 export function ContextBlock({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn("text-xs text-muted-foreground", className)}>{label}</p>
       <div className="mt-0.5">{children}</div>
     </div>
   );

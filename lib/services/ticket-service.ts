@@ -377,6 +377,92 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
         priority: "media",
       });
     },
+
+    async openAfterResolved(
+      conversationId: string,
+    ): Promise<{ id: string; protocol: string; created: boolean } | null> {
+      const admin = await db.user.findFirst({
+        where: { role: "admin", ativo: true, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!admin) return null;
+
+      return db.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT id FROM "Conversation" WHERE id = CAST(${conversationId} AS uuid) FOR UPDATE
+        `;
+        const open = await tx.ticket.findFirst({
+          where: { conversationId, status: { not: "resolvido" } },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true, protocol: true },
+        });
+        if (open) return { id: open.id, protocol: open.protocol, created: false };
+
+        const resolved = await tx.ticket.findFirst({
+          where: { conversationId, status: "resolvido" },
+          select: { id: true },
+        });
+        if (!resolved) return null;
+
+        const conversation = await tx.conversation.findFirst({
+          where: { id: conversationId },
+          include: { contact: true, triageItem: true },
+        });
+        const contact = conversation?.contact;
+        if (!conversation || !contact?.condominiumId) return null;
+
+        const protocol = await nextProtocol(tx);
+        const ticket = await tx.ticket.create({
+          data: {
+            protocol,
+            title: `${contact.nome} — ${CATEGORY_LABEL.outro}`,
+            category: "outro",
+            priority: "media",
+            origin: "whatsapp",
+            condominiumId: contact.condominiumId,
+            contactId: contact.id,
+            conversationId,
+            assignedToId: null,
+            createdById: admin.id,
+            status: "aberto",
+          },
+          select: { id: true, protocol: true },
+        });
+        if (conversation.triageItem) {
+          await tx.triageItem.update({
+            where: { id: conversation.triageItem.id },
+            data: {
+              status: "promovido",
+              ticketId: ticket.id,
+              category: "outro",
+              priority: "media",
+            },
+          });
+        } else {
+          await tx.triageItem.create({
+            data: {
+              conversationId,
+              status: "promovido",
+              ticketId: ticket.id,
+              category: "outro",
+              priority: "media",
+            },
+          });
+        }
+        await writeAudit(tx, {
+          actorId: admin.id,
+          action: "ticket.opened_after_resolved",
+          entityType: "ticket",
+          entityId: ticket.id,
+          after: {
+            protocol: ticket.protocol,
+            conversationId,
+            previousTicketId: resolved.id,
+          },
+        });
+        return { id: ticket.id, protocol: ticket.protocol, created: true };
+      });
+    },
   };
 }
 

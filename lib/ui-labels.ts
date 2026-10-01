@@ -56,6 +56,13 @@ export const STATUS_TONE: Record<string, { bar: string; pill: string; header: st
     count: "bg-[var(--status-resolvido)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-resolvido)_8%,white)]",
   },
+  promovido: {
+    bar: "bg-[var(--status-resolvido)]",
+    pill: "border border-[#a7f3d0] bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
+    header: "bg-[var(--status-resolvido-bg)] text-[var(--status-resolvido)]",
+    count: "bg-[var(--status-resolvido)] text-white",
+    column: "bg-[color-mix(in_srgb,var(--status-resolvido)_8%,white)]",
+  },
   arquivado: {
     bar: "bg-[var(--status-arquivado)]",
     pill: "bg-[var(--status-arquivado-bg)] text-[var(--status-arquivado)]",

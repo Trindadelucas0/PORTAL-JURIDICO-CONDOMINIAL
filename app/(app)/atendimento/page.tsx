@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { conversationIdentityLabel, conversationPhoneLabel } from "@/lib/phone/display";
 import { ExpandableRow } from "@/components/ui/expandable-row";
 import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
-import { formatAge, STATUS_LABEL, STATUS_TONE } from "@/lib/ui-labels";
+import { formatAge, STATUS_TONE } from "@/lib/ui-labels";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
@@ -107,6 +107,7 @@ function InboxInner() {
   });
   const meUser = me.data?.data.user;
   const admin = meUser?.role === "admin";
+  const canSend = Boolean(meUser && (meUser.role === "admin" || (meUser.podeResponderCliente && !meUser.apenasRascunho)));
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -302,6 +303,7 @@ function InboxInner() {
             onEditTicket={setEditTicketId}
             wide={contextWide}
             onToggleWide={() => setContextWide((value) => !value)}
+            canSend={canSend}
           />
         </WorkspacePane>
       </WorkspaceShell>
@@ -344,12 +346,20 @@ function ContextPane({
   onEditTicket,
   wide,
   onToggleWide,
+  canSend,
 }: {
   conversation?: Conversation;
   onEditTicket: (id: string) => void;
   wide: boolean;
   onToggleWide: () => void;
+  canSend: boolean;
 }) {
+  const ticketTone = conversation
+    ? STATUS_TONE[pickTicketForCard(conversation.tickets)?.status ?? ""]
+    : undefined;
+  const triageTone = conversation?.triageItem
+    ? STATUS_TONE[conversation.triageItem.status]
+    : undefined;
   return (
     <ContextSummary wide={wide} onToggleWide={onToggleWide}>
       {!conversation ? (
@@ -373,8 +383,19 @@ function ContextPane({
               </p>
             </div>
           </div>
-          <div className={CONTEXT_CARD}>
-            <ContextBlock label="Condomínio">
+          <AiContextSummary conversationId={conversation.id} canSend={canSend} />
+          <div
+            className={
+              conversation.condominium?.nome
+                ? cn(
+                    "min-w-0 rounded-[8px] border p-3",
+                    "border-[color-mix(in_srgb,var(--brand)_25%,white)]",
+                    "bg-[color-mix(in_srgb,var(--brand)_8%,white)]",
+                  )
+                : CONTEXT_CARD
+            }
+          >
+            <ContextBlock label="Condomínio" className={conversation.condominium?.nome ? "text-[var(--brand)]" : undefined}>
               {conversation.condominium?.nome ? (
                 <Link href="/condominios" className="text-[var(--brand)]">
                   {conversation.condominium.nome}
@@ -384,8 +405,14 @@ function ContextPane({
               )}
             </ContextBlock>
           </div>
-          <div className={CONTEXT_CARD}>
-            <ContextBlock label="Chamado">
+          <div
+            className={
+              ticketTone
+                ? cn("min-w-0 rounded-[8px] border border-border p-3", ticketTone.column)
+                : CONTEXT_CARD
+            }
+          >
+            <ContextBlock label="Chamado" className={ticketTone?.header}>
               {conversation.tickets?.length ? (
                 <div className="space-y-2">
                   {conversation.tickets.map((t) => (
@@ -418,15 +445,17 @@ function ContextPane({
               )}
             </ContextBlock>
           </div>
-          <div className={CONTEXT_CARD}>
-            <ContextBlock label="Triagem">
+          <div
+            className={
+              triageTone
+                ? cn("min-w-0 rounded-[8px] border border-border p-3", triageTone.column)
+                : CONTEXT_CARD
+            }
+          >
+            <ContextBlock label="Triagem" className={triageTone?.header}>
               {conversation.triageItem ? (
                 <p className="flex flex-wrap items-center gap-2">
-                  {STATUS_TONE[conversation.triageItem.status] ? (
-                    <StatusBadge status={conversation.triageItem.status} />
-                  ) : (
-                    STATUS_LABEL[conversation.triageItem.status] || conversation.triageItem.status
-                  )}
+                  <StatusBadge status={conversation.triageItem.status} />
                   {conversation.triageItem.status === "aberto" ? (
                     <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
                       Analisar
@@ -438,7 +467,6 @@ function ContextPane({
               )}
             </ContextBlock>
           </div>
-          <AiContextSummary conversationId={conversation.id} />
           <ExpandableRow
             title="Mais informações"
             summary="Histórico e documentos no chamado"

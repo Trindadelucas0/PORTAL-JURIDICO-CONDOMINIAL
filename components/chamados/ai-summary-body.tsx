@@ -134,7 +134,11 @@ export function AnaliseInterrompida({ revision }: { revision: CopilotRevisionVie
     <Faixa tom="aviso">
       <SectionTitle className="font-semibold text-[var(--status-andamento)]">ANÁLISE INTERROMPIDA</SectionTitle>
       <p className="mt-2 text-sm leading-relaxed">
-        A IA não encontrou evidências suficientes para sustentar uma resposta segura.
+        {revision.tecnica.motivoEscalonamento === "resposta_publica"
+          ? "A resposta sugerida foi descartada porque não servia para enviar no WhatsApp."
+          : revision.tecnica.motivoEscalonamento === "json_invalido"
+            ? "A saída do modelo foi rejeitada na validação. A segunda tentativa, com o erro, também foi rejeitada."
+            : "A IA não encontrou evidências suficientes para sustentar uma resposta segura."}
       </p>
       <p className="mt-3 text-xs font-medium tracking-wide text-muted-foreground">O QUE FOI CONSULTADO</p>
       {consultado.length ? (
@@ -412,6 +416,7 @@ export function RespostaSugerida({
   });
   const erro = (save.error || send.error) instanceof Error ? ((save.error || send.error) as Error).message : null;
   const bar = variant === "bar";
+  if (enviada) return null;
 
   const content = (
     <>
@@ -426,8 +431,7 @@ export function RespostaSugerida({
         <p className={cn("text-sm leading-relaxed whitespace-pre-wrap break-words", bar && "max-h-32 overflow-y-auto")}>{texto}</p>
       )}
       {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
-      {enviada ? <p className="mt-2 text-xs text-muted-foreground">Esta resposta já foi enviada.</p> : null}
-      {!enviada && draftPath ? (
+      {draftPath ? (
         <div className={cn("flex flex-wrap gap-2", bar ? "mt-2" : "mt-3")}>
           {editing ? (
             <>

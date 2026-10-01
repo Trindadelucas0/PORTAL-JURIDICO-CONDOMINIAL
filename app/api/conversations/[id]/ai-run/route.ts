@@ -9,6 +9,7 @@ import { atendimentoService } from "@/lib/services/atendimento-service";
 
 const bodySchema = z.object({
   messageIds: z.array(z.string().max(64)).max(200).optional(),
+  relatoMessageIds: z.array(z.string().max(64)).max(200).optional(),
 });
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -22,6 +23,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       conversationId: conversation.id,
       condominiumId: conversation.condominiumId,
       messageIds: body.messageIds,
+      relatoMessageIds: body.relatoMessageIds,
     });
     return created(row);
   } catch (error) {

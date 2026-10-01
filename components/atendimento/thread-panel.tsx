@@ -2,18 +2,24 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageComposer } from "@/components/atendimento/message-composer";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
-import { RespostaSugerida } from "@/components/chamados/ai-summary-body";
 import { presentCopilotRevision, type CopilotIndex } from "@/lib/ai/copilot-view";
-import { isHumanReviewFallback } from "@/lib/ai/prompts/inbound-v2";
+import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { isHiddenReviewDraft, MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
+import {
+  isHiddenReviewDraft,
+  isRedundantAiDraft,
+  MessageBubbles,
+  sentPublicBodies,
+  type MessageBubbleItem,
+} from "@/components/atendimento/message-bubbles";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
@@ -36,6 +42,18 @@ export type ThreadConversation = {
 type Message = MessageBubbleItem;
 
 const NO_SELECTION: ReadonlySet<string> = new Set();
+
+type ReadBag = { id: string | null; ids: string[]; lastReadAt: string | null };
+
+/** Não abertas desta visita: as do `POST .../read` mais inbound chegadas depois do corte novo; as 40 mais novas. */
+function relatoIdsFor(bag: ReadBag, messages: Message[]): string[] {
+  const cutoff = bag.lastReadAt ? new Date(bag.lastReadAt).getTime() : null;
+  const after =
+    cutoff == null
+      ? []
+      : messages.filter((m) => m.direction === "in" && new Date(m.createdAt).getTime() > cutoff).map((m) => m.id);
+  return [...new Set([...bag.ids, ...after])].slice(-SELECTED_MESSAGE_LIMIT);
+}
 
 function mergeById(older: Message[], newer: Message[]): Message[] {
   const map = new Map<string, Message>();
@@ -88,6 +106,7 @@ export function ThreadPanel({
     id: conversationId,
     ids: new Set(),
   });
+  const [readBag, setReadBag] = useState<ReadBag>({ id: conversationId, ids: [], lastReadAt: null });
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number | null>(null);
 
@@ -111,6 +130,7 @@ export function ThreadPanel({
     if (olderBag.id === conversationId) return;
     setOlderBag({ id: conversationId, messages: [], page: 1 });
     setSelectionBag({ id: conversationId, ids: new Set() });
+    setReadBag({ id: conversationId, ids: [], lastReadAt: null });
     setOlderError(null);
     setReplyTo(null);
   }, [conversationId, olderBag.id]);
@@ -132,15 +152,15 @@ export function ThreadPanel({
   const aiAnalyzing = Boolean(aiSummary.data?.data.analyzing);
   const aiCurrent = aiOn && aiSummary.data?.data.current ? presentCopilotRevision(aiSummary.data.data.current) : null;
   const suggested = aiCurrent?.resposta.texto?.trim() ?? "";
-  const showSuggestedBar = Boolean(aiCurrent && suggested && !isHumanReviewFallback(suggested));
   const runAi = useMutation({
-    mutationFn: (messageIds: string[]) =>
-      api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify({ messageIds }) }),
+    mutationFn: (body: { messageIds: string[]; relatoMessageIds: string[] }) =>
+      api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["conversation-ai-summary", conversationId] });
     },
     onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível rodar a IA"),
   });
+  const gerando = runAi.isPending || aiAnalyzing;
 
   useSyncOwnMessages(conversationId ?? undefined);
 
@@ -153,8 +173,14 @@ export function ThreadPanel({
   const recent = messages.data?.data ?? [];
   const total = Number(messages.data?.meta?.total ?? recent.length);
   const allMessages = useMemo(() => mergeById(older, recent), [older, recent]);
+  const sentBodies = useMemo(() => sentPublicBodies(allMessages), [allMessages]);
   const hasMore = total > allMessages.length;
   const lastMessageId = allMessages[allMessages.length - 1]?.id ?? null;
+  const relatoIds = useMemo(
+    () => (readBag.id === conversationId ? relatoIdsFor(readBag, allMessages) : []),
+    [readBag, conversationId, allMessages],
+  );
+  const onlyRelato = selectedIds.size === 0 && relatoIds.length > 0;
 
   const { onScroll, stickToBottom, releaseStick } = useScrollThreadToEnd(scrollRef, {
     conversationKey: conversationId,
@@ -192,7 +218,16 @@ export function ThreadPanel({
   });
   useEffect(() => {
     if (!conversationId) return;
-    void api(`/api/conversations/${conversationId}/read`, { method: "POST", body: JSON.stringify({}) }).then(() => {
+    void api<{ lastReadAt: string; unopenedMessageIds?: string[] }>(`/api/conversations/${conversationId}/read`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).then((res) => {
+      const ids = res.data?.unopenedMessageIds ?? [];
+      setReadBag((prev) =>
+        prev.id === conversationId
+          ? { id: conversationId, ids: [...new Set([...prev.ids, ...ids])], lastReadAt: res.data?.lastReadAt ?? prev.lastReadAt }
+          : prev,
+      );
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     });
@@ -234,7 +269,6 @@ export function ThreadPanel({
 
   const user = me.data?.data.user;
   const canApprove = user?.role === "admin";
-  const canSend = Boolean(user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)));
 
   return (
     <section className={cn("flex h-full min-h-0 flex-col overflow-hidden", hidden && "hidden lg:flex")}>
@@ -283,10 +317,22 @@ export function ThreadPanel({
               type="button"
               size="sm"
               variant="secondary"
-              disabled={!conversation || runAi.isPending || aiAnalyzing || selectedIds.size === 0}
-              onClick={() => runAi.mutate([...selectedIds])}
+              aria-busy={gerando}
+              disabled={
+                !conversation || gerando || (selectedIds.size === 0 && relatoIds.length === 0)
+              }
+              onClick={() => runAi.mutate({ messageIds: [...selectedIds], relatoMessageIds: relatoIds })}
             >
-              {aiAnalyzing ? "Em análise" : `Gerar resumo (${selectedIds.size})`}
+              {gerando ? (
+                <>
+                  <Loader2Icon className="animate-spin" />
+                  Gerando…
+                </>
+              ) : onlyRelato ? (
+                "Gerar resumo"
+              ) : (
+                `Gerar resumo (${selectedIds.size})`
+              )}
             </Button>
           </div>
         ) : null}
@@ -328,6 +374,7 @@ export function ThreadPanel({
                 {olderError ? <ErrorBanner message={olderError} onRetry={() => void loadOlder()} /> : null}
                 <MessageBubbles
                   messages={allMessages}
+                  suggestedText={suggested}
                   onReply={(m) => setReplyTo(m)}
                   onResend={canApprove ? (id) => resend.mutate(id) : undefined}
                   resendPending={resend.isPending}
@@ -339,7 +386,13 @@ export function ThreadPanel({
           </div>
           {canApprove
             ? allMessages
-                .filter((m) => m.visibility === "publica" && m.sendStatus === "draft" && !isHiddenReviewDraft(m))
+                .filter(
+                  (m) =>
+                    m.visibility === "publica" &&
+                    m.sendStatus === "draft" &&
+                    !isHiddenReviewDraft(m) &&
+                    !isRedundantAiDraft(m, { sentBodies, suggestedText: suggested }),
+                )
                 .slice(0, 1)
                 .map((m) => (
                   <ApprovalPanel
@@ -361,14 +414,6 @@ export function ThreadPanel({
             </div>
           ) : null}
           {resend.isError && !canApprove ? <ErrorBanner message={(resend.error as Error).message} /> : null}
-          {showSuggestedBar && aiCurrent && conversationId ? (
-            <RespostaSugerida
-              revision={aiCurrent}
-              draftPath={`/api/conversations/${conversationId}/ai-draft`}
-              canSend={canSend}
-              variant="bar"
-            />
-          ) : null}
           <MessageComposer
             user={user}
             allowPublicSend={allowPublicSend}

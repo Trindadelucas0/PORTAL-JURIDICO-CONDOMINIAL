@@ -25,7 +25,9 @@ import {
 } from "@/lib/services/peer-avatar-service";
 import { messageWindow } from "@/lib/api/pagination";
 import { enqueueInboundJob, enqueueMediaDownloadJob } from "@/lib/ai/enqueue";
+import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { processInbound } from "@/lib/services/automation-service";
+import { createTicketService } from "@/lib/services/ticket-service";
 
 export type InboundPayload = {
   waMessageId: string;
@@ -44,7 +46,7 @@ export type IngestResult = {
   messageId: string;
   unidentified: boolean;
   triageId: string | null;
-  ticketCreated: false;
+  ticketCreated: boolean;
 };
 
 function sanitizePeerDisplayName(value?: string | null): string | null {
@@ -181,6 +183,7 @@ export function inboundPeerEnrichOptions(
 }
 
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
+  const tickets = createTicketService(db);
   return {
     async ingestInbound(payload: InboundPayload): Promise<IngestResult> {
       const existing = await db.message.findUnique({
@@ -295,17 +298,35 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         });
       }
 
-      const linkedTicket = await db.ticket.findFirst({
-        where: { conversationId: conversation.id },
-        orderBy: { createdAt: "desc" },
+      let ticketCreated = false;
+      let linkedTicketId: string | null = null;
+      const openTicket = await db.ticket.findFirst({
+        where: { conversationId: conversation.id, status: { not: "resolvido" } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true },
       });
+      if (openTicket) {
+        linkedTicketId = openTicket.id;
+      } else if (isInOperationalFlow(contact)) {
+        const resolved = await db.ticket.findFirst({
+          where: { conversationId: conversation.id, status: "resolvido" },
+          select: { id: true },
+        });
+        if (resolved) {
+          const opened = await tickets.openAfterResolved(conversation.id);
+          if (opened) {
+            linkedTicketId = opened.id;
+            ticketCreated = opened.created;
+          }
+        }
+      }
 
       let message;
       try {
         message = await db.message.create({
           data: {
             conversationId: conversation.id,
-            ticketId: linkedTicket?.id ?? null,
+            ticketId: linkedTicketId,
             direction: "in",
             visibility: "publica",
             waMessageId: payload.waMessageId,
@@ -404,7 +425,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         messageId: message.id,
         unidentified: conversation.unidentified,
         triageId,
-        ticketCreated: false,
+        ticketCreated,
       };
     },
 
@@ -507,13 +528,26 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       return { items: mapped, total, page, pageSize };
     },
 
+    /** Devolve também as inbound que o cartão contava como Não aberta, lidas antes de avançar o corte. */
     async markRead(user: User, conversationId: string) {
       await this.getConversationForUser(user, conversationId);
-      return db.conversationRead.upsert({
+      const reads = await db.conversationRead.findMany({
+        where: { conversationId },
+        select: { lastReadAt: true },
+      });
+      const cutoff = latestOfficeReadAt(reads);
+      const unopened = await db.message.findMany({
+        where: { conversationId, direction: "in", ...(cutoff ? { createdAt: { gt: cutoff } } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: SELECTED_MESSAGE_LIMIT,
+        select: { id: true },
+      });
+      const row = await db.conversationRead.upsert({
         where: { userId_conversationId: { userId: user.id, conversationId } },
         create: { userId: user.id, conversationId, lastReadAt: new Date() },
         update: { lastReadAt: new Date() },
       });
+      return { ...row, unopenedMessageIds: unopened.map((message) => message.id).reverse() };
     },
 
     async removeFromSystem(user: User, conversationId: string) {

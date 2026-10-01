@@ -26,3 +26,38 @@ export const modelOutputSchema = z.object({
 
 export type ModelOutput = z.infer<typeof modelOutputSchema>;
 export type SummaryJson = z.infer<typeof summarySchema>;
+
+export const EMPTY_SUMMARY: SummaryJson = {
+  contexto: "",
+  problema: "",
+  documentos: "",
+  analise: "",
+  pendencias: "",
+  proximaAcao: "",
+};
+
+export type SummaryTurn<A> = { summary: SummaryJson; analysis: A; clientDraft: string | null };
+
+/**
+ * Atendimento com relato: `contexto` vem do relato (não abertas) e o resto das marcas.
+ * O lado que não foi gerado nesta execução fica igual ao da revisão corrente.
+ * Rascunho da revisão corrente já enviado (`draftSent`) não é copiado.
+ */
+export function mergePartialSummary<A>(input: {
+  fromRelato: boolean;
+  fromMarks: boolean;
+  next: SummaryTurn<A>;
+  previous: (SummaryTurn<A> & { draftSent: boolean }) | null;
+  emptyAnalysis: A;
+}): SummaryTurn<A> {
+  const { next, previous } = input;
+  const rest = input.fromMarks
+    ? { summary: next.summary, analysis: next.analysis, clientDraft: next.clientDraft }
+    : {
+        summary: previous?.summary ?? EMPTY_SUMMARY,
+        analysis: previous?.analysis ?? input.emptyAnalysis,
+        clientDraft: previous && !previous.draftSent ? previous.clientDraft : null,
+      };
+  const contexto = input.fromRelato ? next.summary.contexto : previous?.summary.contexto ?? "";
+  return { ...rest, summary: { ...rest.summary, contexto } };
+}

@@ -89,6 +89,91 @@ describe("escritorio operacional", () => {
     expect(afterInbound.ticketCreated).toBe(false);
   });
 
+  it("inbound after resolved ticket opens a new ticket", async () => {
+    const suffix = `${Date.now()}-resolved`;
+    const admin = await db.user.upsert({
+      where: { email: `admin-resolved-${suffix}@juricon.local` },
+      update: {},
+      create: {
+        email: `admin-resolved-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Condo resolved ${suffix}` } });
+    const phone = `+55118${String(Date.now()).slice(-8)}`;
+    const contact = await db.contact.create({
+      data: { nome: "Maria Resolvida", phoneE164: phone, condominiumId: condo.id },
+    });
+    let connection = await db.channelConnection.findFirst({ where: { type: "dev_mock" } });
+    if (!connection) {
+      connection = await db.channelConnection.create({
+        data: { type: "dev_mock", status: "open", label: "Dev / mock" },
+      });
+    }
+    expect(connection).toBeTruthy();
+
+    const ingest = await atendimento.ingestInbound({
+      waMessageId: `resolved-1-${suffix}`,
+      fromPhone: phone,
+      body: "Primeiro assunto",
+      connectionType: "dev_mock",
+    });
+    expect(ingest.ticketCreated).toBe(false);
+    expect(ingest.triageId).toBeTruthy();
+
+    const ticket = await tickets.promoteFromTriage(admin, ingest.triageId!, {
+      category: "assembleia",
+      priority: "alta",
+    });
+    await tickets.patch(admin, ticket.id, { status: "em_andamento" });
+
+    const whileOpen = await atendimento.ingestInbound({
+      waMessageId: `resolved-2-${suffix}`,
+      fromPhone: phone,
+      body: "Ainda no mesmo chamado",
+      connectionType: "dev_mock",
+    });
+    expect(whileOpen.ticketCreated).toBe(false);
+    const whileOpenMsg = await db.message.findFirstOrThrow({ where: { id: whileOpen.messageId } });
+    expect(whileOpenMsg.ticketId).toBe(ticket.id);
+
+    await tickets.patch(admin, ticket.id, { status: "resolvido" });
+    const countBefore = await db.ticket.count();
+
+    const again = await atendimento.ingestInbound({
+      waMessageId: `resolved-3-${suffix}`,
+      fromPhone: phone,
+      body: "Assunto novo",
+      connectionType: "dev_mock",
+    });
+    expect(again.ticketCreated).toBe(true);
+    expect(await db.ticket.count()).toBe(countBefore + 1);
+
+    const newMsg = await db.message.findFirstOrThrow({ where: { id: again.messageId } });
+    expect(newMsg.ticketId).toBeTruthy();
+    expect(newMsg.ticketId).not.toBe(ticket.id);
+
+    const created = await db.ticket.findFirstOrThrow({ where: { id: newMsg.ticketId! } });
+    expect(created.protocol).not.toBe(ticket.protocol);
+    expect(created.status).toBe("aberto");
+    expect(created.category).toBe("outro");
+    expect(created.priority).toBe("media");
+    expect(created.assignedToId).toBeNull();
+    expect(created.title).toBe("Maria Resolvida — Outro");
+    expect(created.origin).toBe("whatsapp");
+    expect(created.conversationId).toBe(ingest.conversationId);
+
+    const old = await db.ticket.findFirstOrThrow({ where: { id: ticket.id } });
+    expect(old.status).toBe("resolvido");
+    expect(whileOpenMsg.ticketId).toBe(old.id);
+
+    const triage = await db.triageItem.findFirstOrThrow({ where: { conversationId: ingest.conversationId } });
+    expect(triage.status).toBe("promovido");
+    expect(triage.ticketId).toBe(created.id);
+  });
+
+
   it("createManual rejects contact from another condominium", async () => {
     const suffix = `${Date.now()}-condo-mismatch`;
     const admin = await db.user.create({

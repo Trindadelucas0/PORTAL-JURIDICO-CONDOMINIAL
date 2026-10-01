@@ -1,4 +1,4 @@
-import { jobKeysNeedLatestInbound, payloadMessageIds } from "@/lib/ai/enqueue";
+import { jobKeysNeedLatestInbound, payloadMessageIds, payloadRelatoMessageIds } from "@/lib/ai/enqueue";
 
 export type InboundRow = { id: string; body: string };
 
@@ -50,6 +50,20 @@ export function selectedIdsForJobs(jobs: Array<{ payload: unknown }>): string[] 
   for (let index = jobs.length - 1; index >= 0; index--) {
     const ids = payloadMessageIds(jobs[index].payload);
     if (ids) return ids;
+  }
+  return null;
+}
+
+/**
+ * Job mais novo do lote com `payload.relatoMessageIds` (mesmo vazio): relato e marcas separados.
+ * `null` quando nenhum job tiver a chave; aí vale `selectedIdsForJobs` / últimas 20 inbound.
+ */
+export function relatoSplitForJobs(
+  jobs: Array<{ payload: unknown }>,
+): { relatoIds: string[]; markIds: string[] } | null {
+  for (let index = jobs.length - 1; index >= 0; index--) {
+    const relatoIds = payloadRelatoMessageIds(jobs[index].payload);
+    if (relatoIds) return { relatoIds, markIds: payloadMessageIds(jobs[index].payload) ?? [] };
   }
   return null;
 }

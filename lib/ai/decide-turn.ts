@@ -16,6 +16,8 @@ export type TurnInput = {
   expectedVersion: number;
   draftText: string | null;
   summary: SummaryJson;
+  /** Job com bolhas marcadas: grava rascunho mesmo com abstain (confiança baixa). */
+  allowAbstainDraft?: boolean;
 };
 
 export type TurnDecision = {
@@ -47,7 +49,7 @@ export function decideTurn(input: TurnInput): TurnDecision {
           input.autoDraft &&
           !input.interactionExists &&
           input.draftText &&
-          (serverDraft || !input.abstain)
+          (serverDraft || !input.abstain || Boolean(input.allowAbstainDraft))
         ? input.draftText.slice(0, 8000)
         : null;
 

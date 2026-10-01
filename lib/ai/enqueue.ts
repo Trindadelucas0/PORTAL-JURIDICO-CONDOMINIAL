@@ -75,12 +75,32 @@ export function payloadMessageIds(payload: unknown): string[] | null {
   return ids.slice(0, SELECTED_MESSAGE_LIMIT);
 }
 
+/**
+ * Não abertas que o Atendimento mandou para o relato. `null` = chave ausente (ficha, automático, job antigo);
+ * array, mesmo vazio, = job com relato separado das marcas.
+ */
+export function payloadRelatoMessageIds(payload: unknown): string[] | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const raw = (payload as { relatoMessageIds?: unknown }).relatoMessageIds;
+  if (!Array.isArray(raw)) return null;
+  const ids = [...new Set(raw.filter((id): id is string => typeof id === "string" && isMessageUuid(id)))];
+  return ids.slice(0, SELECTED_MESSAGE_LIMIT);
+}
+
+function manualPayload(messageIds?: string[], relatoMessageIds?: string[]): Prisma.InputJsonValue | undefined {
+  if (relatoMessageIds) return { messageIds: messageIds ?? [], relatoMessageIds };
+  if (messageIds?.length) return { messageIds };
+  return undefined;
+}
+
 export async function enqueueManualInbound(
   db: Db,
   conversationId: string,
   messageIds?: string[],
+  relatoMessageIds?: string[],
 ): Promise<{ queued: boolean }> {
   if (!isAiEnabled()) return { queued: false };
+  const payload = manualPayload(messageIds, relatoMessageIds);
   try {
     await db.aiJob.create({
       data: {
@@ -89,7 +109,7 @@ export async function enqueueManualInbound(
         conversationId,
         status: "queued",
         runAfter: new Date(),
-        ...(messageIds?.length ? { payload: { messageIds } } : {}),
+        ...(payload ? { payload } : {}),
       },
     });
   } catch (error) {

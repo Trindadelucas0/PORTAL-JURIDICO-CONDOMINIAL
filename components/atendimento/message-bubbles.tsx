@@ -44,8 +44,33 @@ export function isHiddenReviewDraft(m: Pick<MessageBubbleItem, "body" | "directi
   return m.visibility === "publica" && m.direction === "out" && m.sendStatus === "draft" && isHumanReviewFallback(m.body);
 }
 
+type DraftCheck = Pick<MessageBubbleItem, "body" | "direction" | "visibility" | "sendStatus">;
+
+export function sentPublicBodies(messages: DraftCheck[]): Set<string> {
+  return new Set(
+    messages
+      .filter((m) => m.direction === "out" && m.visibility === "publica" && m.sendStatus === "sent")
+      .map((m) => m.body.trim())
+      .filter(Boolean),
+  );
+}
+
+/** Rascunho cujo texto já foi enviado, ou que é a resposta sugerida corrente (envio só por Enviar ao cliente). */
+export function isRedundantAiDraft(
+  m: DraftCheck,
+  { sentBodies, suggestedText }: { sentBodies: ReadonlySet<string>; suggestedText?: string | null },
+): boolean {
+  if (m.visibility !== "publica" || m.direction !== "out" || m.sendStatus !== "draft") return false;
+  const body = m.body.trim();
+  if (!body) return false;
+  if (sentBodies.has(body)) return true;
+  const suggested = suggestedText?.trim() ?? "";
+  return suggested !== "" && body === suggested;
+}
+
 export function MessageBubbles({
   messages,
+  suggestedText,
   onReply,
   onResend,
   resendPending,
@@ -53,13 +78,17 @@ export function MessageBubbles({
   onToggleSelect,
 }: {
   messages: MessageBubbleItem[];
+  suggestedText?: string | null;
   onReply?: (message: MessageBubbleItem) => void;
   onResend?: (messageId: string) => void;
   resendPending?: boolean;
   selectedIds?: ReadonlySet<string>;
   onToggleSelect?: (messageId: string) => void;
 }) {
-  const days = groupMessagesByDayAndSender(messages.filter((m) => !isHiddenReviewDraft(m)));
+  const sentBodies = sentPublicBodies(messages);
+  const days = groupMessagesByDayAndSender(
+    messages.filter((m) => !isHiddenReviewDraft(m) && !isRedundantAiDraft(m, { sentBodies, suggestedText })),
+  );
   const selectable = Boolean(selectedIds && onToggleSelect);
 
   return (

@@ -27,7 +27,7 @@ export function isAiCreateTicketEnabled(): boolean {
 
 export function aiPromptVersion(): string {
   const value = process.env.AI_PROMPT_VERSION?.trim();
-  return value || "inbound-v2";
+  return value || "inbound-v3";
 }
 
 export function aiPublicFlags() {

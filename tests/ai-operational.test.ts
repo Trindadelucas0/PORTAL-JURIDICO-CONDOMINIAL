@@ -15,7 +15,13 @@ import { runRetentionPurge, AI_REJECTED_MEMORY_DAYS, shouldPurge, AI_AUDIT_RETEN
 import { createDocumentService } from "@/lib/services/document-service";
 import { insertInteractionOnce } from "@/lib/ai/interaction";
 import { advanceMemoryPointer, versionMatches } from "@/lib/ai/memory";
-import { buildModelPackage, MODEL_PACKAGE_CHAR_LIMIT, packageContainsSecret, SYSTEM_DOCUMENT_RULE } from "@/lib/ai/package";
+import {
+  buildModelPackage,
+  DOCUMENT_EVIDENCE_RULE,
+  MODEL_PACKAGE_CHAR_LIMIT,
+  packageContainsSecret,
+  SYSTEM_DOCUMENT_RULE,
+} from "@/lib/ai/package";
 import { assertPublicAiBase, withTimeout } from "@/lib/ai/provider";
 import { MemoryJobQueue } from "@/lib/ai/queue";
 import { chunksVisibleToConversation, retrieveForConversation } from "@/lib/ai/retriever";
@@ -245,17 +251,44 @@ describe("ia operacional", () => {
       summary,
     });
     expect(human.draftBody).toBeNull();
+    const markedAbstain = decideTurn({
+      autoDraft: true,
+      memoryEnabled: true,
+      abstain: true,
+      injection: false,
+      allowAbstainDraft: true,
+      requestedActions: ["CREATE_DRAFT"],
+      interactionExists: false,
+      currentVersion: 0,
+      expectedVersion: 0,
+      draftText: "Bom dia, em que horário aproximado o barulho acontece?",
+      summary,
+    });
+    expect(markedAbstain.draftBody).toBe("Bom dia, em que horário aproximado o barulho acontece?");
+    const humanMarked = decideTurn({
+      autoDraft: true,
+      memoryEnabled: false,
+      abstain: true,
+      injection: false,
+      allowAbstainDraft: true,
+      serverFallback: "human_review",
+      requestedActions: ["CREATE_DRAFT"],
+      interactionExists: false,
+      currentVersion: 0,
+      expectedVersion: 0,
+      draftText: "A análise precisa de revisão humana antes de qualquer resposta ao cliente.",
+      summary,
+    });
+    expect(humanMarked.draftBody).toBeNull();
   });
 
   it("unique interaction produces one draft", async () => {
-    const seen = new Set<string>();
+    let row: { id: string } | null = null;
     const db = {
       aiInteraction: {
+        findUnique: async () => row,
         create: async () => {
-          if (seen.size) {
-            throw new Prisma.PrismaClientKnownRequestError("Unique", { code: "P2002", clientVersion: "6.0.0" });
-          }
-          seen.add("once");
+          row = { id: "once" };
         },
       },
     };
@@ -265,6 +298,44 @@ describe("ia operacional", () => {
       if (claim === "created") drafts += 1;
     }
     expect(drafts).toBe(1);
+  });
+
+  it("replaces an interaction without a draft and keeps one with a draft", async () => {
+    const { canReplaceInteraction, isJsonInvalidFailure, insertInteractionOnceReplacingJsonFailure } = await import(
+      "@/lib/ai/interaction"
+    );
+    expect(isJsonInvalidFailure({ motivoEscalonamento: "json_invalido" }, null)).toBe(true);
+    expect(isJsonInvalidFailure({ motivoEscalonamento: "json_invalido" }, "draft-1")).toBe(false);
+    expect(isJsonInvalidFailure({ motivoEscalonamento: "resposta_publica" }, null)).toBe(false);
+    expect(canReplaceInteraction(null)).toBe(true);
+    expect(canReplaceInteraction("draft-1")).toBe(false);
+    let existing: { id: string; draftMessageId: string | null } | null = {
+      id: "old",
+      draftMessageId: null,
+    };
+    let created = 0;
+    let deleted = 0;
+    const db = {
+      aiInteraction: {
+        findUnique: async () => existing,
+        create: async () => {
+          created += 1;
+          existing = { id: "new", draftMessageId: null };
+        },
+        delete: async () => {
+          deleted += 1;
+          existing = null;
+        },
+      },
+    };
+    const replaced = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never);
+    expect(replaced).toBe("created");
+    expect(deleted).toBe(1);
+    expect(created).toBe(1);
+    existing = { id: "kept", draftMessageId: "draft-1" };
+    const kept = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never);
+    expect(kept).toBe("duplicate");
+    expect(created).toBe(1);
   });
 
   it("old memory version does not write", async () => {
@@ -359,7 +430,7 @@ describe("ia operacional", () => {
     expect(condoOnly.user).toBe(legacy.user);
     expect(condoOnly.user).not.toContain("regra-geral");
     expect(condoOnly.user).not.toContain(SYSTEM_DOCUMENT_RULE);
-    expect(condoOnly.user).toContain("<DOCUMENT_DATA>\n- id=chunk-a obra mediante aprovação\n</DOCUMENT_DATA>");
+    expect(condoOnly.user).toContain(`<DOCUMENT_DATA>\n${DOCUMENT_EVIDENCE_RULE}\n- id=chunk-a obra mediante aprovação\n</DOCUMENT_DATA>`);
     const mixed = buildModelPackage({
       ...base,
       chunks: [
@@ -368,8 +439,25 @@ describe("ia operacional", () => {
       ],
     });
     expect(mixed.user).toContain(
-      `<DOCUMENT_DATA>\n${SYSTEM_DOCUMENT_RULE}\n- id=sys-1 regra-geral resposta em até 48h\n- id=chunk-a obra mediante aprovação\n</DOCUMENT_DATA>`,
+      `<DOCUMENT_DATA>\n${DOCUMENT_EVIDENCE_RULE}\n${SYSTEM_DOCUMENT_RULE}\n- id=sys-1 regra-geral resposta em até 48h\n- id=chunk-a obra mediante aprovação\n</DOCUMENT_DATA>`,
     );
+    const empty = buildModelPackage({ ...base, chunks: [] });
+    expect(empty.user).not.toContain(DOCUMENT_EVIDENCE_RULE);
+  });
+
+  it("puts the rejected draft before DOCUMENT_DATA only on regeneration", () => {
+    const base = {
+      system: "sistema",
+      model: "main",
+      condominiumName: "Alpha",
+      city: null,
+      memorySummary: null,
+      messages: [{ body: "barulho no 202" }],
+      chunks: [{ id: "chunk-a", content: "silêncio 22h às 7h" }],
+    };
+    expect(buildModelPackage(base).user).not.toContain("<REJECTED_DRAFT>");
+    const regen = buildModelPackage({ ...base, rejectedDraft: "O Regimento   estabelece\n22h" }).user;
+    expect(regen).toContain("<REJECTED_DRAFT>\nO Regimento estabelece 22h\n</REJECTED_DRAFT>\n<DOCUMENT_DATA>");
   });
 
   it("accepts .md only on the office document upload", () => {
@@ -652,20 +740,46 @@ describe("ingest does not enqueue a duplicate waMessageId", () => {
 });
 
 describe("inbound prompt v2", () => {
-  it("keeps inbound-v1 text and defaults to inbound-v2", async () => {
+  it("keeps inbound-v1 and inbound-v2 text and defaults to inbound-v3", async () => {
     const { INBOUND_V1_SYSTEM } = await import("@/lib/ai/prompts/inbound-v1");
     const { INBOUND_V2_SYSTEM } = await import("@/lib/ai/prompts/inbound-v2");
+    const { INBOUND_V3_SYSTEM } = await import("@/lib/ai/prompts/inbound-v3");
     const { systemPromptFor } = await import("@/lib/ai/prompts/select");
     const { aiPromptVersion } = await import("@/lib/ai/flags");
     expect(INBOUND_V1_SYSTEM.split("\n")).toHaveLength(6);
     expect(INBOUND_V2_SYSTEM).toContain("DADOS");
+    expect(INBOUND_V2_SYSTEM).not.toContain("WhatsApp");
     const prev = process.env.AI_PROMPT_VERSION;
     delete process.env.AI_PROMPT_VERSION;
-    expect(aiPromptVersion()).toBe("inbound-v2");
-    expect(systemPromptFor()).toBe(INBOUND_V2_SYSTEM);
+    expect(aiPromptVersion()).toBe("inbound-v3");
+    expect(systemPromptFor()).toBe(INBOUND_V3_SYSTEM);
+    expect(systemPromptFor("inbound-v2")).toBe(INBOUND_V2_SYSTEM);
+    expect(systemPromptFor("inbound-v9")).toBe(INBOUND_V2_SYSTEM);
     process.env.AI_PROMPT_VERSION = "inbound-v1";
     expect(systemPromptFor("inbound-v1")).toBe(INBOUND_V1_SYSTEM);
     restorePrompt(prev);
+  });
+
+  it("inbound-v3 keeps the v2 guards and adds the WhatsApp reply rules", async () => {
+    const { INBOUND_V2_SYSTEM } = await import("@/lib/ai/prompts/inbound-v2");
+    const { INBOUND_V3_SYSTEM } = await import("@/lib/ai/prompts/inbound-v3");
+    const kept = INBOUND_V2_SYSTEM.split("\n").filter((line) => !line.startsWith("clientDraft é a resposta potencial"));
+    for (const line of kept) expect(INBOUND_V3_SYSTEM).toContain(line);
+    expect(INBOUND_V3_SYSTEM).toContain("não pergunte de novo");
+    expect(INBOUND_V3_SYSTEM).toContain("não invente horário, multa, regra ou procedimento");
+    expect(INBOUND_V3_SYSTEM).toContain("Não liste as faixas de silêncio");
+    expect(INBOUND_V3_SYSTEM).toContain("Nada foi registrado, notificado, encaminhado");
+  });
+
+  it("marked messages require clientDraft even when abstain is true", async () => {
+    const {
+      MARKED_MESSAGES_RULE,
+      SELECTED_MESSAGES_RULE,
+      EMPTY_CLIENT_DRAFT_REWRITE,
+    } = await import("@/lib/ai/prompts/inbound-v2");
+    expect(MARKED_MESSAGES_RULE).toContain("não fica vazio mesmo com abstain true");
+    expect(SELECTED_MESSAGES_RULE).toContain("não fica vazio mesmo com abstain true");
+    expect(EMPTY_CLIENT_DRAFT_REWRITE).toContain("não trouxe clientDraft");
   });
 
   it("classifies injection phrases without calling a model", async () => {
@@ -677,12 +791,52 @@ describe("inbound prompt v2", () => {
 
   it("retries invalid JSON once then returns ok false", async () => {
     const { completeValidJson } = await import("@/lib/ai/complete-json");
+    const users: string[] = [];
+    const result = await completeValidJson(
+      {
+        complete: async (input) => {
+          users.push(input.user);
+          return { text: "not-json", model: "main", inputTokens: 1, outputTokens: 1 };
+        },
+        embed: async () => [],
+      },
+      { system: "s", user: "u", model: "main", maxTokens: 10, timeoutMs: 1000 },
+    );
+    expect(users[0]).toBe("u");
+    expect(users[1]).toContain("A saída anterior foi rejeitada");
+    expect(users[1]).not.toContain("INVALID_OUTPUT");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason.length).toBeGreaterThan(0);
+  });
+
+  it("sends a JSON excerpt on retry when the first output has a brace", async () => {
+    const { completeValidJson } = await import("@/lib/ai/complete-json");
+    const users: string[] = [];
+    const result = await completeValidJson(
+      {
+        complete: async (input) => {
+          users.push(input.user);
+          return { text: "<think>raciocinio</think>{quebrado", model: "main", inputTokens: 1, outputTokens: 1 };
+        },
+        embed: async () => [],
+      },
+      { system: "s", user: "u", model: "main", maxTokens: 10, timeoutMs: 1000 },
+    );
+    expect(users[1]).toContain("INVALID_OUTPUT");
+    expect(users[1]).toContain("{quebrado");
+    expect(users[1]).not.toContain("raciocinio");
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns ok false when the second complete is HTTP 400", async () => {
+    const { completeValidJson } = await import("@/lib/ai/complete-json");
     let calls = 0;
     const result = await completeValidJson(
       {
         complete: async () => {
           calls += 1;
-          return { text: "not-json", model: "main", inputTokens: 1, outputTokens: 1 };
+          if (calls === 1) return { text: "not-json", model: "main", inputTokens: 1, outputTokens: 1 };
+          throw Object.assign(new Error("AI_HTTP"), { code: "HTTP_400" });
         },
         embed: async () => [],
       },
@@ -690,6 +844,69 @@ describe("inbound prompt v2", () => {
     );
     expect(calls).toBe(2);
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("HTTP_400");
+  });
+
+  it("treats HTTP 400 as a permanent job error and TIMEOUT as retryable", async () => {
+    const { isPermanentJobError } = await import("@/lib/ai/complete-json");
+    expect(isPermanentJobError("HTTP_400")).toBe(true);
+    expect(isPermanentJobError("HTTP_401")).toBe(true);
+    expect(isPermanentJobError("HTTP_403")).toBe(true);
+    expect(isPermanentJobError("ZOD")).toBe(true);
+    expect(isPermanentJobError("AI_BASE_BLOCKED")).toBe(true);
+    expect(isPermanentJobError("TIMEOUT")).toBe(false);
+    expect(isPermanentJobError("HTTP_429")).toBe(false);
+    expect(isPermanentJobError("HTTP_500")).toBe(false);
+  });
+
+  it("accepts valid JSON on the second complete", async () => {
+    const { completeValidJson } = await import("@/lib/ai/complete-json");
+    const valid = JSON.stringify({
+      summary: { contexto: "", problema: "", documentos: "", analise: "", pendencias: "", proximaAcao: "" },
+      analysis: { intencao: "pergunta", risco: "baixo", conflitos: [], motivoEscalonamento: null },
+      abstain: true,
+      citations: [],
+    });
+    const users: string[] = [];
+    let calls = 0;
+    const result = await completeValidJson(
+      {
+        complete: async (input) => {
+          users.push(input.user);
+          calls += 1;
+          return {
+            text: calls === 1 ? "not-json" : valid,
+            model: "main",
+            inputTokens: 1,
+            outputTokens: 1,
+          };
+        },
+        embed: async () => [],
+      },
+      { system: "s", user: "u", model: "main", maxTokens: 10, timeoutMs: 1000 },
+    );
+    expect(users[0]).toBe("u");
+    expect(users[0]).not.toContain("INVALID_OUTPUT");
+    expect(users[1]).toContain("A saída anterior foi rejeitada");
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not retry when the provider throws", async () => {
+    const { completeValidJson } = await import("@/lib/ai/complete-json");
+    let calls = 0;
+    await expect(
+      completeValidJson(
+        {
+          complete: async () => {
+            calls += 1;
+            throw Object.assign(new Error("AI_HTTP"), { code: "HTTP_500" });
+          },
+          embed: async () => [],
+        },
+        { system: "s", user: "u", model: "main", maxTokens: 10, timeoutMs: 1000 },
+      ),
+    ).rejects.toThrow("AI_HTTP");
+    expect(calls).toBe(1);
   });
 
   it("detects another condominium name without changing the conversation id", async () => {

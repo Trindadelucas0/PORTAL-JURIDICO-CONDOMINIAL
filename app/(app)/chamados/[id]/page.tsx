@@ -13,12 +13,18 @@ import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FileItem } from "@/components/ui/file-item";
 import { SectionTabPanel, SectionTabs } from "@/components/ui/section-tabs";
 import { MessageComposer } from "@/components/atendimento/message-composer";
-import { isHiddenReviewDraft, MessageBubbles, type MessageBubbleItem } from "@/components/atendimento/message-bubbles";
+import {
+  isHiddenReviewDraft,
+  isRedundantAiDraft,
+  MessageBubbles,
+  sentPublicBodies,
+  type MessageBubbleItem,
+} from "@/components/atendimento/message-bubbles";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
 import { AiAuditPanel, type AiAuditRow } from "@/components/chamados/ai-audit-panel";
 import { AiSummarySheet } from "@/components/chamados/ai-summary-sheet";
 import { TicketAiShadow } from "@/components/chamados/ticket-ai-shadow";
-import type { CopilotIndex } from "@/lib/ai/copilot-view";
+import { presentCopilotRevision, type CopilotIndex } from "@/lib/ai/copilot-view";
 import { TicketDossieHeader } from "@/components/chamados/ticket-dossie-header";
 import { TicketCasePanel } from "@/components/chamados/ticket-case-panel";
 import { TicketEditDrawer } from "@/components/chamados/ticket-edit-drawer";
@@ -115,6 +121,9 @@ export default function ChamadoFichaPage() {
     ...livePollQuery,
   });
   const aiEnabled = Boolean(aiSummary.data?.data.enabled);
+  const aiCurrent = aiEnabled ? aiSummary.data?.data.current ?? null : null;
+  const suggested = aiCurrent ? presentCopilotRevision(aiCurrent).resposta.texto?.trim() ?? "" : "";
+  const sentBodies = useMemo(() => sentPublicBodies(messages.data?.data ?? []), [messages.data]);
   const runAi = useMutation({
     mutationFn: () => api(`/api/tickets/${id}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
     onSuccess: () => {
@@ -449,6 +458,7 @@ export default function ChamadoFichaPage() {
                   <div data-thread-scroll-content>
                     <MessageBubbles
                       messages={threadMessages}
+                      suggestedText={suggested}
                       onResend={admin ? (mid) => approve.mutate(mid) : undefined}
                       resendPending={approve.isPending}
                     />
@@ -457,7 +467,13 @@ export default function ChamadoFichaPage() {
               </div>
               {admin
                 ? threadMessages
-                    .filter((m) => m.visibility === "publica" && m.sendStatus === "draft" && !isHiddenReviewDraft(m))
+                    .filter(
+                      (m) =>
+                        m.visibility === "publica" &&
+                        m.sendStatus === "draft" &&
+                        !isHiddenReviewDraft(m) &&
+                        !isRedundantAiDraft(m, { sentBodies, suggestedText: suggested }),
+                    )
                     .slice(0, 1)
                     .map((m) => (
                       <ApprovalPanel
