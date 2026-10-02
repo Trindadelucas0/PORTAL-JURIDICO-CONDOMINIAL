@@ -16,7 +16,7 @@ export type TurnInput = {
   expectedVersion: number;
   draftText: string | null;
   summary: SummaryJson;
-  /** Job com bolhas marcadas: grava rascunho mesmo com abstain (confiança baixa). */
+  /** Job com bolhas marcadas: grava rascunho mesmo com abstain e mesmo com AI_AUTO_DRAFT_ENABLED falso. */
   allowAbstainDraft?: boolean;
 };
 
@@ -42,14 +42,15 @@ export function decideTurn(input: TurnInput): TurnDecision {
   }
 
   const serverDraft = input.serverFallback === "injection";
+  const markedDraft = Boolean(input.allowAbstainDraft);
   const draftBody =
     input.serverFallback === "human_review"
       ? null
       : allowDraft &&
-          input.autoDraft &&
+          (input.autoDraft || markedDraft) &&
           !input.interactionExists &&
           input.draftText &&
-          (serverDraft || !input.abstain || Boolean(input.allowAbstainDraft))
+          (serverDraft || !input.abstain || markedDraft)
         ? input.draftText.slice(0, 8000)
         : null;
 

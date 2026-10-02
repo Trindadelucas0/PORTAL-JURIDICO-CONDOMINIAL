@@ -28,7 +28,9 @@ import { chunksVisibleToConversation, retrieveForConversation } from "@/lib/ai/r
 import { enqueueDocumentIndex, enqueueSystemDocumentIndex } from "@/lib/search/document-index-port";
 import { requireTicketAccess } from "@/lib/auth/ticket-access";
 import { localDiskStorage } from "@/lib/storage/local-disk";
-import { isAllowedMime, isMarkdownFile } from "@/lib/storage/provider";
+import { isAllowedMime, isMarkdownFile, sniffMime } from "@/lib/storage/provider";
+import { REJECTED_SUMMARY_REWRITE } from "@/lib/ai/prompts/inbound-v2";
+import { PUBLIC_REPLY_REWRITE } from "@/lib/ai/prompts/inbound-v3";
 import { createAtendimentoService } from "@/lib/services/atendimento-service";
 
 const summary = {
@@ -280,6 +282,33 @@ describe("ia operacional", () => {
       summary,
     });
     expect(humanMarked.draftBody).toBeNull();
+    const markedNoAuto = decideTurn({
+      autoDraft: false,
+      memoryEnabled: true,
+      abstain: false,
+      injection: false,
+      allowAbstainDraft: true,
+      requestedActions: ["CREATE_DRAFT"],
+      interactionExists: false,
+      currentVersion: 0,
+      expectedVersion: 0,
+      draftText: "Bom dia, em que horário aproximado o barulho acontece?",
+      summary,
+    });
+    expect(markedNoAuto.draftBody).toBe("Bom dia, em que horário aproximado o barulho acontece?");
+    const noAutoNoMark = decideTurn({
+      autoDraft: false,
+      memoryEnabled: true,
+      abstain: false,
+      injection: false,
+      requestedActions: ["CREATE_DRAFT"],
+      interactionExists: false,
+      currentVersion: 0,
+      expectedVersion: 0,
+      draftText: "texto que não deve gravar",
+      summary,
+    });
+    expect(noAutoNoMark.draftBody).toBeNull();
   });
 
   it("unique interaction produces one draft", async () => {
@@ -287,8 +316,10 @@ describe("ia operacional", () => {
     const db = {
       aiInteraction: {
         findUnique: async () => row,
-        create: async () => {
+        createMany: async () => {
+          if (row) return { count: 0 };
           row = { id: "once" };
+          return { count: 1 };
         },
       },
     };
@@ -298,6 +329,19 @@ describe("ia operacional", () => {
       if (claim === "created") drafts += 1;
     }
     expect(drafts).toBe(1);
+  });
+
+  it("treats a concurrent insert of the same key as duplicate", async () => {
+    const claim = await insertInteractionOnce(
+      {
+        aiInteraction: {
+          findUnique: async () => null,
+          createMany: async () => ({ count: 0 }),
+        },
+      } as unknown as PrismaClient,
+      { idempotencyKey: "same", conversationId: "c1", status: "succeeded" },
+    );
+    expect(claim).toBe("duplicate");
   });
 
   it("replaces an interaction without a draft and keeps one with a draft", async () => {
@@ -318,9 +362,10 @@ describe("ia operacional", () => {
     const db = {
       aiInteraction: {
         findUnique: async () => existing,
-        create: async () => {
+        createMany: async () => {
           created += 1;
           existing = { id: "new", draftMessageId: null };
+          return { count: 1 };
         },
         delete: async () => {
           deleted += 1;
@@ -336,6 +381,65 @@ describe("ia operacional", () => {
     const kept = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never);
     expect(kept).toBe("duplicate");
     expect(created).toBe(1);
+  });
+
+  it("manual job replaces a draft message and unlinks a sent one", async () => {
+    const { insertInteractionOnceReplacingJsonFailure, isManualInboundKey } = await import("@/lib/ai/interaction");
+    expect(isManualInboundKey("manual:c1:1")).toBe(true);
+    expect(isManualInboundKey("11111111-1111-4111-8111-111111111111")).toBe(false);
+    const messages = new Map<string, { id: string; sendStatus: string }>([
+      ["draft-1", { id: "draft-1", sendStatus: "draft" }],
+      ["sent-1", { id: "sent-1", sendStatus: "sent" }],
+    ]);
+    let existing: { id: string; draftMessageId: string | null } | null = { id: "old", draftMessageId: "draft-1" };
+    let created = 0;
+    const db = {
+      aiInteraction: {
+        findUnique: async () => existing,
+        createMany: async () => {
+          created += 1;
+          existing = { id: "new", draftMessageId: null };
+          return { count: 1 };
+        },
+        delete: async ({ where }: { where: { id: string } }) => {
+          if (existing?.id === where.id) existing = null;
+        },
+        update: async ({ where, data }: { where: { id: string }; data: { draftMessageId: null } }) => {
+          if (existing?.id === where.id) existing = { ...existing, draftMessageId: data.draftMessageId };
+        },
+      },
+      message: {
+        findUnique: async ({ where }: { where: { id: string } }) => messages.get(where.id) ?? null,
+        delete: async ({ where }: { where: { id: string } }) => {
+          messages.delete(where.id);
+        },
+      },
+    };
+    const replaced = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never, {
+      replaceManualDraft: true,
+    });
+    expect(replaced).toBe("created");
+    expect(messages.has("draft-1")).toBe(false);
+    expect(created).toBe(1);
+    existing = { id: "sent-row", draftMessageId: "sent-1" };
+    const unlinked = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never, {
+      replaceManualDraft: true,
+    });
+    expect(unlinked).toBe("created");
+    expect(messages.has("sent-1")).toBe(true);
+    existing = { id: "auto", draftMessageId: "sent-1" };
+    const auto = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never);
+    expect(auto).toBe("duplicate");
+    existing = {
+      id: "json-fail",
+      draftMessageId: "draft-fail",
+      status: "abstained",
+      analysisJson: { motivoEscalonamento: "json_invalido" },
+    };
+    messages.set("draft-fail", { id: "draft-fail", sendStatus: "draft" });
+    const jsonFail = await insertInteractionOnceReplacingJsonFailure(db as never, { idempotencyKey: "same" } as never);
+    expect(jsonFail).toBe("created");
+    expect(messages.has("draft-fail")).toBe(false);
   });
 
   it("old memory version does not write", async () => {
@@ -456,15 +560,36 @@ describe("ia operacional", () => {
       chunks: [{ id: "chunk-a", content: "silêncio 22h às 7h" }],
     };
     expect(buildModelPackage(base).user).not.toContain("<REJECTED_DRAFT>");
+    expect(buildModelPackage(base).user).not.toContain("<REJECTED_CONTEXTO>");
     const regen = buildModelPackage({ ...base, rejectedDraft: "O Regimento   estabelece\n22h" }).user;
     expect(regen).toContain("<REJECTED_DRAFT>\nO Regimento estabelece 22h\n</REJECTED_DRAFT>\n<DOCUMENT_DATA>");
+    const both = buildModelPackage({
+      ...base,
+      rejectedDraft: "Vamos verificar o barulho.",
+      rejectedContexto: "O morador relatou   barulho no 202.",
+    }).user;
+    expect(both).toContain(
+      "<REJECTED_CONTEXTO>\nO morador relatou barulho no 202.\n</REJECTED_CONTEXTO>\n<REJECTED_DRAFT>\nVamos verificar o barulho.\n</REJECTED_DRAFT>\n<DOCUMENT_DATA>",
+    );
+    expect(REJECTED_SUMMARY_REWRITE).not.toBe(PUBLIC_REPLY_REWRITE);
+    expect(REJECTED_SUMMARY_REWRITE).toContain("outro summary.contexto");
   });
 
-  it("accepts .md only on the office document upload", () => {
+  it("accepts .md only on the office document upload", async () => {
     expect(isAllowedMime("text/markdown")).toBe(false);
     expect(isAllowedMime("text/markdown", { officeDocument: true })).toBe(true);
     expect(isAllowedMime("text/html", { officeDocument: true })).toBe(false);
     expect(isAllowedMime("image/svg+xml", { officeDocument: true })).toBe(false);
+    expect(sniffMime(Buffer.from([0xff, 0xd8, 0xff]))).toBe("image/jpeg");
+    expect(sniffMime(Buffer.from("%PDF-1.4"))).toBe("application/pdf");
+    expect(sniffMime(Buffer.from("OggS...."))).toBe("audio/ogg");
+    try {
+      await localDiskStorage.save(Buffer.from([0xff, 0xd8, 0xff, 0xe0]), "foto.pdf", "application/pdf");
+      throw new Error("expected throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppError);
+      expect((error as AppError).status).toBe(422);
+    }
     expect(isMarkdownFile("regimento.md", "")).toBe(true);
     expect(isMarkdownFile("regimento.md", "application/octet-stream")).toBe(true);
     expect(isMarkdownFile("regimento.pdf", "application/pdf")).toBe(false);
@@ -501,7 +626,7 @@ describe("ia operacional", () => {
   });
 
   it("times out a provider that never returns and does not mark sent", async () => {
-    let sent = false;
+    const sent = false;
     await expect(withTimeout(new Promise(() => {}), 20)).rejects.toMatchObject({ code: "TIMEOUT" });
     expect(sent).toBe(false);
   });
@@ -630,6 +755,10 @@ describe("ia operacional", () => {
     const prevTicket = process.env.AI_CREATE_TICKET_ENABLED;
     delete process.env.AI_WHATSAPP_SEND_ENABLED;
     delete process.env.AI_CREATE_TICKET_ENABLED;
+    expect(isAiWhatsappSendEnabled()).toBe(false);
+    expect(isAiCreateTicketEnabled()).toBe(false);
+    process.env.AI_WHATSAPP_SEND_ENABLED = "true";
+    process.env.AI_CREATE_TICKET_ENABLED = "true";
     expect(isAiWhatsappSendEnabled()).toBe(false);
     expect(isAiCreateTicketEnabled()).toBe(false);
     const gate = readFileSync(path.join(process.cwd(), "lib/ai/action-gate.ts"), "utf8");
@@ -806,7 +935,11 @@ describe("inbound prompt v2", () => {
     expect(users[1]).toContain("A saída anterior foi rejeitada");
     expect(users[1]).not.toContain("INVALID_OUTPUT");
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason.length).toBeGreaterThan(0);
+    if (!result.ok) {
+      expect(result.reason.length).toBeGreaterThan(0);
+      expect(result.inputTokens).toBe(2);
+      expect(result.outputTokens).toBe(2);
+    }
   });
 
   it("sends a JSON excerpt on retry when the first output has a brace", async () => {

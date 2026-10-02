@@ -186,6 +186,7 @@ async function main() {
         indexed: docs.filter((d) => d.ingestStatus === "indexed").length,
         skipped: 0,
         pending_index: 0,
+        failed: 0,
       },
       execucao: {
         llm: "ok",

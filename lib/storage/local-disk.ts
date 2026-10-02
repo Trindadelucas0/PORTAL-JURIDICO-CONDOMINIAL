@@ -3,6 +3,9 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import {
   isAllowedMime,
+  isMarkdownFile,
+  mimeMatchesSniff,
+  sniffMime,
   MAX_UPLOAD_BYTES,
   sanitizeFileName,
   type SaveOptions,
@@ -20,6 +23,9 @@ export class LocalDiskStorage implements StorageProvider {
     }
     if (!isAllowedMime(mime, options)) {
       throw unprocessable("Tipo de arquivo não permitido");
+    }
+    if (!isMarkdownFile(originalName, mime) && !mimeMatchesSniff(mime, sniffMime(buffer))) {
+      throw unprocessable("Tipo de arquivo não confere com o conteúdo");
     }
     const safe = sanitizeFileName(originalName);
     const key = `${new Date().toISOString().slice(0, 10)}/${randomBytes(8).toString("hex")}-${safe}`;

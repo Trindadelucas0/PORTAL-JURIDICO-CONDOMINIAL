@@ -44,7 +44,7 @@ export function isHiddenReviewDraft(m: Pick<MessageBubbleItem, "body" | "directi
   return m.visibility === "publica" && m.direction === "out" && m.sendStatus === "draft" && isHumanReviewFallback(m.body);
 }
 
-type DraftCheck = Pick<MessageBubbleItem, "body" | "direction" | "visibility" | "sendStatus">;
+export type DraftCheck = Pick<MessageBubbleItem, "body" | "direction" | "visibility" | "sendStatus">;
 
 export function sentPublicBodies(messages: DraftCheck[]): Set<string> {
   return new Set(
@@ -68,11 +68,33 @@ export function isRedundantAiDraft(
   return suggested !== "" && body === suggested;
 }
 
+/** Faixa Aguardando aprovação: só o rascunho cujo texto é o do card nesta geração. Sem texto no card → some. */
+export function pickApprovalDraft<T extends DraftCheck & { id: string }>(
+  messages: T[],
+  sentBodies: ReadonlySet<string>,
+  suggestedText: string,
+): T | null {
+  const suggested = suggestedText.trim();
+  if (!suggested) return null;
+  const drafts = messages.filter(
+    (m) =>
+      m.visibility === "publica" &&
+      m.sendStatus === "draft" &&
+      !isHiddenReviewDraft(m) &&
+      !isRedundantAiDraft(m, { sentBodies }),
+  );
+  for (let i = drafts.length - 1; i >= 0; i--) {
+    if (drafts[i].body.trim() === suggested) return drafts[i];
+  }
+  return null;
+}
+
 export function MessageBubbles({
   messages,
   suggestedText,
   onReply,
   onResend,
+  onApproveDraft,
   resendPending,
   selectedIds,
   onToggleSelect,
@@ -81,6 +103,7 @@ export function MessageBubbles({
   suggestedText?: string | null;
   onReply?: (message: MessageBubbleItem) => void;
   onResend?: (messageId: string) => void;
+  onApproveDraft?: (messageId: string) => void;
   resendPending?: boolean;
   selectedIds?: ReadonlySet<string>;
   onToggleSelect?: (messageId: string) => void;
@@ -140,8 +163,8 @@ export function MessageBubbles({
                       ))}
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                         <span>{timeOnly(m.createdAt)}</span>
-                        {onResend ? (
-                          <button type="button" className="underline" disabled={resendPending} onClick={() => onResend(m.id)}>
+                        {onApproveDraft ? (
+                          <button type="button" className="underline" disabled={resendPending} onClick={() => onApproveDraft(m.id)}>
                             Aprovar e enviar
                           </button>
                         ) : null}
@@ -208,14 +231,24 @@ export function MessageBubbles({
                             Responder
                           </button>
                         ) : null}
-                        {outgoing && (m.sendStatus === "failed" || m.sendStatus === "draft") && onResend ? (
+                        {outgoing && m.sendStatus === "failed" && onResend ? (
                           <button
                             type="button"
                             className="underline"
                             disabled={resendPending}
                             onClick={() => onResend(m.id)}
                           >
-                            {m.sendStatus === "draft" ? "Aprovar e enviar" : "Reenviar"}
+                            Reenviar
+                          </button>
+                        ) : null}
+                        {outgoing && m.sendStatus === "draft" && onApproveDraft ? (
+                          <button
+                            type="button"
+                            className="underline"
+                            disabled={resendPending}
+                            onClick={() => onApproveDraft(m.id)}
+                          >
+                            Aprovar e enviar
                           </button>
                         ) : null}
                       </div>

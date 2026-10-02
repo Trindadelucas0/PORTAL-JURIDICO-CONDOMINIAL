@@ -67,4 +67,19 @@ describe("approve rejected AI draft", () => {
     await expect(service.approve(user, "m-internal")).rejects.toMatchObject({ status: 422 });
     expect(dispatch).not.toHaveBeenCalled();
   });
+
+  it("returns 403 when a staff user approves a draft", async () => {
+    dispatch.mockClear();
+    const staff = { id: "staff", role: "funcionario", podeResponderCliente: true, apenasRascunho: false } as User;
+    const db = {
+      aiInteraction: { findFirst: async () => null },
+      message: { findFirst: async () => ({ body: "Segue o rascunho.", sendStatus: "draft" }) },
+    } as unknown as PrismaClient;
+    const service = createApprovalService(db);
+    await expect(service.approve(staff, "m-draft")).rejects.toMatchObject({
+      status: 403,
+      message: "Somente a administradora aprova rascunho",
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

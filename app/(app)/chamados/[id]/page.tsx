@@ -324,6 +324,9 @@ export default function ChamadoFichaPage() {
   const t = ticket.data?.data;
   const admin = me.data?.data.user.role === "admin";
   const user = me.data?.data.user;
+  const canResendFailed = Boolean(
+    user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)),
+  );
   const nextOpenDeadline = t?.deadlines.find((d) => !d.doneAt) ?? null;
   const contextTicket = t
     ? {
@@ -459,7 +462,8 @@ export default function ChamadoFichaPage() {
                     <MessageBubbles
                       messages={threadMessages}
                       suggestedText={suggested}
-                      onResend={admin ? (mid) => approve.mutate(mid) : undefined}
+                      onResend={canResendFailed ? (mid) => approve.mutate(mid) : undefined}
+                      onApproveDraft={admin ? (mid) => approve.mutate(mid) : undefined}
                       resendPending={approve.isPending}
                     />
                   </div>
@@ -530,7 +534,7 @@ export default function ChamadoFichaPage() {
         protocol={t?.protocol}
         condominiumName={t?.condominium.nome}
         draftPath={t?.conversationId ? `/api/tickets/${id}/ai-draft` : ""}
-        canSend={Boolean(user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)))}
+        canSend={Boolean(user && user.role === "admin")}
         onShowConversation={() => setTab("comunicacao")}
         onRun={() => runAi.mutate()}
         runPending={runAi.isPending}

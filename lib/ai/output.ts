@@ -40,6 +40,7 @@ export type SummaryTurn<A> = { summary: SummaryJson; analysis: A; clientDraft: s
 
 /**
  * Atendimento com relato: `contexto` vem do relato (não abertas) e o resto das marcas.
+ * Com marcas, `contexto` também vem desta execução (não copia o parágrafo anterior).
  * O lado que não foi gerado nesta execução fica igual ao da revisão corrente.
  * Rascunho da revisão corrente já enviado (`draftSent`) não é copiado.
  */
@@ -58,6 +59,6 @@ export function mergePartialSummary<A>(input: {
         analysis: previous?.analysis ?? input.emptyAnalysis,
         clientDraft: previous && !previous.draftSent ? previous.clientDraft : null,
       };
-  const contexto = input.fromRelato ? next.summary.contexto : previous?.summary.contexto ?? "";
+  const contexto = input.fromMarks || input.fromRelato ? next.summary.contexto : previous?.summary.contexto ?? "";
   return { ...rest, summary: { ...rest.summary, contexto } };
 }

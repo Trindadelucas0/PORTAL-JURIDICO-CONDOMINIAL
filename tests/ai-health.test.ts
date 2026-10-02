@@ -12,6 +12,9 @@ vi.mock("@/lib/db/prisma", () => ({
     aiInteraction: { aggregate },
   },
 }));
+vi.mock("@/lib/ai/provider-health", () => ({
+  probeAiProviders: async () => ({ primary: { status: "absent" }, backup: { status: "absent" } }),
+}));
 
 import { GET } from "@/app/api/health/ai/route";
 
@@ -29,13 +32,15 @@ describe("GET /api/health/ai", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
-      data: { queued: number; running: number; failed24h: number; tokensToday: number; circuitOpen: boolean; flags: { aiEnabled: boolean } };
+      data: { queued: number; running: number; failed24h: number; tokensToday: number; circuitOpen: boolean; flags: { aiEnabled: boolean }; providers: { primary: { status: string }; backup: { status: string } } };
     };
     expect(json.data.queued).toBe(4);
     expect(json.data.running).toBe(4);
     expect(json.data.tokensToday).toBe(5);
     expect(json.data.circuitOpen).toBe(false);
     expect(json.data.flags.aiEnabled).toBe(false);
+    expect(json.data.providers.primary.status).toBe("absent");
+    expect(json.data.providers.backup.status).toBe("absent");
     if (prev) process.env.AI_ENABLED = prev;
   });
 });

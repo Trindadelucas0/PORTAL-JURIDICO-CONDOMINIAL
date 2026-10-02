@@ -1,5 +1,6 @@
 import { isAiRagEnabled } from "@/lib/ai/flags";
 import { createAiProviderFromEnv } from "@/lib/ai/provider";
+import { aiEmbedTimeoutMs } from "@/lib/ai/env";
 
 export type RetrievalChunk = {
   id: string;
@@ -113,7 +114,7 @@ async function defaultEmbedQuery(text: string): Promise<number[] | null> {
   const vectors = await provider.embed({
     texts: [text.slice(0, 4000)],
     model: process.env.AI_MODEL_EMBED?.trim() || "embed",
-    timeoutMs: 25000,
+    timeoutMs: aiEmbedTimeoutMs(),
     inputType: "query",
   });
   return vectors[0] ?? null;

@@ -1,7 +1,9 @@
 import type { PrismaClient, User } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
-import { isMissingTable, isUniqueConflict } from "@/lib/ai/errors";
+import { isAdmin } from "@/lib/auth/guards";
+import { isMissingTable } from "@/lib/ai/errors";
+import { insertInteractionOnce } from "@/lib/ai/interaction";
 import { isInternalOperationalDraft } from "@/lib/ai/client-draft-guard";
 import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, resendFailedMessage } from "@/lib/services/whatsapp-dispatch";
@@ -44,8 +46,11 @@ export function createApprovalService(db: PrismaClient = defaultPrisma) {
       }
       const message = await db.message.findFirst({
         where: { id: messageId },
-        select: { body: true },
+        select: { body: true, sendStatus: true },
       });
+      if (message?.sendStatus === "draft" && !isAdmin(user)) {
+        throw forbidden("Somente a administradora aprova rascunho");
+      }
       if (message && isInternalOperationalDraft(message.body, await draftAnalise(db, messageId))) {
         throw unprocessable("Análise interna não pode ser enviada ao cliente");
       }
@@ -73,17 +78,15 @@ export function createApprovalService(db: PrismaClient = defaultPrisma) {
         });
       } else if (!interaction) {
         try {
-          await db.aiInteraction.create({
-            data: {
-              conversationId: message.conversationId,
-              ticketId: message.ticketId,
-              idempotencyKey: `reject:${message.id}`,
-              status: "rejected",
-              contextVersion: "human",
-            },
+          await insertInteractionOnce(db, {
+            conversationId: message.conversationId,
+            ticketId: message.ticketId,
+            idempotencyKey: `reject:${message.id}`,
+            status: "rejected",
+            contextVersion: "human",
           });
         } catch (error) {
-          if (!isUniqueConflict(error) && !isMissingTable(error)) throw error;
+          if (!isMissingTable(error)) throw error;
         }
       }
       await writeAudit(db, {

@@ -5,6 +5,12 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     ".next/**",
@@ -12,6 +18,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "infra/evolution/**",
+    ".agents/**",
+    "docs/**",
+    "scripts/**",
+    "components/reui/**",
   ]),
 ]);
 

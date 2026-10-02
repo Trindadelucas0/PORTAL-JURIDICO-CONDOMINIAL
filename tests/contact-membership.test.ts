@@ -202,4 +202,49 @@ describe("contato em vários condomínios", () => {
     const ident = await db.contactIdentity.findFirst({ where: { contactId: saved.id, value: lid } });
     expect(ident?.kind).toBe("lid");
   });
+
+  it("funcionário lista contato só do condomínio com chamado atribuído", async () => {
+    const suffix = `${Date.now()}`;
+    const admin = await db.user.create({
+      data: {
+        email: `staff-contact-admin-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staff = await db.user.create({
+      data: {
+        email: `staff-contact-func-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+      },
+    });
+    const condoMine = await db.condominium.create({ data: { nome: `Meu ${suffix}` } });
+    const condoOther = await db.condominium.create({ data: { nome: `Outro ${suffix}` } });
+    const mine = await cadastroService.createContact({
+      nome: "Contato meu",
+      phone: `+55113${suffix.slice(-8)}`,
+      condominiumId: condoMine.id,
+    });
+    const other = await cadastroService.createContact({
+      nome: "Contato alheio",
+      phone: `+55114${suffix.slice(-8)}`,
+      condominiumId: condoOther.id,
+    });
+    const empty = await cadastroService.listContacts(staff, 1, 50);
+    expect(empty.items).toEqual([]);
+    await tickets.createManual(admin, {
+      title: "Atribuído",
+      category: "outro",
+      priority: "media",
+      condominiumId: condoMine.id,
+      contactId: mine.id,
+      assignedToId: staff.id,
+    });
+    const listed = await cadastroService.listContacts(staff, 1, 50);
+    expect(listed.items.some((c) => c.id === mine.id)).toBe(true);
+    expect(listed.items.some((c) => c.id === other.id)).toBe(false);
+    const ficha = await cadastroService.getCondominium(staff, condoOther.id);
+    expect(ficha.contacts.some((c) => c.id === other.id)).toBe(false);
+  });
 });

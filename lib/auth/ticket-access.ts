@@ -27,3 +27,12 @@ export function ticketListWhere(user: User) {
   if (isAdmin(user)) return {};
   return { assignedToId: user.id };
 }
+
+export async function staffAssignedCondoIds(userId: string, db: PrismaClient = defaultPrisma) {
+  const tickets = await db.ticket.findMany({
+    where: { assignedToId: userId },
+    select: { condominiumId: true },
+    distinct: ["condominiumId"],
+  });
+  return tickets.map((t) => t.condominiumId);
+}

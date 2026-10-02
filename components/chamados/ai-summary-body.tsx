@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/client/api";
 import type { DocumentosPorIngestao } from "@/lib/ai/analysis-snapshot";
 import { presentCopilotRevision, type CopilotFonte, type CopilotRevisionView } from "@/lib/ai/copilot-view";
+import { analiseInterrompidaTexto } from "@/lib/ai/analise-copy";
 import { documentKindLabel } from "@/lib/documents/kinds";
 import { formatWhen, PRIORITY_TONE, STATUS_TONE } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ const INGEST: Record<string, string> = {
   pending_index: "aguardando indexação",
   indexed: "indexado",
   skipped: "ingestão pulada",
+  failed: "falhou",
 };
 
 const MOTIVO: Record<string, string> = {
@@ -133,13 +135,7 @@ export function AnaliseInterrompida({ revision }: { revision: CopilotRevisionVie
   return (
     <Faixa tom="aviso">
       <SectionTitle className="font-semibold text-[var(--status-andamento)]">ANÁLISE INTERROMPIDA</SectionTitle>
-      <p className="mt-2 text-sm leading-relaxed">
-        {revision.tecnica.motivoEscalonamento === "resposta_publica"
-          ? "A resposta sugerida foi descartada porque não servia para enviar no WhatsApp."
-          : revision.tecnica.motivoEscalonamento === "json_invalido"
-            ? "A saída do modelo foi rejeitada na validação. A segunda tentativa, com o erro, também foi rejeitada."
-            : "A IA não encontrou evidências suficientes para sustentar uma resposta segura."}
-      </p>
+      <p className="mt-2 text-sm leading-relaxed">{analiseInterrompidaTexto(revision.tecnica.motivoEscalonamento)}</p>
       <p className="mt-3 text-xs font-medium tracking-wide text-muted-foreground">O QUE FOI CONSULTADO</p>
       {consultado.length ? (
         <>
@@ -365,12 +361,21 @@ export function EvidenciaUtilizada({ revision }: { revision: CopilotRevisionView
 export function RespostaSugerida({
   revision,
   draftPath,
+  regeneratePath,
   canSend,
+  contactName,
+  entrega,
+  pending = false,
   variant = "section",
 }: {
   revision: CopilotRevisionView;
   draftPath?: string;
+  regeneratePath?: string;
   canSend?: boolean;
+  contactName?: string;
+  /** `aprovar`: card do Atendimento com Aprovar / Não aprovar. */
+  entrega?: "aprovar";
+  pending?: boolean;
   /** `bar`: faixa acima do campo de mensagem do Atendimento, sem título de seção. */
   variant?: "section" | "bar";
 }) {
@@ -414,9 +419,59 @@ export function RespostaSugerida({
       await invalidate();
     },
   });
-  const erro = (save.error || send.error) instanceof Error ? ((save.error || send.error) as Error).message : null;
+  const regenerate = useMutation({
+    mutationFn: () =>
+      api(regeneratePath || "", {
+        method: "POST",
+        body: JSON.stringify({ version: revision.version }),
+      }),
+    onSuccess: async () => {
+      await invalidate();
+    },
+  });
+  const erro =
+    (save.error || send.error || regenerate.error) instanceof Error
+      ? ((save.error || send.error || regenerate.error) as Error).message
+      : null;
   const bar = variant === "bar";
   if (enviada) return null;
+
+  if (entrega === "aprovar") {
+    if (!texto) {
+      return <p className="mt-2 text-sm text-muted-foreground">Nenhum rascunho foi gravado nesta versão.</p>;
+    }
+    const busy = pending || send.isPending || regenerate.isPending;
+    return (
+      <div className="mt-3 min-w-0">
+        {contactName ? <p className="text-sm font-medium break-words">{contactName}</p> : null}
+        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
+        {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
+        {canSend ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="min-h-11"
+              disabled={busy || !draftPath}
+              onClick={() => send.mutate()}
+            >
+              {send.isPending ? "Enviando…" : "Aprovar"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="min-h-11"
+              disabled={busy || !regeneratePath}
+              onClick={() => regenerate.mutate()}
+            >
+              Não aprovar
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   const content = (
     <>
@@ -594,6 +649,7 @@ function ingestResumo(value: DocumentosPorIngestao | null): string | null {
     value.pending_index ? `${value.pending_index} aguardando indexação` : null,
     value.stored ? `${value.stored} armazenados` : null,
     value.skipped ? `${value.skipped} com ingestão pulada` : null,
+    value.failed ? `${value.failed} falhou` : null,
   ].filter(Boolean);
   if (!parts.length) return null;
   return `No condomínio: ${parts.join(", ")}.`;

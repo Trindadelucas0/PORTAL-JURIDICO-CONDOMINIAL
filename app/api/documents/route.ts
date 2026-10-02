@@ -37,12 +37,14 @@ export async function POST(request: Request) {
     const purpose = String(form.get("purpose") || "");
     const notesRaw = String(form.get("notes") || "");
     const condominiumId = String(form.get("condominiumId") || "") || undefined;
+    const ticketRaw = String(form.get("ticketId") || "").trim();
     const doc = await documentService.upload(user, {
       kind,
       title,
       purpose,
       notes: notesRaw || undefined,
       condominiumId,
+      ticketId: ticketRaw || undefined,
       file: {
         buffer: Buffer.from(await uploaded.arrayBuffer()),
         name: uploaded.name,

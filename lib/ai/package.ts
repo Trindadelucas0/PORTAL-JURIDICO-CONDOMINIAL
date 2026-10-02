@@ -47,8 +47,10 @@ export function buildModelPackage(input: {
   /** Não abertas do Atendimento: vão em `<RELATO_DATA>`, separadas das marcas. */
   relato?: Array<{ body: string }>;
   chunks: Array<{ id: string; content: string; corpus?: string }>;
-  /** Regeneração: clientDraft reprovado, antes de `<DOCUMENT_DATA>` para não cair no corte de 24000. */
+  /** Regeneração: clientDraft recusado, antes de `<DOCUMENT_DATA>` para não cair no corte de 24000. */
   rejectedDraft?: string | null;
+  /** Regeneração: parágrafo do card recusado, antes de `<DOCUMENT_DATA>`. */
+  rejectedContexto?: string | null;
 }): ModelPackage {
   const messages = packageMessages(input.messages, input.messageLimit);
   const relato = input.relato?.length ? packageMessages(input.relato, input.relato.length) : [];
@@ -59,6 +61,8 @@ export function buildModelPackage(input: {
   }));
   const hasSystemChunk = chunks.some((row) => row.system);
   const rejected = input.rejectedDraft?.replace(/\s+/g, " ").trim().slice(0, REJECTED_DRAFT_CHAR_LIMIT) || "";
+  const rejectedContexto =
+    input.rejectedContexto?.replace(/\s+/g, " ").trim().slice(0, REJECTED_DRAFT_CHAR_LIMIT) || "";
   const facts = (input.contactFacts ?? []).map((row) => row.replace(/\s+/g, " ").slice(0, 200)).slice(0, 3);
   const user = [
     `condominio: ${input.condominiumName}`,
@@ -76,6 +80,7 @@ export function buildModelPackage(input: {
     "<CONDOMINIUM_RULE_DATA>",
     input.condominiumRule ? input.condominiumRule.replace(/\s+/g, " ").slice(0, 800) : "",
     "</CONDOMINIUM_RULE_DATA>",
+    ...(rejectedContexto ? ["<REJECTED_CONTEXTO>", rejectedContexto, "</REJECTED_CONTEXTO>"] : []),
     ...(rejected ? ["<REJECTED_DRAFT>", rejected, "</REJECTED_DRAFT>"] : []),
     "<DOCUMENT_DATA>",
     chunks.length ? DOCUMENT_EVIDENCE_RULE : "",

@@ -6,7 +6,7 @@ import { cadastroService } from "@/lib/services/cadastro-service";
 
 export async function GET(request: Request) {
   try {
-    await requireSession();
+    const user = await requireSession();
     const { page, pageSize } = parsePage(request);
     const url = new URL(request.url);
     const condominiumRaw = url.searchParams.get("condominiumId");
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
       condominiumRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(condominiumRaw)
         ? condominiumRaw
         : undefined;
-    const result = await cadastroService.listContacts(page, pageSize, { condominiumId });
+    const result = await cadastroService.listContacts(user, page, pageSize, { condominiumId });
     return ok(result.items, {
       page: result.page,
       pageSize: result.pageSize,

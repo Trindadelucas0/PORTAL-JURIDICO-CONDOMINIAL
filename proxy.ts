@@ -34,6 +34,13 @@ export function proxy(request: NextRequest) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("X-Frame-Options", "DENY");
+  const isDev = process.env.NODE_ENV === "development";
+  const scriptSrc = isDev ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'" : "script-src 'self'";
+  const connectSrc = isDev ? "connect-src 'self' ws: wss:" : "connect-src 'self'";
+  res.headers.set(
+    "Content-Security-Policy",
+    `default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; ${scriptSrc}; ${connectSrc}`,
+  );
   return res;
 }
 

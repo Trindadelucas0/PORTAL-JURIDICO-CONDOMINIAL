@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { FileText, Image as ImageIcon, Music } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -15,10 +16,14 @@ import { Drawer } from "@/components/ui/drawer";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable, Td, Th } from "@/components/ui/data-table";
 import { Toolbar } from "@/components/ui/toolbar";
-import { DocumentFichaForm, type DocumentFichaValues } from "@/components/documentos/document-ficha-form";
+import {
+  DocumentFichaForm,
+  type DocumentFichaValues,
+  type DocumentTicketOption,
+} from "@/components/documentos/document-ficha-form";
 import { api } from "@/lib/client/api";
 import { documentKindLabel } from "@/lib/documents/kinds";
-import { formatBytes, formatWhen } from "@/lib/ui-labels";
+import { formatBytes, formatWhen, INGEST_STATUS_LABEL } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
 
 type Doc = {
@@ -47,7 +52,13 @@ type Summary = {
   lastAt: string | null;
 };
 
-function DocumentSideFicha({ doc }: { doc: Doc }) {
+function DocumentSideFicha({
+  doc,
+  tickets,
+}: {
+  doc: Doc;
+  tickets: DocumentTicketOption[];
+}) {
   const toast = useToast();
   const qc = useQueryClient();
   const me = useQuery({
@@ -78,6 +89,14 @@ function DocumentSideFicha({ doc }: { doc: Doc }) {
   const sendDraft = useMutation({
     mutationFn: () => api(`/api/documents/${doc.id}/send-draft`, { method: "POST" }),
     onSuccess: () => toast("Documento enviado no WhatsApp."),
+    onError: (error) => toast((error as Error).message),
+  });
+  const reindex = useMutation({
+    mutationFn: () => api(`/api/documents/${doc.id}/reindex`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Indexação enfileirada");
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
     onError: (error) => toast((error as Error).message),
   });
   const canSend = clientSendable && Boolean(doc.ticketId);
@@ -118,7 +137,25 @@ function DocumentSideFicha({ doc }: { doc: Doc }) {
             {doc.createdAt ? ` · ${formatWhen(doc.createdAt)}` : ""}
           </dd>
         </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Indexação</dt>
+          <dd>{INGEST_STATUS_LABEL[doc.ingestStatus] ?? doc.ingestStatus}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Chamado</dt>
+          <dd>{doc.ticketId ? "Vinculado" : "Sem chamado"}</dd>
+        </div>
       </dl>
+      {!doc.ticketId ? <LinkTicketButton documentId={doc.id} tickets={tickets} /> : null}
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        disabled={reindex.isPending || doc.ingestStatus === "pending_index"}
+        onClick={() => reindex.mutate()}
+      >
+        {reindex.isPending ? "Enfileirando…" : "Reindexar"}
+      </Button>
       <label className="flex items-start gap-2 text-sm">
         <input
           type="checkbox"
@@ -162,6 +199,93 @@ function DocumentSideFicha({ doc }: { doc: Doc }) {
   );
 }
 
+function LinkTicketButton({
+  documentId,
+  tickets,
+}: {
+  documentId: string;
+  tickets: DocumentTicketOption[];
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [ticketId, setTicketId] = useState("");
+  const link = useMutation({
+    mutationFn: (id: string) =>
+      api(`/api/documents/${documentId}`, { method: "PATCH", body: JSON.stringify({ ticketId: id }) }),
+    onSuccess: () => {
+      toast("Documento vinculado ao chamado");
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error) => toast((error as Error).message),
+  });
+  return (
+    <>
+      <button type="button" className="text-primary" onClick={() => setOpen(true)}>
+        Vincular ao chamado
+      </button>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Vincular ao chamado">
+        <div className="space-y-3">
+          <label className="block text-sm" htmlFor={`link-ticket-${documentId}`}>
+            Chamado (opcional)
+          </label>
+          <select
+            id={`link-ticket-${documentId}`}
+            className="w-full rounded-[var(--radius)] border border-border bg-background px-2 py-2 text-sm"
+            value={ticketId}
+            onChange={(e) => setTicketId(e.target.value)}
+            aria-label="Chamado"
+          >
+            <option value="">Sem chamado</option>
+            {tickets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.protocol} — {t.title}
+              </option>
+            ))}
+          </select>
+          {link.isError ? <ErrorBanner message={(link.error as Error).message} /> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={link.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={!ticketId || link.isPending}
+              onClick={() => link.mutate(ticketId)}
+            >
+              {link.isPending ? "Vinculando…" : "Vincular"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+function ReindexButton({ documentId, ingestStatus }: { documentId: string; ingestStatus: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const reindex = useMutation({
+    mutationFn: () => api(`/api/documents/${documentId}/reindex`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Indexação enfileirada");
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error) => toast((error as Error).message),
+  });
+  return (
+    <button
+      type="button"
+      className="text-primary disabled:opacity-50"
+      disabled={reindex.isPending || ingestStatus === "pending_index"}
+      onClick={() => reindex.mutate()}
+    >
+      {reindex.isPending ? "Enfileirando…" : "Reindexar"}
+    </button>
+  );
+}
+
 function fileIcon(mime: string) {
   if (mime.startsWith("image/")) return ImageIcon;
   if (mime.startsWith("audio/")) return Music;
@@ -171,7 +295,9 @@ function fileIcon(mime: string) {
 export default function DocumentosPage() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [condoId, setCondoId] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const condoId = searchParams.get("condominiumId") || "";
   const [q, setQ] = useState("");
   const [preview, setPreview] = useState<Doc | null>(null);
   const isMobile = useIsMobile();
@@ -190,6 +316,17 @@ export default function DocumentosPage() {
       return api<Doc[]>(`/api/documents?${p.toString()}`);
     },
   });
+  const tickets = useQuery({
+    queryKey: ["tickets", "documentos", condoId],
+    enabled: Boolean(condoId),
+    queryFn: () => {
+      const p = new URLSearchParams();
+      p.set("condominiumId", condoId);
+      p.set("pageSize", "50");
+      return api<DocumentTicketOption[]>(`/api/tickets?${p.toString()}`);
+    },
+  });
+  const ticketOptions = tickets.data?.data ?? [];
 
   const upload = useMutation({
     mutationFn: async (values: DocumentFichaValues) => {
@@ -202,6 +339,7 @@ export default function DocumentosPage() {
       form.append("purpose", values.purpose);
       if (values.notes) form.append("notes", values.notes);
       form.append("condominiumId", condoId);
+      if (values.ticketId) form.append("ticketId", values.ticketId);
       return api("/api/documents", { method: "POST", body: form });
     },
     onSuccess: () => {
@@ -233,13 +371,13 @@ export default function DocumentosPage() {
   const truncated = (docs.data?.meta?.total ?? items.length) > items.length;
 
   function openFolder(id: string) {
-    setCondoId(id);
+    router.replace(`/documentos?condominiumId=${encodeURIComponent(id)}`);
     setQ("");
     setPreview(null);
   }
 
   function backToGrade() {
-    setCondoId("");
+    router.replace("/documentos");
     setQ("");
     setPreview(null);
     setFichaOpen(false);
@@ -345,6 +483,9 @@ export default function DocumentosPage() {
                   <button type="button" className="w-full text-left" onClick={() => setPreview(d)}>
                     <span className="block font-medium">{d.title}</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">{documentKindLabel(d.kind)}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {INGEST_STATUS_LABEL[d.ingestStatus] ?? d.ingestStatus}
+                    </span>
                   </button>
                   <div className="mt-2 flex gap-3 text-sm">
                     <button type="button" className="text-[var(--brand)]" onClick={() => setPreview(d)}>
@@ -353,6 +494,8 @@ export default function DocumentosPage() {
                     <a className="text-[var(--brand)]" href={`/api/files/${d.storageKey}`}>
                       Baixar
                     </a>
+                    <ReindexButton documentId={d.id} ingestStatus={d.ingestStatus} />
+                    {!d.ticketId ? <LinkTicketButton documentId={d.id} tickets={ticketOptions} /> : null}
                   </div>
                 </li>
               ))}
@@ -363,6 +506,7 @@ export default function DocumentosPage() {
                   <tr>
                     <Th>Documento</Th>
                     <Th>Tipo</Th>
+                    <Th>Indexação</Th>
                     <Th>Finalidade</Th>
                     <Th>Data</Th>
                     <Th>Ações</Th>
@@ -385,6 +529,7 @@ export default function DocumentosPage() {
                             {documentKindLabel(d.kind)}
                           </span>
                         </Td>
+                        <Td className="text-xs">{INGEST_STATUS_LABEL[d.ingestStatus] ?? d.ingestStatus}</Td>
                         <Td className="max-w-[14rem] truncate">{d.purpose}</Td>
                         <Td className="text-xs text-muted-foreground">{d.createdAt ? formatWhen(d.createdAt) : "—"}</Td>
                         <Td>
@@ -395,6 +540,8 @@ export default function DocumentosPage() {
                             <a className="text-primary" href={`/api/files/${d.storageKey}`}>
                               Baixar
                             </a>
+                            <ReindexButton documentId={d.id} ingestStatus={d.ingestStatus} />
+                            {!d.ticketId ? <LinkTicketButton documentId={d.id} tickets={ticketOptions} /> : null}
                           </div>
                         </Td>
                       </tr>
@@ -405,7 +552,11 @@ export default function DocumentosPage() {
             </div>
           </div>
           <aside className="hidden rounded-[var(--radius)] border border-border bg-card p-4 md:block">
-            {preview ? <DocumentSideFicha key={preview.id} doc={preview} /> : <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>}
+            {preview ? (
+              <DocumentSideFicha key={preview.id} doc={preview} tickets={ticketOptions} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Selecione um documento para ver a ficha.</p>
+            )}
           </aside>
         </div>
       )}
@@ -421,6 +572,7 @@ export default function DocumentosPage() {
         <DocumentFichaForm
           pending={upload.isPending}
           errorMessage={upload.isError ? (upload.error as Error).message : null}
+          tickets={ticketOptions}
           onCancel={() => {
             setFichaOpen(false);
             upload.reset();
@@ -470,6 +622,7 @@ export default function DocumentosPage() {
             <a className="text-primary" href={`/api/files/${preview.storageKey}`}>
               Baixar
             </a>
+            {!preview.ticketId ? <LinkTicketButton documentId={preview.id} tickets={ticketOptions} /> : null}
           </div>
         ) : null}
       </Drawer>

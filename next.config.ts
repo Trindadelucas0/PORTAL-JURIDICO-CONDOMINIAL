@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
+  serverExternalPackages: ["pdfjs-dist"],
 };
 
 export default nextConfig;

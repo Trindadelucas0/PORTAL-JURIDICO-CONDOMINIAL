@@ -1,11 +1,12 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { completeValidJson, isPermanentJobError } from "@/lib/ai/complete-json";
+import { completeValidJson, shouldMarkJobDead } from "@/lib/ai/complete-json";
 import { otherCondominiumNamed } from "@/lib/ai/condo-name";
 import { confidenceBand } from "@/lib/ai/confidence";
 import { prismaErrorCode } from "@/lib/ai/errors";
 import { keepCitations } from "@/lib/ai/citations";
 import { decideTurn, type ServerFallback } from "@/lib/ai/decide-turn";
 import { isAiAutoDraftEnabled, isAiEnabled, isAiMemoryEnabled, aiPromptVersion } from "@/lib/ai/flags";
+import { rejectedDraftForJobs } from "@/lib/ai/enqueue";
 import {
   loadInboundForJobs,
   loadSelectedMessages,
@@ -13,7 +14,7 @@ import {
   selectedIdsForJobs,
   type SelectedRow,
 } from "@/lib/ai/inbound-messages";
-import { insertInteractionOnce, insertInteractionOnceReplacingJsonFailure } from "@/lib/ai/interaction";
+import { insertInteractionOnceReplacingJsonFailure, isManualInboundKey } from "@/lib/ai/interaction";
 import { shouldDispatchAiDraft, shouldPromoteTriageAsSystem } from "@/lib/ai/auto-actions";
 import { gateClientDraft } from "@/lib/ai/client-draft-guard";
 import { buildAnalysisFluxo, canalLabel, ingestaoFromGroups, type AnalysisFluxo, type FluxoMarcador } from "@/lib/ai/analysis-snapshot";
@@ -31,11 +32,13 @@ import {
   FALLBACK_INJECTION,
   FALLBACK_UNAVAILABLE,
   MARKED_MESSAGES_RULE,
+  REJECTED_SUMMARY_REWRITE,
   RELATO_MESSAGES_RULE,
   RELATO_ONLY_RULE,
   SELECTED_MESSAGES_RULE,
 } from "@/lib/ai/prompts/inbound-v2";
 import { createAiProviderFromEnv, type AiProvider } from "@/lib/ai/provider";
+import { aiMaxOutputTokens, aiTimeoutMs } from "@/lib/ai/env";
 import { retrieveForConversation, type RetrievalChunk, type RetrievalResult } from "@/lib/ai/retriever";
 import { classifyLocal } from "@/lib/ai/router";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
@@ -82,6 +85,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     const ambiguous = openTickets.length > 1;
     const ticketId = openTickets.length === 1 ? openTickets[0].id : null;
     const split = relatoSplitForJobs(jobs);
+    const replaceManualDraft = jobs.some((job) => isManualInboundKey(job.idempotencyKey));
+    const jobRejectedDraft = rejectedDraftForJobs(jobs);
     const relato = split?.relatoIds.length
       ? (await loadSelectedMessages(db.message, conversationId, split.relatoIds)).filter((row) => row.direction === "in")
       : [];
@@ -94,6 +99,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         relato,
         condominiumName: conversation.condominium?.nome || "Condomínio",
         city: conversation.condominium?.cidadeUf ?? null,
+        replaceManualDraft,
+        rejectedDraft: jobRejectedDraft,
       });
       return;
     }
@@ -128,10 +135,10 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     const key = split
       ? interactionKey([...inbound.map((row) => row.id), ...relato.map((row) => `relato:${row.id}`)])
       : interactionKey(messageIds.length ? messageIds : jobIds);
-    const previous = split ? await loadPreviousTurn(db, conversationId, currentVersion) : null;
-    /** Com relato separado, `contexto` só muda quando o modelo narrou `<RELATO_DATA>`. */
+    const previous = split || replaceManualDraft ? await loadPreviousTurn(db, conversationId, currentVersion) : null;
+    /** Com marcas, o parágrafo é desta execução. Sem marcas, o merge copia o lado que não foi gerado. */
     const splitSummary = (summary: SummaryJson, fromRelato: boolean): SummaryJson =>
-      split
+      split && !selected
         ? mergePartialSummary({
             fromRelato,
             fromMarks: true,
@@ -193,6 +200,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        replaceManualDraft,
         allowAbstainDraft,
         chunks: [],
         draftText: null,
@@ -217,6 +225,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        replaceManualDraft,
         allowAbstainDraft,
         chunks,
         draftText: intent === "injection" ? FALLBACK_INJECTION : null,
@@ -255,6 +264,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        replaceManualDraft,
         allowAbstainDraft,
         chunks,
         draftText: null,
@@ -293,12 +303,17 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     );
 
     const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
+    const rejectedDraft = jobRejectedDraft || previous?.clientDraft || null;
+    const rejectedContexto = previous?.summary.contexto?.trim() || null;
+    const rewrite = rejectedDraft || rejectedContexto ? `\n${REJECTED_SUMMARY_REWRITE}` : "";
     const packageInput = {
-      system: split
-        ? [systemPromptFor(), MARKED_MESSAGES_RULE, relato.length ? RELATO_MESSAGES_RULE : ""].filter(Boolean).join("\n")
-        : selected
+      system: `${
+        selected
           ? `${systemPromptFor()}\n${SELECTED_MESSAGES_RULE}`
-          : systemPromptFor(),
+          : split
+            ? [systemPromptFor(), MARKED_MESSAGES_RULE, relato.length ? RELATO_MESSAGES_RULE : ""].filter(Boolean).join("\n")
+            : systemPromptFor()
+      }${rewrite}`,
       model: modelName,
       condominiumName: conversation.condominium?.nome || "Condomínio",
       city: conversation.condominium?.cidadeUf ?? null,
@@ -307,8 +322,10 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       condominiumRule,
       messages: inbound,
       messageLimit,
-      relato,
+      relato: selected ? [] : relato,
       chunks: chunks.map((row) => ({ id: row.id, content: row.content, corpus: row.corpus })),
+      rejectedDraft,
+      rejectedContexto,
     };
     const packed = buildModelPackage(packageInput);
     if (packageContainsSecret(JSON.stringify(packed))) {
@@ -321,8 +338,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       system: packed.system,
       user: packed.user,
       model: modelName,
-      maxTokens: 1200,
-      timeoutMs: 70000,
+      maxTokens: aiMaxOutputTokens(),
+      timeoutMs: aiTimeoutMs(),
     });
     if (!valid.ok) {
       await persistTurn(db, {
@@ -332,6 +349,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         messageIds,
         jobIds,
         currentVersion,
+        replaceManualDraft,
         allowAbstainDraft,
         chunks,
         draftText: null,
@@ -355,8 +373,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
           confianca: "insuficiente",
         },
         model: modelName,
-        inputTokens: 0,
-        outputTokens: 0,
+        inputTokens: valid.inputTokens,
+        outputTokens: valid.outputTokens,
         extraActions: [],
         fluxo: fluxoParado(fluxoBase, { llm: "ok", validacao: "falhou", citations: "falhou" }),
       });
@@ -371,8 +389,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         system: `${packed.system}\n${EMPTY_CLIENT_DRAFT_REWRITE}`,
         user: packed.user,
         model: modelName,
-        maxTokens: 1200,
-        timeoutMs: 70000,
+        maxTokens: aiMaxOutputTokens(),
+        timeoutMs: aiTimeoutMs(),
       });
       if (filled.ok && filled.parsed.clientDraft?.trim()) {
         extraInput += valid.completion.inputTokens;
@@ -394,8 +412,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
           system: `${retry.system}\n${PUBLIC_REPLY_REWRITE}`,
           user: retry.user,
           model: modelName,
-          maxTokens: 1200,
-          timeoutMs: 70000,
+          maxTokens: aiMaxOutputTokens(),
+          timeoutMs: aiTimeoutMs(),
         });
       },
     });
@@ -449,6 +467,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       messageIds,
       jobIds,
       currentVersion,
+      replaceManualDraft,
       allowAbstainDraft,
       chunks,
       draftText,
@@ -506,11 +525,10 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       : error instanceof SyntaxError || error instanceof Error && error.name === "ZodError"
         ? "ZOD"
         : prismaErrorCode(error);
-    const permanent = isPermanentJobError(code);
     if (jobIds.length) {
       const rows = await db.aiJob.findMany({ where: { id: { in: jobIds } }, select: { attempts: true } });
       const attempts = Math.max(...rows.map((row) => row.attempts), 1);
-      if (permanent || attempts >= 3) {
+      if (shouldMarkJobDead(code, attempts)) {
         await finishJobs(db, jobIds, "dead", code);
         await audit(db, { action: "JOB_DEAD", conversationId, result: code });
       } else {
@@ -554,6 +572,7 @@ type PersistInput = {
   contactId?: string | null;
   fluxo: AnalysisFluxo;
   allowAbstainDraft?: boolean;
+  replaceManualDraft?: boolean;
 };
 
 async function persistTurn(db: PrismaClient, input: PersistInput) {
@@ -580,25 +599,29 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
     });
   }
 
-  const claim = await insertInteractionOnceReplacingJsonFailure(db, {
-    conversation: { connect: { id: input.conversationId } },
-    ...(input.ticketId ? { ticket: { connect: { id: input.ticketId } } } : {}),
-    idempotencyKey: input.key,
-    status: decision.draftBody ? "succeeded" : "abstained",
-    riskLevel: input.analysis.risco === "alto" ? "HIGH" : input.analysis.risco === "baixo" ? "LOW" : "MEDIUM",
-    model: input.model,
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    contextVersion: aiPromptVersion(),
-    analysisJson: {
-      intencao: input.analysis.intencao,
-      risco: input.analysis.risco,
-      conflitos: input.analysis.conflitos,
-      motivoEscalonamento: input.analysis.motivoEscalonamento,
-      confianca: input.analysis.confianca,
-      injectionSignal: input.injection,
+  const claim = await insertInteractionOnceReplacingJsonFailure(
+    db,
+    {
+      conversationId: input.conversationId,
+      ticketId: input.ticketId,
+      idempotencyKey: input.key,
+      status: decision.draftBody ? "succeeded" : "abstained",
+      riskLevel: input.analysis.risco === "alto" ? "HIGH" : input.analysis.risco === "baixo" ? "LOW" : "MEDIUM",
+      model: input.model,
+      inputTokens: input.inputTokens,
+      outputTokens: input.outputTokens,
+      contextVersion: aiPromptVersion(),
+      analysisJson: {
+        intencao: input.analysis.intencao,
+        risco: input.analysis.risco,
+        conflitos: input.analysis.conflitos,
+        motivoEscalonamento: input.analysis.motivoEscalonamento,
+        confianca: input.analysis.confianca,
+        injectionSignal: input.injection,
+      },
     },
-  });
+    { replaceManualDraft: Boolean(input.replaceManualDraft) },
+  );
   if (claim === "duplicate") {
     await finishJobs(db, input.jobIds, "succeeded", "duplicate_interaction");
     return;
@@ -811,6 +834,8 @@ async function processRelatoOnly(
     relato: SelectedRow[];
     condominiumName: string;
     city: string | null;
+    replaceManualDraft?: boolean;
+    rejectedDraft?: string | null;
   },
 ) {
   const { conversationId, ticketId, jobIds, relato } = input;
@@ -828,8 +853,17 @@ async function processRelatoOnly(
   const currentVersion = memory?.version ?? 0;
   const previous = await loadPreviousTurn(db, conversationId, currentVersion);
   const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
+  const rejectedDraft = input.rejectedDraft || previous?.clientDraft || null;
+  const rejectedContexto = previous?.summary.contexto?.trim() || null;
   const packed = buildModelPackage({
-    system: [systemPromptFor(), RELATO_MESSAGES_RULE, RELATO_ONLY_RULE].join("\n"),
+    system: [
+      systemPromptFor(),
+      RELATO_MESSAGES_RULE,
+      RELATO_ONLY_RULE,
+      rejectedDraft || rejectedContexto ? REJECTED_SUMMARY_REWRITE : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     model: modelName,
     condominiumName: input.condominiumName,
     city: input.city,
@@ -837,6 +871,8 @@ async function processRelatoOnly(
     messages: [],
     relato,
     chunks: [],
+    rejectedDraft,
+    rejectedContexto,
   });
   if (packageContainsSecret(JSON.stringify(packed))) {
     await finishJobs(db, jobIds, "succeeded", "secret_blocked");
@@ -847,8 +883,8 @@ async function processRelatoOnly(
     system: packed.system,
     user: packed.user,
     model: modelName,
-    maxTokens: 1200,
-    timeoutMs: 70000,
+    maxTokens: aiMaxOutputTokens(),
+    timeoutMs: aiTimeoutMs(),
   });
   if (!valid.ok) return stop("json_invalido");
 
@@ -870,6 +906,7 @@ async function processRelatoOnly(
     model: valid.completion.model,
     inputTokens: valid.completion.inputTokens,
     outputTokens: valid.completion.outputTokens,
+    replaceManualDraft: Boolean(input.replaceManualDraft),
   });
 }
 
@@ -886,6 +923,7 @@ async function persistRelatoTurn(
     model: string | null;
     inputTokens: number;
     outputTokens: number;
+    replaceManualDraft?: boolean;
   },
 ) {
   const { merged, previous } = input;
@@ -902,18 +940,22 @@ async function persistRelatoTurn(
     summary: merged.summary,
   });
   const key = interactionKey(input.relatoIds.map((id) => `relato:${id}`));
-  const claim = await insertInteractionOnce(db, {
-    conversation: { connect: { id: input.conversationId } },
-    ...(input.ticketId ? { ticket: { connect: { id: input.ticketId } } } : {}),
-    idempotencyKey: key,
-    status: previous?.status ?? "succeeded",
-    riskLevel: merged.analysis.risco === "alto" ? "HIGH" : merged.analysis.risco === "baixo" ? "LOW" : "MEDIUM",
-    model: input.model,
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    contextVersion: aiPromptVersion(),
-    analysisJson: { ...merged.analysis, injectionSignal: false },
-  });
+  const claim = await insertInteractionOnceReplacingJsonFailure(
+    db,
+    {
+      conversationId: input.conversationId,
+      ticketId: input.ticketId,
+      idempotencyKey: key,
+      status: previous?.status ?? "succeeded",
+      riskLevel: merged.analysis.risco === "alto" ? "HIGH" : merged.analysis.risco === "baixo" ? "LOW" : "MEDIUM",
+      model: input.model,
+      inputTokens: input.inputTokens,
+      outputTokens: input.outputTokens,
+      contextVersion: aiPromptVersion(),
+      analysisJson: { ...merged.analysis, injectionSignal: false },
+    },
+    { replaceManualDraft: Boolean(input.replaceManualDraft) },
+  );
   if (claim === "duplicate") {
     await finishJobs(db, input.jobIds, "succeeded", "duplicate_interaction");
     return;
@@ -1163,7 +1205,7 @@ async function audit(
   });
 }
 
-async function claimQueuedInbound(db: PrismaClient, conversationId: string) {
+export async function claimQueuedInbound(db: PrismaClient, conversationId: string) {
   const rows = await db.$queryRaw<Array<{ id: string; idempotencyKey: string; payload: unknown; createdAt: Date }>>`
     UPDATE "AiJob"
     SET status = 'running',

@@ -14,9 +14,8 @@ import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
-  isHiddenReviewDraft,
-  isRedundantAiDraft,
   MessageBubbles,
+  pickApprovalDraft,
   sentPublicBodies,
   type MessageBubbleItem,
 } from "@/components/atendimento/message-bubbles";
@@ -109,6 +108,9 @@ export function ThreadPanel({
   const [readBag, setReadBag] = useState<ReadBag>({ id: conversationId, ids: [], lastReadAt: null });
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number | null>(null);
+  const versionAtClick = useRef<number | null>(null);
+  const [esperando, setEsperando] = useState(false);
+  const [readyToSettle, setReadyToSettle] = useState(false);
 
   const older = olderBag.id === conversationId ? olderBag.messages : [];
   const olderPage = olderBag.id === conversationId ? olderBag.page : 1;
@@ -133,6 +135,9 @@ export function ThreadPanel({
     setReadBag({ id: conversationId, ids: [], lastReadAt: null });
     setOlderError(null);
     setReplyTo(null);
+    setEsperando(false);
+    setReadyToSettle(false);
+    versionAtClick.current = null;
   }, [conversationId, olderBag.id]);
 
   const messages = useQuery({
@@ -150,17 +155,53 @@ export function ThreadPanel({
   });
   const aiOn = Boolean(showAiActions && aiSummary.data?.data.enabled);
   const aiAnalyzing = Boolean(aiSummary.data?.data.analyzing);
+  const aiFailed = Boolean(aiSummary.data?.data.error) || aiSummary.isError;
+  const aiVersion = aiSummary.data?.data.currentVersion ?? null;
   const aiCurrent = aiOn && aiSummary.data?.data.current ? presentCopilotRevision(aiSummary.data.data.current) : null;
   const suggested = aiCurrent?.resposta.texto?.trim() ?? "";
   const runAi = useMutation({
     mutationFn: (body: { messageIds: string[]; relatoMessageIds: string[] }) =>
       api(`/api/conversations/${conversationId}/ai-run`, { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["conversation-ai-summary", conversationId] });
+    onMutate: () => {
+      versionAtClick.current = aiSummary.data?.data.currentVersion ?? null;
+      setReadyToSettle(false);
+      setEsperando(true);
     },
-    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível rodar a IA"),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.refetchQueries({ queryKey: ["conversation-ai-summary", conversationId] }),
+        qc.refetchQueries({ queryKey: ["messages", conversationId] }),
+      ]);
+      setReadyToSettle(true);
+    },
+    onError: (error) => {
+      setEsperando(false);
+      setReadyToSettle(false);
+      toast(error instanceof Error ? error.message : "Não foi possível rodar a IA");
+    },
   });
-  const gerando = runAi.isPending || aiAnalyzing;
+  const gerando = runAi.isPending || aiAnalyzing || esperando;
+
+  useEffect(() => {
+    if (!esperando || !readyToSettle || runAi.isPending || aiAnalyzing) return;
+    setEsperando(false);
+    setReadyToSettle(false);
+    void qc.refetchQueries({ queryKey: ["messages", conversationId] });
+    const had = versionAtClick.current;
+    if (aiFailed) {
+      toast(
+        had != null || aiVersion != null
+          ? "A nova análise não foi gerada. O texto abaixo é da versão anterior."
+          : "Não foi possível gerar o resumo.",
+      );
+      return;
+    }
+    if (aiVersion != null && (had == null || aiVersion > had)) {
+      toast("Resumo gerado");
+      return;
+    }
+    toast("O resumo destas mensagens já existe.");
+  }, [esperando, readyToSettle, runAi.isPending, aiAnalyzing, aiFailed, aiVersion, toast, qc, conversationId]);
 
   useSyncOwnMessages(conversationId ?? undefined);
 
@@ -174,6 +215,10 @@ export function ThreadPanel({
   const total = Number(messages.data?.meta?.total ?? recent.length);
   const allMessages = useMemo(() => mergeById(older, recent), [older, recent]);
   const sentBodies = useMemo(() => sentPublicBodies(allMessages), [allMessages]);
+  const approvalDraft = useMemo(
+    () => pickApprovalDraft(allMessages, sentBodies, suggested),
+    [allMessages, sentBodies, suggested],
+  );
   const hasMore = total > allMessages.length;
   const lastMessageId = allMessages[allMessages.length - 1]?.id ?? null;
   const relatoIds = useMemo(
@@ -269,6 +314,9 @@ export function ThreadPanel({
 
   const user = me.data?.data.user;
   const canApprove = user?.role === "admin";
+  const canResendFailed = Boolean(
+    user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)),
+  );
 
   return (
     <section className={cn("flex h-full min-h-0 flex-col overflow-hidden", hidden && "hidden lg:flex")}>
@@ -376,7 +424,8 @@ export function ThreadPanel({
                   messages={allMessages}
                   suggestedText={suggested}
                   onReply={(m) => setReplyTo(m)}
-                  onResend={canApprove ? (id) => resend.mutate(id) : undefined}
+                  onResend={canResendFailed ? (id) => resend.mutate(id) : undefined}
+                  onApproveDraft={canApprove ? (id) => resend.mutate(id) : undefined}
                   resendPending={resend.isPending}
                   selectedIds={aiOn ? selectedIds : undefined}
                   onToggleSelect={aiOn ? toggleSelect : undefined}
@@ -384,27 +433,16 @@ export function ThreadPanel({
               </div>
             ) : null}
           </div>
-          {canApprove
-            ? allMessages
-                .filter(
-                  (m) =>
-                    m.visibility === "publica" &&
-                    m.sendStatus === "draft" &&
-                    !isHiddenReviewDraft(m) &&
-                    !isRedundantAiDraft(m, { sentBodies, suggestedText: suggested }),
-                )
-                .slice(0, 1)
-                .map((m) => (
-                  <ApprovalPanel
-                    key={m.id}
-                    className="mx-3 mb-2"
-                    body={m.body}
-                    pending={resend.isPending}
-                    error={resend.isError ? (resend.error as Error).message : null}
-                    onApprove={() => resend.mutate(m.id)}
-                  />
-                ))
-            : null}
+          {canApprove && approvalDraft ? (
+            <ApprovalPanel
+              key={approvalDraft.id}
+              className="mx-3 mb-2"
+              body={approvalDraft.body}
+              pending={resend.isPending}
+              error={resend.isError ? (resend.error as Error).message : null}
+              onApprove={() => resend.mutate(approvalDraft.id)}
+            />
+          ) : null}
           {replyTo ? (
             <div className="flex items-center justify-between border-t border-border bg-[var(--page)] px-3 py-2 text-xs">
               <span className="truncate">Responder: {replyTo.body}</span>

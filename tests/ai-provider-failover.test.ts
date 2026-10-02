@@ -128,6 +128,27 @@ describe("AI provider failover", () => {
     expect(logged).not.toContain("nvapi-test-primary");
   });
 
+  it("logs backup key rejected without the secret when Gemini returns 401", async () => {
+    rememberEnv();
+    process.env.AI_PROVIDER = "nvidia";
+    process.env.AI_API_KEY = "nvapi-test-primary";
+    process.env.AI_API_BASE_URL = NVIDIA;
+    process.env.AI_API_KEY_BACKUP = "backup-secret-value-123456";
+    process.env.AI_API_BASE_URL_BACKUP = GEMINI;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("quota", { status: 429 }))
+      .mockResolvedValueOnce(new Response("Please pass a valid API key", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const provider = createHttpAiProvider();
+    await expect(provider!.complete(completeInput)).rejects.toMatchObject({ code: "HTTP_401" });
+    const logged = spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(logged).toContain("[ai] backup key rejected");
+    expect(logged).not.toContain("backup-secret-value-123456");
+  });
+
   it("keeps the NVIDIA HTTP error when no backup key is set", async () => {
     rememberEnv();
     process.env.AI_PROVIDER = "nvidia";

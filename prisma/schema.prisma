@@ -80,6 +80,7 @@ enum IngestStatus {
   pending_index
   indexed
   skipped
+  failed
 }
 
 enum DocumentKind {
@@ -553,8 +554,8 @@ model AiJob {
   officeDocumentId String?       @db.Uuid
   status           String        @default("queued")
   attempts         Int           @default(0)
-  runAfter         DateTime      @default(now())
-  lockedAt         DateTime?
+  runAfter         DateTime      @default(now()) @db.Timestamptz(3)
+  lockedAt         DateTime?     @db.Timestamptz(3)
   lastErrorCode    String?
   rerun            Boolean       @default(false)
   payload          Json?

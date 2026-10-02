@@ -44,9 +44,9 @@ describe("mergePartialSummary", () => {
     expect(merged.clientDraft).toBe("rascunho antigo");
   });
 
-  it("sem relato mantém o contexto anterior; o resto vem das marcas", () => {
+  it("com marcas o contexto vem desta execução, não do parágrafo anterior", () => {
     const merged = mergePartialSummary({ fromRelato: false, fromMarks: true, next, previous: previous(), emptyAnalysis: EMPTY_ANALYSIS });
-    expect(merged.summary).toEqual({ ...nextSummary, contexto: "relato antigo" });
+    expect(merged.summary).toEqual(nextSummary);
     expect(merged.analysis).toEqual(next.analysis);
     expect(merged.clientDraft).toBe("rascunho novo");
   });

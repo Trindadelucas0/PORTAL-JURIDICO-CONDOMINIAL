@@ -100,6 +100,19 @@ describe("csrf behind public URL", () => {
     if (prev) process.env.APP_PUBLIC_URL = prev;
     else delete process.env.APP_PUBLIC_URL;
   });
+
+  it("rejects POST without Origin and without Referer", () => {
+    const request = new Request("http://127.0.0.1:3010/api/tickets", { method: "POST" });
+    expect(() => assertCsrf(request)).toThrowError(AppError);
+  });
+
+  it("accepts POST with Referer of the app when Origin is absent", () => {
+    const request = new Request("http://127.0.0.1:3010/api/tickets", {
+      method: "POST",
+      headers: { referer: "http://127.0.0.1:3010/chamados" },
+    });
+    expect(() => assertCsrf(request)).not.toThrow();
+  });
 });
 
 describe("authz", () => {

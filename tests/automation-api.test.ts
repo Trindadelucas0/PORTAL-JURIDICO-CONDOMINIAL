@@ -26,6 +26,7 @@ describe("automations routes", () => {
     const res = await PATCH(
       new Request("http://localhost/api/automations/rule-1", {
         method: "PATCH",
+        headers: { origin: "http://localhost" },
         body: JSON.stringify({ body: "Olá {{coisaQueNaoExiste}}" }),
       }),
       { params: Promise.resolve({ id: "rule-1" }) },

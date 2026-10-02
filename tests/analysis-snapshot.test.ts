@@ -5,7 +5,7 @@ import { buildAnalysisFluxo } from "@/lib/ai/analysis-snapshot";
 import { sendCopilotDraft, updateCopilotDraft } from "@/lib/ai/copilot-draft";
 import { FALLBACK_HUMAN_REVIEW } from "@/lib/ai/prompts/inbound-v2";
 
-const ingestao = { stored: 1, pending_index: 0, indexed: 2, skipped: 3 };
+const ingestao = { stored: 1, pending_index: 0, indexed: 2, skipped: 3, failed: 0 };
 
 describe("buildAnalysisFluxo", () => {
   it("grava modelo_nao_citou quando há chunk e nenhuma citation", () => {
@@ -74,7 +74,7 @@ describe("buildAnalysisFluxo", () => {
       memoryVersion: null,
       memoryCreatedAt: null,
       contactFacts: [],
-      documentosPorIngestao: { stored: 0, pending_index: 0, indexed: 0, skipped: 4 },
+      documentosPorIngestao: { stored: 0, pending_index: 0, indexed: 0, skipped: 4, failed: 0 },
       ragMotivo: "rag_desligado",
       chunks: [],
       citedCount: 0,
@@ -161,12 +161,16 @@ describe("copilot draft", () => {
     expect(summary.analise).toBe("interpretação interna que não vai ao cliente");
   });
 
-  it("POST envia só o clientDraft e recusa apenasRascunho", async () => {
+  it("POST envia só o clientDraft e recusa quem não é admin", async () => {
     const bag = revisionDb(true);
     const approved: string[] = [];
     await expect(sendCopilotDraft(bag.db, user({ apenasRascunho: true }), "c1", 2, async () => null)).rejects.toBeInstanceOf(AppError);
+    await expect(sendCopilotDraft(bag.db, user({}), "c1", 2, async () => null)).rejects.toMatchObject({
+      status: 403,
+      message: "Somente a administradora aprova rascunho",
+    });
     expect(bag.created).toEqual([]);
-    const sent = await sendCopilotDraft(bag.db, user({}), "c1", 2, async (_actor, messageId) => {
+    const sent = await sendCopilotDraft(bag.db, user({ role: "admin" }), "c1", 2, async (_actor, messageId) => {
       approved.push(messageId);
       return { id: messageId };
     });
@@ -189,7 +193,7 @@ describe("copilot draft", () => {
     }
     const approved: string[] = [];
     await expect(
-      sendCopilotDraft(bag.db, user({}), "c1", 2, async () => {
+      sendCopilotDraft(bag.db, user({ role: "admin" }), "c1", 2, async () => {
         approved.push("sent");
         return null;
       }),
@@ -207,7 +211,7 @@ describe("copilot draft", () => {
     }
     const approved: string[] = [];
     await expect(
-      sendCopilotDraft(bag.db, user({}), "c1", 2, async () => {
+      sendCopilotDraft(bag.db, user({ role: "admin" }), "c1", 2, async () => {
         approved.push("sent");
         return null;
       }),

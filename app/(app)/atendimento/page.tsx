@@ -107,7 +107,7 @@ function InboxInner() {
   });
   const meUser = me.data?.data.user;
   const admin = meUser?.role === "admin";
-  const canSend = Boolean(meUser && (meUser.role === "admin" || (meUser.podeResponderCliente && !meUser.apenasRascunho)));
+  const canSend = Boolean(meUser && meUser.role === "admin");
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
@@ -383,7 +383,11 @@ function ContextPane({
               </p>
             </div>
           </div>
-          <AiContextSummary conversationId={conversation.id} canSend={canSend} />
+          <AiContextSummary
+            conversationId={conversation.id}
+            canSend={canSend}
+            contactName={conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
+          />
           <div
             className={
               conversation.condominium?.nome

@@ -92,7 +92,7 @@ const GEMINI_BACKUP_MODEL = "gemini-2.5-flash";
 
 type BackupEndpoint = { base: string; apiKey: string; model: string };
 
-function resolveBackupEndpoint(env: NodeJS.ProcessEnv = process.env): BackupEndpoint | null {
+export function resolveBackupEndpoint(env: NodeJS.ProcessEnv = process.env): BackupEndpoint | null {
   const apiKey = env.AI_API_KEY_BACKUP?.trim();
   if (!apiKey) return null;
   const raw = env.AI_API_BASE_URL_BACKUP?.trim() || GEMINI_OPENAI_BASE;
@@ -131,10 +131,17 @@ export function createHttpAiProvider(): AiProvider | null {
         const backup = resolveBackupEndpoint();
         if (!backup || !isProviderFailure(error)) throw error;
         console.error(`[ai] failover code=${providerErrorCode(error)}`);
-        return await withTimeout(
-          postChat(backup.base, backup.apiKey, { ...input, model: backup.model }),
-          input.timeoutMs,
-        );
+        try {
+          return await withTimeout(
+            postChat(backup.base, backup.apiKey, { ...input, model: backup.model }),
+            input.timeoutMs,
+          );
+        } catch (backupError) {
+          if (providerErrorCode(backupError) === "HTTP_401") {
+            console.error("[ai] backup key rejected");
+          }
+          throw backupError;
+        }
       }
     },
     async embed(input) {

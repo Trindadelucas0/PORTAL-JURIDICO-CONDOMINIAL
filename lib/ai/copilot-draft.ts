@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient, User } from "@prisma/client";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isInternalOperationalDraft } from "@/lib/ai/client-draft-guard";
 import { approvalService } from "@/lib/services/approval-service";
-import { canSendPublicWhatsApp } from "@/lib/services/whatsapp-dispatch";
+import { isAdmin } from "@/lib/auth/guards";
 
 type ApproveFn = (user: User, messageId: string) => Promise<unknown>;
 
@@ -56,7 +56,7 @@ export async function sendCopilotDraft(
   version: number,
   approve: ApproveFn = (actor, messageId) => approvalService.approve(actor, messageId),
 ) {
-  if (!canSendPublicWhatsApp(user)) throw forbidden("Este perfil não pode responder o cliente");
+  if (!isAdmin(user)) throw forbidden("Somente a administradora aprova rascunho");
   const revision = await loadRevision(db, conversationId, version);
   const summary = asRecord(revision.summaryJson);
   const stored = typeof summary.respostaSugerida === "string" ? summary.respostaSugerida.trim() : "";

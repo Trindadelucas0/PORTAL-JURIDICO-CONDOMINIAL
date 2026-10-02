@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { isAiEnabled } from "@/lib/ai/flags";
 import { isUniqueConflict, prismaErrorCode } from "@/lib/ai/errors";
-import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
+import { REJECTED_DRAFT_CHAR_LIMIT, SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { INBOUND_DEBOUNCE_MS, wakeInbound } from "@/lib/ai/queue";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -87,9 +87,41 @@ export function payloadRelatoMessageIds(payload: unknown): string[] | null {
   return ids.slice(0, SELECTED_MESSAGE_LIMIT);
 }
 
-function manualPayload(messageIds?: string[], relatoMessageIds?: string[]): Prisma.InputJsonValue | undefined {
-  if (relatoMessageIds) return { messageIds: messageIds ?? [], relatoMessageIds };
-  if (messageIds?.length) return { messageIds };
+export function payloadRejectedDraft(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const raw = (payload as { rejectedDraft?: unknown }).rejectedDraft;
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/\s+/g, " ").trim().slice(0, REJECTED_DRAFT_CHAR_LIMIT);
+  return text || null;
+}
+
+export function rejectedDraftForJobs(jobs: Array<{ payload: unknown }>): string | null {
+  for (let index = jobs.length - 1; index >= 0; index--) {
+    const text = payloadRejectedDraft(jobs[index].payload);
+    if (text) return text;
+  }
+  return null;
+}
+
+function clipRejectedDraft(value?: string | null): string {
+  return value?.replace(/\s+/g, " ").trim().slice(0, REJECTED_DRAFT_CHAR_LIMIT) || "";
+}
+
+function manualPayload(
+  messageIds?: string[],
+  relatoMessageIds?: string[],
+  rejectedDraft?: string | null,
+): Prisma.InputJsonValue | undefined {
+  const draft = clipRejectedDraft(rejectedDraft);
+  if (relatoMessageIds) {
+    return draft
+      ? { messageIds: messageIds ?? [], relatoMessageIds, rejectedDraft: draft }
+      : { messageIds: messageIds ?? [], relatoMessageIds };
+  }
+  if (messageIds?.length) {
+    return draft ? { messageIds, rejectedDraft: draft } : { messageIds };
+  }
+  if (draft) return { rejectedDraft: draft };
   return undefined;
 }
 
@@ -98,9 +130,10 @@ export async function enqueueManualInbound(
   conversationId: string,
   messageIds?: string[],
   relatoMessageIds?: string[],
+  rejectedDraft?: string | null,
 ): Promise<{ queued: boolean }> {
   if (!isAiEnabled()) return { queued: false };
-  const payload = manualPayload(messageIds, relatoMessageIds);
+  const payload = manualPayload(messageIds, relatoMessageIds, rejectedDraft);
   try {
     await db.aiJob.create({
       data: {

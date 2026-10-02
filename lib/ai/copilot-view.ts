@@ -226,6 +226,7 @@ function readIngestao(value: unknown): DocumentosPorIngestao | null {
     pending_index: asNumberOrNull(row.pending_index) ?? 0,
     indexed: asNumberOrNull(row.indexed) ?? 0,
     skipped: asNumberOrNull(row.skipped) ?? 0,
+    failed: asNumberOrNull(row.failed) ?? 0,
   };
 }
 

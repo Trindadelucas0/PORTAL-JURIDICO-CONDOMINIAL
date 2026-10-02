@@ -8,6 +8,7 @@ export type DocumentosPorIngestao = {
   pending_index: number;
   indexed: number;
   skipped: number;
+  failed: number;
 };
 
 export type FluxoMensagem = {
@@ -75,10 +76,10 @@ export type FluxoBuildInput = {
   conversaOk: boolean;
 };
 
-const INGEST_KEYS = ["stored", "pending_index", "indexed", "skipped"] as const;
+const INGEST_KEYS = ["stored", "pending_index", "indexed", "skipped", "failed"] as const;
 
 export function emptyIngestao(): DocumentosPorIngestao {
-  return { stored: 0, pending_index: 0, indexed: 0, skipped: 0 };
+  return { stored: 0, pending_index: 0, indexed: 0, skipped: 0, failed: 0 };
 }
 
 export function ingestaoFromGroups(rows: Array<{ ingestStatus: string; count: number }>): DocumentosPorIngestao {
@@ -92,7 +93,7 @@ export function ingestaoFromGroups(rows: Array<{ ingestStatus: string; count: nu
 }
 
 export function somaIngestao(value: DocumentosPorIngestao): number {
-  return value.stored + value.pending_index + value.indexed + value.skipped;
+  return value.stored + value.pending_index + value.indexed + value.skipped + value.failed;
 }
 
 export function canalLabel(type: string | null | undefined): string {

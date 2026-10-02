@@ -67,8 +67,15 @@ async function tick() {
       void (async () => {
         await prisma.aiJob.update({ where: { id: job.id }, data: { status: "running", lockedAt: new Date() } });
         try {
-          await ingestOfficeDocument(prisma, documentId);
-          await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+          const result = await ingestOfficeDocument(prisma, documentId);
+          if (result.status === "failed") {
+            await prisma.aiJob.update({
+              where: { id: job.id },
+              data: { status: "failed", lockedAt: null, lastErrorCode: result.code },
+            });
+          } else {
+            await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+          }
         } catch {
           await prisma.aiJob.update({
             where: { id: job.id },
@@ -90,8 +97,15 @@ async function tick() {
       void (async () => {
         await prisma.aiJob.update({ where: { id: job.id }, data: { status: "running", lockedAt: new Date() } });
         try {
-          await ingestSystemDocument(prisma, systemDocumentId);
-          await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+          const result = await ingestSystemDocument(prisma, systemDocumentId);
+          if (result.status === "failed") {
+            await prisma.aiJob.update({
+              where: { id: job.id },
+              data: { status: "failed", lockedAt: null, lastErrorCode: result.code },
+            });
+          } else {
+            await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+          }
         } catch {
           await prisma.aiJob.update({
             where: { id: job.id },

@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { isUniqueConflict, prismaErrorCode } from "@/lib/ai/errors";
+import { prismaErrorCode } from "@/lib/ai/errors";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -14,9 +14,13 @@ export function canReplaceInteraction(draftMessageId: string | null): boolean {
   return !draftMessageId;
 }
 
+export function isManualInboundKey(key: string): boolean {
+  return key.startsWith("manual:");
+}
+
 export async function insertInteractionOnce(
   db: Db,
-  data: Prisma.AiInteractionCreateInput,
+  data: Prisma.AiInteractionUncheckedCreateInput,
 ): Promise<"created" | "duplicate"> {
   const key = data.idempotencyKey;
   if (typeof key === "string") {
@@ -30,32 +34,65 @@ export async function insertInteractionOnce(
   const outputTokens = data.outputTokens ?? 0;
   const per = Number(process.env.AI_COST_MICROS_PER_TOKEN ?? 0);
   const costMicros = Number.isFinite(per) ? Math.round((inputTokens + outputTokens) * per) : 0;
-  try {
-    await db.aiInteraction.create({ data: { ...data, costMicros } });
-    return "created";
-  } catch (error) {
-    if (isUniqueConflict(error)) return "duplicate";
-    throw error;
-  }
+  const inserted = await db.aiInteraction.createMany({
+    data: [{ ...data, costMicros }],
+    skipDuplicates: true,
+  });
+  return inserted.count === 1 ? "created" : "duplicate";
 }
 
-/** Sem rascunho: o próximo Gerar resumo nas mesmas mensagens pode gravar de novo. Com rascunho, fica duplicate. */
+/** Sem rascunho, ou job `manual:`: o próximo Gerar resumo nas mesmas mensagens pode gravar de novo. */
 export async function insertInteractionOnceReplacingJsonFailure(
   db: Db,
-  data: Prisma.AiInteractionCreateInput,
+  data: Prisma.AiInteractionUncheckedCreateInput,
+  options?: { replaceManualDraft?: boolean },
 ): Promise<"created" | "duplicate"> {
   const key = data.idempotencyKey;
   if (typeof key === "string") {
     const existing = await db.aiInteraction.findUnique({
       where: { idempotencyKey: key },
-      select: { id: true, draftMessageId: true },
+      select: { id: true, draftMessageId: true, status: true, analysisJson: true },
     });
     if (existing) {
-      if (!canReplaceInteraction(existing.draftMessageId)) return "duplicate";
-      await db.aiInteraction.delete({ where: { id: existing.id } });
+      const replaced = await deleteExistingForReplace(db, existing, Boolean(options?.replaceManualDraft));
+      if (!replaced) return "duplicate";
     }
   }
   return insertInteractionOnce(db, data);
+}
+
+async function isTechnicalFailure(existing: {
+  draftMessageId: string | null;
+  status?: string;
+  analysisJson?: unknown;
+}): boolean {
+  if (isJsonInvalidFailure(existing.analysisJson, null)) return true;
+  return existing.status === "abstained" || existing.status === "failed";
+}
+
+async function deleteExistingForReplace(
+  db: Db,
+  existing: { id: string; draftMessageId: string | null; status?: string; analysisJson?: unknown },
+  replaceManualDraft: boolean,
+): Promise<boolean> {
+  const technical = await isTechnicalFailure(existing);
+  if (!replaceManualDraft && !canReplaceInteraction(existing.draftMessageId) && !technical) return false;
+  if (existing.draftMessageId) {
+    const message = await db.message.findUnique({
+      where: { id: existing.draftMessageId },
+      select: { id: true, sendStatus: true },
+    });
+    if (message?.sendStatus === "sent" && !replaceManualDraft) return false;
+    await db.aiInteraction.update({
+      where: { id: existing.id },
+      data: { draftMessageId: null },
+    });
+    if (message?.sendStatus === "draft") {
+      await db.message.delete({ where: { id: message.id } });
+    }
+  }
+  await db.aiInteraction.delete({ where: { id: existing.id } });
+  return true;
 }
 
 export function interactionErrorCode(error: unknown): string {

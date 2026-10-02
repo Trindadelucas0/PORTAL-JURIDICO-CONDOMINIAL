@@ -46,6 +46,7 @@ import { livePollQuery } from "@/lib/client/live-poll";
 import { humanSessionStatus } from "@/components/conexoes/whatsapp-session-card";
 import { initials } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
+import { version as appVersion } from "../../package.json";
 
 const NAV = [
   {
@@ -201,7 +202,9 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
               </span>
               <span className="font-wordmark text-base font-semibold text-primary">Juricon</span>
             </Link>
-            <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">v0.9.5</span>
+            <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              v{appVersion}
+            </span>
           </div>
         </SidebarHeader>
         <SidebarContent className="gap-1 py-2">

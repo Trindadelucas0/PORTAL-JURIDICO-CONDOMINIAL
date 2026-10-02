@@ -119,7 +119,7 @@ describe("buildCopilotRevisionView", () => {
           chunksRecuperados: 1,
           ragMotivo: "concluido",
           documentosMotivo: null,
-          documentosPorIngestao: { stored: 0, pending_index: 0, indexed: 2, skipped: 0 },
+          documentosPorIngestao: { stored: 0, pending_index: 0, indexed: 2, skipped: 0, failed: 0 },
           recuperados: [{ titulo: "Regimento interno" }],
           memoria: null,
           execucao: {

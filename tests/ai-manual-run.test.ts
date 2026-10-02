@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/api/errors";
 import { buildAnalysisFluxo } from "@/lib/ai/analysis-snapshot";
-import { enqueueManualInbound, jobKeysNeedLatestInbound, payloadMessageIds, payloadRelatoMessageIds } from "@/lib/ai/enqueue";
+import { enqueueManualInbound, jobKeysNeedLatestInbound, payloadMessageIds, payloadRejectedDraft, payloadRelatoMessageIds } from "@/lib/ai/enqueue";
 import { loadInboundForJobs, loadSelectedMessages, relatoSplitForJobs, selectedIdsForJobs } from "@/lib/ai/inbound-messages";
-import { startManualAiRun } from "@/lib/ai/manual-run";
+import { startManualAiRun, startRejectedSummaryRun } from "@/lib/ai/manual-run";
 import { buildModelPackage, MESSAGE_DATA_CHAR_LIMIT, packageMessages } from "@/lib/ai/package";
 
 describe("disparo manual da IA", () => {
@@ -347,6 +347,87 @@ describe("disparo manual da IA", () => {
     };
     expect(buildAnalysisFluxo(base).mensagensAnalisadas).toBe(12);
     expect(buildAnalysisFluxo({ ...base, mensagensNoPacote: 25 }).mensagensAnalisadas).toBe(25);
+  });
+
+  it("payloadRejectedDraft corta e ignora vazio", () => {
+    expect(payloadRejectedDraft({ rejectedDraft: "  Olá   mundo  " })).toBe("Olá mundo");
+    expect(payloadRejectedDraft({ rejectedDraft: "   " })).toBeNull();
+    expect(payloadRejectedDraft({ messageIds: [ID_IN] })).toBeNull();
+  });
+
+  it("startManualAiRun grava rejectedDraft no payload", async () => {
+    process.env.AI_ENABLED = "true";
+    const created: Array<{ payload?: unknown }> = [];
+    const db = {
+      message: { count: async () => 1 },
+      aiJob: {
+        create: async (args: { data: { payload?: unknown } }) => {
+          created.push(args.data);
+          return { id: "j" };
+        },
+      },
+    };
+    await startManualAiRun(db as never, {
+      conversationId: "c1",
+      condominiumId: "condo",
+      messageIds: [ID_IN],
+      rejectedDraft: "Texto  recusado",
+    });
+    expect(created[0]?.payload).toEqual({ messageIds: [ID_IN], rejectedDraft: "Texto recusado" });
+  });
+
+  it("startRejectedSummaryRun recusa perfil sem envio, versão antiga e enfileira o rascunho", async () => {
+    process.env.AI_ENABLED = "true";
+    const staff = {
+      id: "s1",
+      role: "funcionario",
+      podeResponderCliente: false,
+      apenasRascunho: true,
+    } as never;
+    const admin = { id: "a1", role: "admin", podeResponderCliente: true, apenasRascunho: false } as never;
+    const rejected: string[] = [];
+    const created: Array<{ payload?: unknown }> = [];
+    const db = {
+      aiTicketMemory: { findUnique: async () => ({ version: 2 }) },
+      aiTicketMemoryRevision: {
+        findFirst: async ({ where }: { where: { version: number } }) =>
+          where.version === 2
+            ? {
+                summaryJson: { respostaSugerida: "Vamos verificar." },
+                interaction: { draftMessage: { id: "d1", body: "Vamos verificar.", sendStatus: "draft" } },
+              }
+            : null,
+      },
+      aiJob: {
+        findMany: async () => [{ payload: { messageIds: [ID_IN], relatoMessageIds: [] } }],
+        create: async (args: { data: { payload?: unknown } }) => {
+          created.push(args.data);
+          return { id: "j" };
+        },
+      },
+      message: { count: async () => 1 },
+    };
+    await expect(
+      startRejectedSummaryRun(db as never, staff, { conversationId: "c1", condominiumId: "condo", version: 2 }),
+    ).rejects.toMatchObject({ status: 403, message: "Este perfil não pode responder o cliente" });
+    await expect(
+      startRejectedSummaryRun(db as never, admin, { conversationId: "c1", condominiumId: "condo", version: 1 }),
+    ).rejects.toMatchObject({ status: 422, message: "Só a versão atual pode gerar outro resumo" });
+    const queued = await startRejectedSummaryRun(
+      db as never,
+      admin,
+      { conversationId: "c1", condominiumId: "condo", version: 2 },
+      async (_user, messageId) => {
+        rejected.push(messageId);
+      },
+    );
+    expect(queued).toEqual({ queued: true });
+    expect(rejected).toEqual(["d1"]);
+    expect(created[0]?.payload).toEqual({
+      messageIds: [ID_IN],
+      relatoMessageIds: [],
+      rejectedDraft: "Vamos verificar.",
+    });
   });
 });
 

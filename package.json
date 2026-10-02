@@ -1,6 +1,6 @@
 {
   "name": "portal-juridico-condominial",
-  "version": "0.11.6",
+  "version": "0.11.39",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3010",
@@ -17,6 +17,8 @@
     "db:backfill-rag": "tsx --env-file=.env prisma/backfill-rag-vigencia.ts",
     "db:backfill-system-docs": "tsx --env-file=.env prisma/backfill-system-document-ingest.ts",
     "db:reset-operacao": "tsx --env-file=.env prisma/reset-operacao.ts",
+    "db:calibrate-retrieval": "tsx --env-file=.env prisma/calibrate-retrieval.ts",
+    "db:reindex-chunks": "tsx --env-file=.env prisma/reindex-chunks.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -45,6 +47,7 @@
     "lucide-react": "^1.45.0",
     "next": "16.3.5",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.3.289",
     "react": "19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.8",

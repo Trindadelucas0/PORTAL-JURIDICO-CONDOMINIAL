@@ -6,6 +6,7 @@ import { isAdmin } from "@/lib/auth/guards";
 import { normalizeE164 } from "@/lib/phone/e164";
 import { e164LookupValues, isLidPeer, uniquePhones } from "@/lib/phone/identity";
 import { localDiskStorage } from "@/lib/storage/local-disk";
+import { providerFor } from "@/lib/channels/resolve-provider";
 import { deadlineService } from "@/lib/services/deadline-service";
 import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
@@ -38,6 +39,16 @@ export type InboundPayload = {
   connectionId?: string;
   connectionType?: ChannelType;
   mediaHint?: { mimetype?: string; fileName?: string } | null;
+};
+
+export type OwnOutboundPayload = {
+  waMessageId: string;
+  fromPhone?: string;
+  waLid?: string | null;
+  body?: string;
+  sentAt?: string | Date | null;
+  connectionId?: string;
+  connectionType?: ChannelType;
 };
 
 export type IngestResult = {
@@ -182,6 +193,18 @@ export function inboundPeerEnrichOptions(
   };
 }
 
+async function withLiveBaileysStatus<T extends { type: string; status: string } | null>(row: T): Promise<T> {
+  if (!row || row.type !== "evolution_baileys") return row;
+  const provider = providerFor("evolution_baileys");
+  if (!provider.isConfigured()) return { ...row, status: "close" };
+  try {
+    const live = await provider.getStatus();
+    return live.status ? { ...row, status: live.status } : row;
+  } catch {
+    return row;
+  }
+}
+
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
   const tickets = createTicketService(db);
   return {
@@ -221,7 +244,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         { peerLid: { in: lookupKeys } },
       ];
       if (contact) or.push({ contactId: contact.id });
-      let matches = await db.conversation.findMany({
+      const matches = await db.conversation.findMany({
         where: { connectionId: connection.id, OR: or },
         orderBy: [{ unidentified: "asc" }, { createdAt: "asc" }],
       });
@@ -496,7 +519,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
               orderBy: { updatedAt: "desc" },
               take: 5,
             },
-            messages: { orderBy: { createdAt: "desc" }, take: 1 },
+            messages: { where: { sendStatus: { not: "draft" } }, orderBy: { createdAt: "desc" }, take: 1 },
             reads: { select: { lastReadAt: true } },
           },
         }),
@@ -833,12 +856,13 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           select: ticketListSelect,
         }),
       ]);
+      const conexaoLive = await withLiveBaileysStatus(conexao);
       return {
         triagem,
         naoIdent: naoVinculados,
         naoVinculados,
         naoLidas,
-        conexao,
+        conexao: conexaoLive,
         enviosFalhos,
         recent,
         connections,
@@ -854,15 +878,46 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       };
     },
 
-    async ingestOwnOutbound(payload: any) {
+    async ingestOwnOutbound(payload: OwnOutboundPayload) {
       const connectionId = payload.connectionId || (await db.channelConnection.findFirst({ where: { type: payload.connectionType } }))?.id;
       if (!connectionId) return { created: false, conversationId: null, messageId: null };
 
+      const fromPhone = typeof payload.fromPhone === "string" ? payload.fromPhone : "";
+      const waLid = typeof payload.waLid === "string" && payload.waLid ? payload.waLid : null;
       const conversation = await db.conversation.findFirst({
-        where: { connectionId, peerPhoneE164: payload.fromPhone },
+        where: {
+          connectionId,
+          OR: [
+            ...(fromPhone ? [{ peerPhoneE164: fromPhone }, { peerLid: fromPhone }] : []),
+            ...(waLid ? [{ peerLid: waLid }, { peerPhoneE164: waLid }] : []),
+          ],
+        },
       });
 
       if (!conversation) return { created: false, conversationId: null, messageId: null };
+
+      const body = String(payload.body ?? "").slice(0, 8000);
+      const twinSince = new Date(Date.now() - 2 * 60 * 1000);
+      const twin = await db.message.findFirst({
+        where: {
+          conversationId: conversation.id,
+          direction: "out",
+          body,
+          waMessageId: null,
+          createdAt: { gte: twinSince },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (twin) {
+        const updated = await db.message.update({
+          where: { id: twin.id },
+          data: { waMessageId: payload.waMessageId, sendStatus: "sent" },
+        });
+        return { created: false, conversationId: conversation.id, messageId: updated.id };
+      }
+
+      const sentAtDate = payload.sentAt ? new Date(payload.sentAt) : null;
+      const createdAt = sentAtDate && !Number.isNaN(sentAtDate.getTime()) ? sentAtDate : undefined;
 
       try {
         const message = await db.message.create({
@@ -872,7 +927,8 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             visibility: "publica",
             waMessageId: payload.waMessageId,
             sendStatus: "sent",
-            body: payload.body.slice(0, 8000),
+            body,
+            ...(createdAt ? { createdAt } : {}),
           },
         });
         return { created: true, conversationId: conversation.id, messageId: message.id };

@@ -15,14 +15,14 @@ export function isAiAutoDraftEnabled(): boolean {
   return process.env.AI_AUTO_DRAFT_ENABLED === "true";
 }
 
-/** Autoenvio WhatsApp. Ausente ou qualquer valor diferente de "true" = desligado. */
+/** Autoenvio WhatsApp. Sempre desligado (contrato v14); a env não liga. */
 export function isAiWhatsappSendEnabled(): boolean {
-  return process.env.AI_WHATSAPP_SEND_ENABLED === "true";
+  return false;
 }
 
-/** Promoção de triagem pelo worker. Ausente ou qualquer valor diferente de "true" = desligado. */
+/** Promoção de triagem pelo worker. Sempre desligado (contrato v14); a env não liga. */
 export function isAiCreateTicketEnabled(): boolean {
-  return process.env.AI_CREATE_TICKET_ENABLED === "true";
+  return false;
 }
 
 export function aiPromptVersion(): string {

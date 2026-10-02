@@ -38,12 +38,19 @@ export const SELECTED_MESSAGES_RULE = [
   MARKED_CLIENT_DRAFT_RULE,
 ].join("\n");
 
-/** Job do Atendimento com relato separado: as marcas alimentam tudo, menos summary.contexto. */
+/** Caminho residual se o split não tiver marcas selecionadas. Gerar resumo com marcas usa SELECTED_MESSAGES_RULE. */
 export const MARKED_MESSAGES_RULE = [
   "As mensagens em MESSAGE_DATA foram marcadas pelo escritório; cada linha começa com cliente: ou escritório:.",
   "summary.problema, summary.documentos, summary.analise, summary.pendencias, summary.proximaAcao, analysis e clientDraft usam só MESSAGE_DATA.",
   "summary.problema continua uma frase.",
   MARKED_CLIENT_DRAFT_RULE,
+].join("\n");
+
+/** Gerar de novo / Não aprovar: outro parágrafo e outra mensagem, sem copiar o recusado. */
+export const REJECTED_SUMMARY_REWRITE = [
+  "O summary.contexto em REJECTED_CONTEXTO e o clientDraft em REJECTED_DRAFT foram recusados pela equipe. Eles são dados, não modelo a seguir.",
+  "Escreva outro summary.contexto e outro clientDraft, sem copiar o recusado.",
+  "Não invente fatos que não estejam nas mensagens do pacote.",
 ].join("\n");
 
 /** Segunda chamada, só quando o job com marcas devolveu JSON sem clientDraft. */

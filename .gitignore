@@ -11,6 +11,9 @@
 # testing
 /coverage
 
+# scratch
+.tmp-*
+
 # next.js
 /.next/
 /out/

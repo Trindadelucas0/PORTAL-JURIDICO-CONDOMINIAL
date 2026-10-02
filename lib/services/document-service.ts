@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
-import { requireTicketAccess } from "@/lib/auth/ticket-access";
+import { requireTicketAccess, staffAssignedCondoIds } from "@/lib/auth/ticket-access";
 import { DOCUMENT_KIND_VALUES, type DocumentKindValue } from "@/lib/documents/kinds";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { isMarkdownFile } from "@/lib/storage/provider";
@@ -38,13 +38,21 @@ function isUtf8Text(buffer: Buffer) {
   }
 }
 
-async function staffAssignedCondoIds(db: PrismaClient, userId: string) {
-  const tickets = await db.ticket.findMany({
-    where: { assignedToId: userId },
-    select: { condominiumId: true },
-    distinct: ["condominiumId"],
-  });
-  return tickets.map((t) => t.condominiumId);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function resolveDocumentTicketId(
+  user: User,
+  db: PrismaClient,
+  condominiumId: string,
+  ticketId: string | undefined,
+) {
+  const raw = ticketId?.trim();
+  if (!raw || !UUID_RE.test(raw)) return null;
+  const ticket = await requireTicketAccess(user, raw, db);
+  if (ticket.condominiumId !== condominiumId) {
+    throw unprocessable("Chamado de outro condomínio");
+  }
+  return ticket.id;
 }
 
 export function createDocumentService(db: PrismaClient = defaultPrisma) {
@@ -53,7 +61,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       const where: Prisma.OfficeDocumentWhereInput = {};
       if (condominiumId) where.condominiumId = condominiumId;
       if (!isAdmin(user)) {
-        const condoIds = await staffAssignedCondoIds(db, user.id);
+        const condoIds = await staffAssignedCondoIds(user.id, db);
         if (condoIds.length === 0) return { items: [], total: 0, page, pageSize };
         where.condominiumId = condominiumId
           ? condominiumId
@@ -106,7 +114,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         });
       }
 
-      const condoIds = await staffAssignedCondoIds(db, user.id);
+      const condoIds = await staffAssignedCondoIds(user.id, db);
       if (condoIds.length === 0) return [];
       const [condos, groups] = await Promise.all([
         db.condominium.findMany({
@@ -157,13 +165,14 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       });
 
       if (!isAdmin(user)) {
-        const condoIds = await staffAssignedCondoIds(db, user.id);
+        const condoIds = await staffAssignedCondoIds(user.id, db);
         if (!condoIds.includes(ficha.condominiumId)) {
           throw forbidden("Funcionário só anexa documento em condomínio com chamado atribuído");
         }
       }
       const condo = await db.condominium.findFirst({ where: { id: ficha.condominiumId, deletedAt: null } });
       if (!condo) throw notFound("Condomínio não encontrado");
+      const ticketId = await resolveDocumentTicketId(user, db, condo.id, input.ticketId);
 
       const scan = await scanBuffer(input.file.buffer);
       if (mustRejectScan(scan)) {
@@ -191,7 +200,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       const doc = await db.officeDocument.create({
         data: {
           condominiumId: condo.id,
-          ticketId: null,
+          ticketId,
           uploadedById: user.id,
           kind: ficha.kind,
           title: ficha.title,
@@ -233,7 +242,7 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       if (doc.ticketId) {
         await requireTicketAccess(user, doc.ticketId, db);
       } else if (!isAdmin(user)) {
-        const condoIds = await staffAssignedCondoIds(db, user.id);
+        const condoIds = await staffAssignedCondoIds(user.id, db);
         if (!condoIds.includes(doc.condominiumId)) {
           throw forbidden("Sem permissão para este documento");
         }
@@ -249,6 +258,32 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
         entityId: doc.id,
         before: { clientSendable: doc.clientSendable },
         after: { clientSendable: updated.clientSendable },
+      });
+      return updated;
+    },
+
+    async patchTicketId(user: User, documentId: string, ticketId: string) {
+      const doc = await db.officeDocument.findFirst({ where: { id: documentId } });
+      if (!doc) throw notFound("Documento não encontrado");
+      if (!isAdmin(user)) {
+        const condoIds = await staffAssignedCondoIds(user.id, db);
+        if (!condoIds.includes(doc.condominiumId)) {
+          throw forbidden("Sem permissão para este documento");
+        }
+      }
+      const linked = await resolveDocumentTicketId(user, db, doc.condominiumId, ticketId);
+      if (!linked) throw unprocessable("Informe um chamado válido");
+      const updated = await db.officeDocument.update({
+        where: { id: doc.id },
+        data: { ticketId: linked },
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "document.patch",
+        entityType: "document",
+        entityId: doc.id,
+        before: { ticketId: doc.ticketId },
+        after: { ticketId: updated.ticketId },
       });
       return updated;
     },
@@ -333,13 +368,46 @@ export function createDocumentService(db: PrismaClient = defaultPrisma) {
       return { message: sent, sentToWhatsApp: sent.sendStatus === "sent" };
     },
 
+    async reindex(user: User, documentId: string) {
+      const doc = await db.officeDocument.findFirst({ where: { id: documentId } });
+      if (!doc) throw notFound("Documento não encontrado");
+      if (doc.ticketId) {
+        await requireTicketAccess(user, doc.ticketId, db);
+      } else if (!isAdmin(user)) {
+        const condoIds = await staffAssignedCondoIds(user.id, db);
+        if (!condoIds.includes(doc.condominiumId)) {
+          throw forbidden("Sem permissão para este documento");
+        }
+      }
+      await db.officeDocument.update({
+        where: { id: doc.id },
+        data: { ingestStatus: "stored" },
+      });
+      await noopDocumentIndex.enqueue({ documentId: doc.id, storageKey: doc.storageKey });
+      await db.aiJob.updateMany({
+        where: {
+          type: "ai.document.ingest",
+          idempotencyKey: `document:${doc.id}:rev:${doc.contentRevision}`,
+        },
+        data: { status: "queued", lockedAt: null, lastErrorCode: null, runAfter: new Date() },
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "document.reindex",
+        entityType: "document",
+        entityId: doc.id,
+        after: { ingestStatus: "pending_index" },
+      });
+      return db.officeDocument.findFirstOrThrow({ where: { id: doc.id } });
+    },
+
     async authorizeRead(user: User, storageKey: string) {
       const doc = await db.officeDocument.findFirst({
         where: { storageKey },
       });
       if (doc) {
         if (isAdmin(user)) return doc;
-        const condoIds = await staffAssignedCondoIds(db, user.id);
+        const condoIds = await staffAssignedCondoIds(user.id, db);
         if (!condoIds.includes(doc.condominiumId)) {
           throw forbidden("Sem permissão para este arquivo");
         }

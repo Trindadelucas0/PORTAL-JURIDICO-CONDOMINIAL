@@ -54,3 +54,25 @@ export function isMarkdownFile(name: string, mime: string) {
   if (base === "text/markdown") return true;
   return name.toLowerCase().endsWith(".md") && MARKDOWN_BROWSER_MIME.has(base);
 }
+
+/** Assinatura do arquivo. `null` = tipo sem magic bytes conhecido (ex. MP3, WebM, markdown). */
+export function sniffMime(buffer: Buffer): string | null {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("latin1") === "%PDF") return "application/pdf";
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("latin1") === "OggS") return "audio/ogg";
+  return null;
+}
+
+export function mimeMatchesSniff(declaredMime: string, sniffed: string | null) {
+  if (!sniffed) return true;
+  return baseMime(declaredMime) === sniffed;
+}

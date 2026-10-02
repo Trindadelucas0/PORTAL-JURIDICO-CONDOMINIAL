@@ -8,7 +8,7 @@ import { e164LookupValues, isLidPeer, sendableWhatsAppE164, uniquePhones } from 
 import { peerAvatarPublicUrl } from "@/lib/services/peer-avatar-service";
 import { unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
-import { ticketListWhere } from "@/lib/auth/ticket-access";
+import { staffAssignedCondoIds, ticketListWhere } from "@/lib/auth/ticket-access";
 import { writeAudit } from "@/lib/services/audit-service";
 import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
 import { mergeConversations } from "@/lib/services/conversation-merge";
@@ -275,10 +275,23 @@ export const cadastroService = {
     });
     if (!condo) throw notFound("Condomínio não encontrado");
 
+    const assignedIds = isAdmin(user) ? null : await staffAssignedCondoIds(user.id);
     const contacts = await prisma.contact.findMany({
       where: {
         deletedAt: null,
         OR: [{ condominiumId: id }, { memberships: { some: { condominiumId: id } } }],
+        ...(assignedIds
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { condominiumId: { in: assignedIds } },
+                    { memberships: { some: { condominiumId: { in: assignedIds } } } },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
       orderBy: { nome: "asc" },
       include: {
@@ -388,17 +401,29 @@ export const cadastroService = {
     return row;
   },
 
-  async listContacts(page: number, pageSize: number, filters: { condominiumId?: string } = {}) {
-    const where = {
+  async listContacts(user: User, page: number, pageSize: number, filters: { condominiumId?: string } = {}) {
+    const assignedIds = isAdmin(user) ? null : await staffAssignedCondoIds(user.id);
+    if (assignedIds && assignedIds.length === 0) return { items: [], total: 0, page, pageSize };
+    const where: Prisma.ContactWhereInput = {
       deletedAt: null,
-      ...(filters.condominiumId
-        ? {
-            OR: [
-              { condominiumId: filters.condominiumId },
-              { memberships: { some: { condominiumId: filters.condominiumId } } },
-            ],
-          }
-        : {}),
+      AND: [
+        assignedIds
+          ? {
+              OR: [
+                { condominiumId: { in: assignedIds } },
+                { memberships: { some: { condominiumId: { in: assignedIds } } } },
+              ],
+            }
+          : {},
+        filters.condominiumId
+          ? {
+              OR: [
+                { condominiumId: filters.condominiumId },
+                { memberships: { some: { condominiumId: filters.condominiumId } } },
+              ],
+            }
+          : {},
+      ],
     };
     const [total, items] = await Promise.all([
       prisma.contact.count({ where }),

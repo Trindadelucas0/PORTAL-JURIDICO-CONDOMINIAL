@@ -634,7 +634,7 @@ describe("documentos ficha", () => {
     const contact = await db.contact.create({
       data: { nome: "Doc C", phoneE164: `+55115${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
     });
-    await tickets.createManual(admin, {
+    const ticket = await tickets.createManual(admin, {
       title: "Chamado docs",
       category: "outro",
       priority: "media",
@@ -650,6 +650,19 @@ describe("documentos ficha", () => {
       file: { buffer: Buffer.from("%PDF-1.4-staff"), name: "reg.pdf", mime: "application/pdf" },
     });
     expect(staffDoc.ticketId).toBeNull();
+
+    const linked = await docs.upload(admin, {
+      kind: "regimento",
+      title: "Regimento com chamado",
+      purpose: "Uso interno da administracao",
+      condominiumId: condo.id,
+      ticketId: ticket.id,
+      file: { buffer: Buffer.from("%PDF-1.4-linked"), name: "linked.pdf", mime: "application/pdf" },
+    });
+    expect(linked.ticketId).toBe(ticket.id);
+
+    const patched = await docs.patchTicketId(admin, created.id, ticket.id);
+    expect(patched.ticketId).toBe(ticket.id);
 
     const listed = await docs.list(staff, 1, 50, condo.id);
     expect(listed.items.some((d) => d.id === created.id)).toBe(true);

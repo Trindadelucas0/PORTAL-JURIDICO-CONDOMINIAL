@@ -45,6 +45,13 @@ export function isPermanentJobError(code: string): boolean {
   return code === "ZOD" || code === "AI_BASE_BLOCKED" || code === "HTTP_400" || code === "HTTP_401" || code === "HTTP_403";
 }
 
+/** TIMEOUT morre na 2ª tentativa. 429/5xx seguem até 3. */
+export function shouldMarkJobDead(code: string, attempts: number): boolean {
+  if (isPermanentJobError(code)) return true;
+  if (code === "TIMEOUT" && attempts >= 2) return true;
+  return attempts >= 3;
+}
+
 function jsonExcerpt(raw: string): string {
   const stripped = raw
     .replace(/<think>[\s\S]*?<\/think>/gi, " ")
@@ -78,26 +85,30 @@ type CompleteOk = {
 export async function completeValidJson(
   provider: AiProvider,
   input: { system: string; user: string; model: string; maxTokens: number; timeoutMs: number },
-): Promise<CompleteOk | { ok: false; reason: string }> {
+): Promise<CompleteOk | { ok: false; reason: string; inputTokens: number; outputTokens: number }> {
   let next = input;
   let lastReason = "JSON inválido";
+  let inputTokens = 0;
+  let outputTokens = 0;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let completion: Awaited<ReturnType<AiProvider["complete"]>>;
     try {
       completion = await provider.complete(next);
     } catch (error) {
       if (attempt === 0 || !isCompleteFailure(error)) throw error;
-      return { ok: false, reason: `segunda chamada falhou: ${completeFailureCode(error)}` };
+      return { ok: false, reason: `segunda chamada falhou: ${completeFailureCode(error)}`, inputTokens, outputTokens };
     }
+    inputTokens += completion.inputTokens;
+    outputTokens += completion.outputTokens;
     try {
       const parsed = parseModelJson(completion.text);
       return { ok: true, parsed, completion, raw: completion.text };
     } catch (error) {
       if (!isInvalidModelJson(error)) throw error;
       lastReason = formatInvalidJsonReason(error);
-      if (attempt === 1) return { ok: false, reason: lastReason };
+      if (attempt === 1) return { ok: false, reason: lastReason, inputTokens, outputTokens };
       next = { ...input, user: repairUser(input.user, completion.text, lastReason) };
     }
   }
-  return { ok: false, reason: lastReason };
+  return { ok: false, reason: lastReason, inputTokens, outputTokens };
 }

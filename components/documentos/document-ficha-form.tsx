@@ -9,11 +9,14 @@ import { ErrorBanner } from "@/components/ui/error-state";
 import { DOCUMENT_KINDS } from "@/lib/documents/kinds";
 import { formatBytes } from "@/lib/ui-labels";
 
+export type DocumentTicketOption = { id: string; protocol: string; title: string };
+
 export type DocumentFichaValues = {
   kind: DocumentKindValue;
   title: string;
   purpose: string;
   notes: string;
+  ticketId: string;
   file: File | null;
 };
 
@@ -21,6 +24,7 @@ type Props = {
   submitLabel?: string;
   pending?: boolean;
   errorMessage?: string | null;
+  tickets?: DocumentTicketOption[];
   onCancel: () => void;
   onSubmit: (values: DocumentFichaValues) => void;
 };
@@ -30,6 +34,7 @@ const empty: DocumentFichaValues = {
   title: "",
   purpose: "",
   notes: "",
+  ticketId: "",
   file: null,
 };
 
@@ -37,6 +42,7 @@ export function DocumentFichaForm({
   submitLabel = "Salvar documento",
   pending = false,
   errorMessage = null,
+  tickets = [],
   onCancel,
   onSubmit,
 }: Props) {
@@ -44,6 +50,7 @@ export function DocumentFichaForm({
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
   const [notes, setNotes] = useState("");
+  const [ticketId, setTicketId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -64,7 +71,14 @@ export function DocumentFichaForm({
       setLocalError("Selecione o arquivo.");
       return;
     }
-    onSubmit({ kind, title: title.trim(), purpose: purpose.trim(), notes: notes.trim(), file });
+    onSubmit({
+      kind,
+      title: title.trim(),
+      purpose: purpose.trim(),
+      notes: notes.trim(),
+      ticketId,
+      file,
+    });
   }
 
   return (
@@ -99,6 +113,23 @@ export function DocumentFichaForm({
             aria-invalid={purpose.trim().length > 0 && purpose.trim().length < 10}
             placeholder="Ex.: Aprovar contas e eleição do síndico"
           />
+        </div>
+        <div>
+          <Label htmlFor="doc-ticket">Chamado (opcional)</Label>
+          <Select
+            id="doc-ticket"
+            className="mt-1 w-full"
+            value={ticketId}
+            onChange={(e) => setTicketId(e.target.value)}
+            aria-label="Chamado"
+          >
+            <option value="">Sem chamado</option>
+            {tickets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.protocol} — {t.title}
+              </option>
+            ))}
+          </Select>
         </div>
         <div>
           <Label htmlFor="doc-file">Arquivo *</Label>

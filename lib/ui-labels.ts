@@ -127,3 +127,11 @@ export function initials(name: string) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+export const INGEST_STATUS_LABEL: Record<string, string> = {
+  stored: "Arquivado",
+  pending_index: "Aguardando indexação",
+  indexed: "Indexado",
+  failed: "Falhou",
+  skipped: "Ignorado",
+};

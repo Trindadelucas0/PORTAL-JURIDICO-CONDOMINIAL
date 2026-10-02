@@ -36,9 +36,19 @@ export function csrfAllowedOrigins(request: Request): Set<string> {
 
 export function assertCsrf(request: Request) {
   if (request.method === "GET" || request.method === "HEAD") return;
+  const allowed = csrfAllowedOrigins(request);
   const origin = request.headers.get("origin");
-  if (!origin) return;
-  if (!csrfAllowedOrigins(request).has(origin)) {
+  if (origin) {
+    if (!allowed.has(origin)) {
+      throw new AppError(403, "CSRF", "Origem não permitida");
+    }
+    return;
+  }
+  const referer = request.headers.get("referer");
+  if (referer) {
+    const fromReferer = originOf(referer);
+    if (fromReferer && allowed.has(fromReferer)) return;
     throw new AppError(403, "CSRF", "Origem não permitida");
   }
+  throw new AppError(403, "CSRF", "Origem não permitida");
 }

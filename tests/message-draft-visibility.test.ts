@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isHiddenReviewDraft, isRedundantAiDraft, sentPublicBodies } from "@/components/atendimento/message-bubbles";
+import {
+  isHiddenReviewDraft,
+  isRedundantAiDraft,
+  pickApprovalDraft,
+  sentPublicBodies,
+} from "@/components/atendimento/message-bubbles";
 import { FALLBACK_HUMAN_REVIEW } from "@/lib/ai/prompts/inbound-v2";
 
 type Row = { body: string; direction: "in" | "out"; visibility: "publica" | "interna"; sendStatus?: string };
@@ -52,5 +57,25 @@ describe("isRedundantAiDraft", () => {
   it("frase de revisão humana continua em isHiddenReviewDraft", () => {
     expect(isHiddenReviewDraft(draft(FALLBACK_HUMAN_REVIEW))).toBe(true);
     expect(isRedundantAiDraft(draft(FALLBACK_HUMAN_REVIEW), { sentBodies: new Set() })).toBe(false);
+  });
+});
+
+const row = (id: string, body: string) => ({ id, ...draft(body) });
+
+describe("pickApprovalDraft", () => {
+  it("suggested vazio devolve null", () => {
+    expect(pickApprovalDraft([row("cnpj", "informe o CNPJ")], new Set(), "")).toBeNull();
+    expect(pickApprovalDraft([row("cnpj", "informe o CNPJ")], new Set(), "   ")).toBeNull();
+  });
+
+  it("CNPJ diferente da sugerida devolve null", () => {
+    expect(pickApprovalDraft([row("cnpj", "informe o CNPJ")], new Set(), "mensagem nova da obra")).toBeNull();
+  });
+
+  it("texto igual ao card devolve o rascunho desta geração", () => {
+    const atual = row("obra", "mensagem nova da obra");
+    expect(
+      pickApprovalDraft([row("cnpj", "informe o CNPJ"), atual], new Set(), " mensagem nova da obra "),
+    ).toEqual(atual);
   });
 });

@@ -1,4 +1,10 @@
-export function chunkText(text: string, size = 3200, overlap = 480): Array<{ index: number; content: string }> {
+import { aiChunkChars, aiChunkOverlap } from "@/lib/ai/env";
+
+export function chunkText(
+  text: string,
+  size = aiChunkChars(),
+  overlap = aiChunkOverlap(),
+): Array<{ index: number; content: string }> {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean) return [];
   const chunks: Array<{ index: number; content: string }> = [];

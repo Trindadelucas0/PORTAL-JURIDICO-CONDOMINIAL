@@ -28,7 +28,15 @@ import { cn } from "@/lib/utils";
 const MARCAR_E_GERAR =
   "O relato usa as mensagens do cliente que estavam Não aberta ao abrir. Intenção e a resposta usam as bolhas marcadas.";
 
-export function AiContextSummary({ conversationId, canSend = false }: { conversationId: string; canSend?: boolean }) {
+export function AiContextSummary({
+  conversationId,
+  canSend = false,
+  contactName,
+}: {
+  conversationId: string;
+  canSend?: boolean;
+  contactName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -134,7 +142,11 @@ export function AiContextSummary({ conversationId, canSend = false }: { conversa
             <RespostaSugerida
               revision={revision}
               draftPath={`/api/conversations/${conversationId}/ai-draft`}
+              regeneratePath={`/api/conversations/${conversationId}/ai-regenerate`}
               canSend={canSend}
+              contactName={contactName}
+              entrega="aprovar"
+              pending={analyzing}
             />
           )}
           {analyzing && !showingHistorical ? <p className="mt-2 text-xs text-[var(--muted)]">Em análise</p> : null}

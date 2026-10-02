@@ -9,10 +9,15 @@ const patchSchema = z
   .object({
     clientSendable: z.boolean().optional(),
     ragEnabled: z.boolean().optional(),
+    ticketId: z.string().uuid().optional(),
   })
-  .refine((value) => value.clientSendable !== undefined || value.ragEnabled !== undefined, {
-    message: "Informe clientSendable ou ragEnabled",
-  });
+  .refine(
+    (value) =>
+      value.clientSendable !== undefined || value.ragEnabled !== undefined || value.ticketId !== undefined,
+    {
+      message: "Informe clientSendable, ragEnabled ou ticketId",
+    },
+  );
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -20,13 +25,16 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     const user = await requireSession();
     const { id } = await ctx.params;
     const parsed = patchSchema.safeParse(await request.json());
-    if (!parsed.success) throw unprocessable("Informe clientSendable ou ragEnabled");
+    if (!parsed.success) throw unprocessable("Informe clientSendable, ragEnabled ou ticketId");
     let row = null;
     if (parsed.data.clientSendable !== undefined) {
       row = await documentService.patchClientSendable(user, id, parsed.data.clientSendable);
     }
     if (parsed.data.ragEnabled !== undefined) {
       row = await documentService.patchRagEnabled(user, id, parsed.data.ragEnabled);
+    }
+    if (parsed.data.ticketId !== undefined) {
+      row = await documentService.patchTicketId(user, id, parsed.data.ticketId);
     }
     return ok(row);
   } catch (error) {
