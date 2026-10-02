@@ -22,18 +22,18 @@ export function MetricCard({
   chipClassName?: string;
 }) {
   const className =
-    "group flex min-h-[148px] flex-col justify-between rounded-[var(--radius)] border border-border bg-card p-4 text-left transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)]";
+    "group flex min-h-[132px] flex-col justify-between rounded-[var(--radius)] border border-border bg-card p-4 text-left transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)]";
   const body = (
     <>
       <span className="flex items-start justify-between gap-2">
-        <span className="text-xs font-semibold text-foreground">{label}</span>
-        {Icon ? <Icon className="size-[18px] text-muted-foreground group-hover:text-primary" aria-hidden /> : null}
+        <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
+        {Icon ? <Icon className="size-4 text-muted-foreground group-hover:text-primary" aria-hidden /> : null}
       </span>
-      <span className="my-2.5 block">
-        <span className="block text-[28px] leading-none font-bold tracking-tight text-foreground tabular">{value}</span>
-        <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+      <span className="my-2 block">
+        <span className="block text-2xl leading-none font-bold tracking-tight text-foreground tabular">{value}</span>
+        <span className="mt-1.5 block text-xs leading-snug text-muted-foreground">{hint}</span>
       </span>
-      <span className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+      <span className="flex items-center justify-between gap-2 border-t border-border pt-2">
         {chip ? (
           <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", chipClassName)}>{chip}</span>
         ) : (

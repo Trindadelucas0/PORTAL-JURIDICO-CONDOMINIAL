@@ -303,6 +303,7 @@ flowchart TD
 ┌─ sidebar ─┬──────────────────────────────────────────────────────────────────┐
 │ …         │ Visão geral              [CONECTADO → WA]            [Atualizar] │
 │           │ O que precisa de ação agora · terça-feira, 22 de setembro de 2026│
+│           │ [+ Novo chamado] [Atendimento] [Triagem] [Não vinculados]        │
 │           │ AGORA · FILA OPERACIONAL                                         │
 │           │ ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐     │
 │           │ │Não vinc. 👤│ │Triagem  ✓ │ │Não lidas ✉│ │Abertos 🎫  │     │
@@ -310,23 +311,28 @@ flowchart TD
 │           │ │Fora fluxo  │ │Classific. │ │Fila espera│ │Ativos      │     │
 │           │ │ Vincular → │ │ Analisar→ │ │ Atender → │ │ Operar →   │     │
 │           │ └────────────┘ └────────────┘ └────────────┘ └────────────┘     │
-│           │ ┌─ ATENÇÃO · Prioridades ─┐ ┌─ MINHA OPERAÇÃO · Chamados → ───┐ │
+│           │ ┌─ ATENÇÃO ──────────────┐ ┌─ MINHA OPERAÇÃO · Chamados → ───┐ │
 │           │ │█ 2 Prazos vencidos     │ │ Protocolo Contato Status Prio  │ │
 │           │ │  Resolver → /prazos    │ │ #2026-01  Maria  Aberto  Alta  │ │
 │           │ │█ 1 Rascunhos…          │ │ #2026-02  João   Andam.  Méd.  │ │
-│           │ │  Revisar →             │ │ Ver grade completa →            │ │
+│           │ │  Revisar →             │ │ Ver todos →                     │ │
 │           │ └────────────────────────┘ └─────────────────────────────────┘ │
 │           │ ATIVIDADE RECENTE                                    Inbox →   │
-│           │ [14:02] Maria — “Preciso da ata…”               Atendimento   │
+│           │ 14:02  Maria                          Abrir atendimento →      │
+│           │        Residencial Alpha                                       │
 └───────────┴──────────────────────────────────────────────────────────────────┘
 ```
 
-Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista cartões com count > 0.
+Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista cartões com count > 0; se todos forem 0, o bloco some e Minha operação ocupa a linha.
 
 ### Controles
 
 | Rótulo | Quem | Ao clicar | Bloqueio |
 |--------|------|-----------|----------|
+| Novo chamado | admin | `/chamados?novo=1` (drawer existente) | Funcionário: oculto |
+| Atendimento (atalho) | todos | `/atendimento` | — |
+| Triagem (atalho) | admin | `/triagem` | Funcionário: oculto |
+| Não vinculados (atalho) | admin | `/nao-vinculados` | Funcionário: oculto |
 | Atualizar | todos | Refaz `GET /api/dashboard` | — |
 | CONECTADO → WA / pill | status | Informativo (não navega daqui) | — |
 | Vincular (KPI) | admin | `/nao-vinculados` | Funcionário: sem link |
@@ -335,8 +341,8 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 | Operar (KPI) | todos | `/chamados` | — |
 | Cartão Atenção (Resolver, Ver prazos, Revisar, Atribuir, Seguir, Ver chamados) | todos | Vai à fila citada | Só se count > 0 |
 | Linha Minha operação | todos | `/chamados/[id]` | — |
-| Chamados → / Ver grade completa → | todos | `/chamados` | — |
-| Atividade / Inbox → / Atendimento | todos | `/atendimento` | — |
+| Chamados → / Ver todos → | todos | `/chamados` | — |
+| Atividade / Inbox → / Abrir atendimento | todos | `/atendimento` | — |
 
 ### Estados
 
@@ -344,7 +350,7 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 |--------|----------------|
 | Loading | 4 skeletons nos KPIs |
 | Empty tabela | “Nenhum chamado em aberto.” |
-| Empty Atenção | “Nada exige atenção agora.” |
+| Empty Atenção | Bloco omitido |
 | Empty atividade | “Nenhuma conversa recente.” |
 | Erro | “Não foi possível carregar a visão operacional.” + Tentar novamente |
 | 403 | “Sem permissão para os indicadores operacionais.” |

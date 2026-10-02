@@ -24,23 +24,23 @@ export function ActivityRow({
   const inner =
     variant === "log" ? (
       <>
-        <span className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="flex min-w-0 flex-1 items-start gap-3">
           {when ? (
-            <time className="shrink-0 rounded bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground tabular">
-              {when}
-            </time>
+            <time className="mt-0.5 w-10 shrink-0 text-[11px] font-semibold text-muted-foreground tabular">{when}</time>
           ) : null}
           {icon ? (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-700">
+            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground" aria-hidden>
               {icon}
             </span>
           ) : null}
-          <span className="min-w-0 truncate text-foreground">
-            <span className="font-medium">{primary}</span>
-            {secondary ? <span className="text-muted-foreground"> · {secondary}</span> : null}
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-foreground">{primary}</span>
+            {secondary ? <span className="mt-0.5 block text-xs text-muted-foreground">{secondary}</span> : null}
           </span>
         </span>
-        {trailing ? <span className="hidden shrink-0 text-xs font-medium text-primary sm:inline">{trailing}</span> : null}
+        {trailing ? (
+          <span className="hidden shrink-0 self-center text-xs font-medium text-primary sm:inline">{trailing}</span>
+        ) : null}
       </>
     ) : (
       <>

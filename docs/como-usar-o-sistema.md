@@ -6,6 +6,15 @@ As regras oficiais estão em [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA
 
 Abra [`docs/guia-cliente/guia-juricon.html`](guia-cliente/guia-juricon.html) no navegador. É um arquivo só: dá para mandar por e-mail ou WhatsApp. Tem 5 capítulos (mensagem até a resposta aprovada, documento como fonte da IA, número não vinculado, Análise do atendimento, triagem até o chamado). Cada um traz o diagrama do caminho, os prints da tela com números e o passo a passo. Todos os nomes e documentos são fictícios.
 
+## Visão
+
+1. Menu **Visão** (`/`).
+2. Abaixo do título: **Novo chamado** (só admin; abre o mesmo drawer de Chamados), **Atendimento**, e (só admin) **Triagem** e **Não vinculados**.
+3. Os quatro cartões (**Não vinculados**, **Triagem**, **Não lidas**, **Abertos**) ficam mesmo com zero. Clique no cartão para ir à fila. Funcionário vê os quatro, mas Triagem e Não vinculados não são clicáveis.
+4. **Atenção** só aparece se houver prazo, rascunho, envio falho ou chamado sem dono / em andamento / aguardando.
+5. **Minha operação** lista os chamados em aberto (protocolo, contato, status, prioridade, idade). Clique no protocolo abre a ficha.
+6. **Atividade recente** mostra conversas da fila (hora, contato, condomínio), não um histórico de eventos inventado. **Abrir atendimento** vai para a Inbox.
+
 ## Atendimento
 
 1. Menu **Atendimento** (`/atendimento`).

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
-import { ListChecks, MessageSquare, RefreshCw, Ticket, UserRoundX } from "lucide-react";
+import { ListChecks, MessageSquare, Plus, RefreshCw, Ticket, UserRoundX } from "lucide-react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriorityIndicator, StatusBadge } from "@/components/ui/status-badge";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DataTable, Td, Th } from "@/components/ui/data-table";
+import { buttonVariants } from "@/components/ui/button";
 import { ActivityRow } from "@/components/workspace/activity-row";
 import { AttentionStrip, type AttentionItem } from "@/components/workspace/attention-strip";
 import { AnimarNoScroll } from "@/components/animar-no-scroll";
@@ -190,6 +191,87 @@ export default function DashboardPage() {
 
   const tickets = data?.meusChamadosLista ?? [];
 
+  const minhaOperacao = (
+    <section aria-label="Minha operação" className="space-y-3">
+      <AnimarNoScroll animacao="deslizar-direita" atraso={0.2}>
+        <div className="flex items-center justify-between">
+          <SectionLabel dot="rounded-sm bg-primary">Minha operação</SectionLabel>
+          <Link href="/chamados" className="text-xs font-medium text-primary">
+            Chamados →
+          </Link>
+        </div>
+        <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+          {tickets.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum chamado em aberto.</p>
+          ) : (
+            <>
+              <ul className="md:hidden">
+                {tickets.map((t) => (
+                  <li key={t.id} className="border-b border-border last:border-b-0">
+                    <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-slate-50 transition-colors">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-mono font-semibold tabular">#{t.protocol}</span>
+                        <StatusBadge status={t.status} />
+                      </span>
+                      <span className="mt-1 block font-medium">{t.contact?.nome || "Sem contato"}</span>
+                      <span className="block text-xs text-muted-foreground">{t.condominium.nome}</span>
+                      <span className="mt-1 flex items-center justify-between gap-2">
+                        {t.priority ? <PriorityIndicator priority={t.priority} /> : <span />}
+                        <time className="text-xs text-muted-foreground tabular">{ageLabel(t.updatedAt)}</time>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden md:block">
+                <DataTable className="border-t-0">
+                  <thead>
+                    <tr>
+                      <Th>Protocolo</Th>
+                      <Th>Contato / entidade</Th>
+                      <Th>Status</Th>
+                      <Th>Prioridade</Th>
+                      <Th className="text-right">Idade</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tickets.map((t) => (
+                      <tr key={t.id} className="transition-colors hover:bg-slate-50/50">
+                        <Td>
+                          <Link href={`/chamados/${t.id}`} className="font-mono font-semibold text-foreground tabular hover:text-primary transition-colors">
+                            #{t.protocol}
+                          </Link>
+                        </Td>
+                        <Td>
+                          <span className="block font-medium leading-tight">{t.contact?.nome || "Sem contato"}</span>
+                          <span className="block text-[11px] text-muted-foreground">{t.condominium.nome}</span>
+                        </Td>
+                        <Td>
+                          <StatusBadge status={t.status} />
+                        </Td>
+                        <Td>{t.priority ? <PriorityIndicator priority={t.priority} /> : "—"}</Td>
+                        <Td className="text-right font-mono text-xs text-muted-foreground">{ageLabel(t.updatedAt)}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </DataTable>
+              </div>
+            </>
+          )}
+          <div className="flex items-center justify-between border-t border-border bg-slate-50 px-4 py-2 text-xs text-muted-foreground">
+            <span>
+              {tickets.length} chamado{tickets.length === 1 ? "" : "s"} em aberto nesta lista
+              {typeof data?.meusChamados === "number" ? ` · ${data.meusChamados} sob sua responsabilidade` : ""}
+            </span>
+            <Link href="/chamados" className="font-semibold text-primary hover:underline">
+              Ver todos →
+            </Link>
+          </div>
+        </div>
+      </AnimarNoScroll>
+    </section>
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-6 py-4">
@@ -237,24 +319,54 @@ export default function DashboardPage() {
       </header>
 
       {q.isLoading || !data ? (
-        <div className="grid gap-3.5 p-6 sm:grid-cols-2 lg:grid-cols-4">
-          <Skeleton className="h-36" />
-          <Skeleton className="h-36" />
-          <Skeleton className="h-36" />
-          <Skeleton className="h-36" />
+        <div className="space-y-6 p-6">
+          <div className="flex gap-2 overflow-hidden">
+            <Skeleton className="h-7 w-32 shrink-0" />
+            <Skeleton className="h-7 w-24 shrink-0" />
+            <Skeleton className="h-7 w-20 shrink-0" />
+            <Skeleton className="h-7 w-28 shrink-0" />
+          </div>
+          <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </div>
         </div>
       ) : (
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+            <nav aria-label="Ações rápidas" className="-mx-1 flex gap-2 overflow-x-auto px-1">
+              {!employee ? (
+                <Link href="/chamados?novo=1" className={cn(buttonVariants({ size: "sm" }), "shrink-0")}>
+                  <Plus className="size-3.5" />
+                  Novo chamado
+                </Link>
+              ) : null}
+              <Link href="/atendimento" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}>
+                Atendimento
+              </Link>
+              {!employee ? (
+                <Link href="/triagem" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}>
+                  Triagem
+                </Link>
+              ) : null}
+              {!employee ? (
+                <Link href="/nao-vinculados" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}>
+                  Não vinculados
+                </Link>
+              ) : null}
+            </nav>
+
             <AnimarNoScroll animacao="surgir-de-baixo">
               <section aria-label="Fila de ação">
                 <div className="mb-2.5">
                   <SectionLabel dot="rounded-sm bg-primary">Agora · Fila operacional</SectionLabel>
                 </div>
-                <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
                   <MetricCard
                     label="Não vinculados"
                     value={unlinked}
-                    hint="Mensagens fora do fluxo"
+                    hint="Mensagens aguardando identificação"
                     verb="Vincular"
                     icon={UserRoundX}
                     chip="Fora do fluxo"
@@ -264,7 +376,7 @@ export default function DashboardPage() {
                   <MetricCard
                     label="Triagem"
                     value={data.triagem}
-                    hint="Aguardando classificação"
+                    hint="Atendimentos aguardando classificação"
                     verb="Analisar"
                     icon={ListChecks}
                     chip="Classificação"
@@ -295,91 +407,15 @@ export default function DashboardPage() {
               </section>
             </AnimarNoScroll>
 
-            <div className="grid items-start gap-6 lg:grid-cols-12">
-              <div className="lg:col-span-5">
-                <AnimarNoScroll animacao="surgir-de-baixo" atraso={0.1}>
-                  <AttentionStrip items={attention} />
-                </AnimarNoScroll>
-              </div>
-
-              <section aria-label="Minha operação" className="space-y-3 lg:col-span-7">
-                <AnimarNoScroll animacao="deslizar-direita" atraso={0.2}>
-                  <div className="flex items-center justify-between">
-                    <SectionLabel dot="rounded-sm bg-primary">Minha operação · Chamados atribuídos</SectionLabel>
-                    <Link href="/chamados" className="text-xs font-medium text-primary">
-                      Chamados →
-                    </Link>
-                  </div>
-                  <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-shadow duration-300">
-                    {tickets.length === 0 ? (
-                      <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum chamado em aberto.</p>
-                    ) : (
-                      <>
-                        <ul className="md:hidden">
-                          {tickets.map((t) => (
-                            <li key={t.id} className="border-b border-border last:border-b-0">
-                              <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-slate-50 transition-colors">
-                                <span className="flex items-center justify-between gap-2">
-                                  <span className="font-mono font-semibold tabular">#{t.protocol}</span>
-                                  <StatusBadge status={t.status} />
-                                </span>
-                                <span className="mt-1 block font-medium">{t.contact?.nome || "Sem contato"}</span>
-                                <span className="block text-xs text-muted-foreground">{t.condominium.nome}</span>
-                                <span className="mt-1 flex items-center justify-between gap-2">
-                                  {t.priority ? <PriorityIndicator priority={t.priority} /> : <span />}
-                                  <time className="text-xs text-muted-foreground tabular">{ageLabel(t.updatedAt)}</time>
-                                </span>
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                        <div className="hidden md:block">
-                          <DataTable className="border-t-0">
-                            <thead>
-                              <tr>
-                                <Th>Protocolo</Th>
-                                <Th>Contato / entidade</Th>
-                                <Th>Status</Th>
-                                <Th>Prioridade</Th>
-                                <Th className="text-right">Idade</Th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tickets.map((t) => (
-                                <tr key={t.id} className="transition-colors hover:bg-slate-50/50">
-                                  <Td>
-                                    <Link href={`/chamados/${t.id}`} className="font-mono font-semibold text-foreground tabular hover:text-primary transition-colors">
-                                      #{t.protocol}
-                                    </Link>
-                                  </Td>
-                                  <Td>
-                                    <span className="block font-medium leading-tight">{t.contact?.nome || "Sem contato"}</span>
-                                    <span className="block text-[11px] text-muted-foreground">{t.condominium.nome}</span>
-                                  </Td>
-                                  <Td>
-                                    <StatusBadge status={t.status} />
-                                  </Td>
-                                  <Td>{t.priority ? <PriorityIndicator priority={t.priority} /> : "—"}</Td>
-                                  <Td className="text-right font-mono text-xs text-muted-foreground">{ageLabel(t.updatedAt)}</Td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </DataTable>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex items-center justify-between border-t border-border bg-slate-50 px-4 py-2 text-xs text-muted-foreground">
-                      <span>
-                        {tickets.length} chamado{tickets.length === 1 ? "" : "s"} em aberto nesta lista
-                        {typeof data.meusChamados === "number" ? ` · ${data.meusChamados} sob sua responsabilidade` : ""}
-                      </span>
-                      <Link href="/chamados" className="font-semibold text-primary hover:underline">
-                        Ver grade completa →
-                      </Link>
-                    </div>
-                  </div>
-                </AnimarNoScroll>
-              </section>
+            <div className={cn("grid items-start gap-6", attention.length > 0 && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
+              {attention.length > 0 ? (
+                <div>
+                  <AnimarNoScroll animacao="surgir-de-baixo" atraso={0.1}>
+                    <AttentionStrip items={attention} />
+                  </AnimarNoScroll>
+                </div>
+              ) : null}
+              {minhaOperacao}
             </div>
 
             <AnimarNoScroll animacao="surgir-de-baixo" atraso={0.3}>
@@ -390,21 +426,20 @@ export default function DashboardPage() {
                     Inbox →
                   </Link>
                 </div>
-                <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-shadow duration-300">
+                <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card">
                   {data.recent.length === 0 ? (
                     <p className="px-4 py-4 text-sm text-muted-foreground">Nenhuma conversa recente.</p>
                   ) : (
-                    <ul className="divide-y divide-slate-100">
+                    <ul className="divide-y divide-border">
                       {data.recent.map((row) => (
                         <li key={row.id} className="transition-colors hover:bg-slate-50/50">
                           <ActivityRow
                             variant="log"
                             href="/atendimento"
                             when={clock(row.updatedAt)}
-                            icon={<MessageSquare className="size-3.5" />}
                             primary={row.contact?.nome || "Conversa"}
                             secondary={row.condominium?.nome || undefined}
-                            trailing="Atendimento"
+                            trailing="Abrir atendimento →"
                           />
                         </li>
                       ))}

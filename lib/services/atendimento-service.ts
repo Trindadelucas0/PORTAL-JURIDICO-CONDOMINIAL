@@ -768,6 +768,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         protocol: true,
         title: true,
         status: true,
+        priority: true,
         updatedAt: true,
         condominium: { select: { nome: true } },
         contact: { select: { nome: true } },

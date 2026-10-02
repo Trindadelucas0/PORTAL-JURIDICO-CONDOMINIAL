@@ -294,28 +294,31 @@ Sidebar = Sheet offcanvas ao tocar ☰
 ┌──────────────────────────────────────────────────────────────┐
 │ Visão geral                    [CONECTADO → WA] [Atualizar]  │
 │ O que precisa de ação agora · {data}                         │
+│ [+ Novo chamado] [Atendimento] [Triagem] [Não vinculados]    │
 │ AGORA · FILA OPERACIONAL                                     │
 │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
 │ │rótulo  ícone│ rótulo ícone│ rótulo ícone│ rótulo ícone│    │
 │ │ 0        │ │ 0        │ │ 0        │ │ 0        │          │
 │ │ selo  →  │ │ selo  →  │ │ selo  →  │ │ selo  →  │          │
 │ └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
-│ ATENÇÃO (cartão faixa)     │ MINHA OPERAÇÃO (tabela)         │
+│ ATENÇÃO (só se count>0)    │ MINHA OPERAÇÃO (tabela)         │
 │ número + rótulo + ação     │ protocolo contato status prio   │
-│ ATIVIDADE  [hora] ícone evento                    Atendimento│
+│ ATIVIDADE  hora  contato   condomínio         Abrir atendimento│
 └──────────────────────────────────────────────────────────────┘
 ```
 
 | Rótulo | Ícone | Visual | Função |
 |--------|-------|--------|--------|
-| Cartão (4) | UserRoundX, ListChecks, MessageSquare, Ticket | Branco, número 28px, selo, ação navy | Navega a fila. Zero permanece |
+| Novo chamado | Plus | Link `buttonVariants` primary sm | Admin → `/chamados?novo=1` |
+| Atendimento / Triagem / Não vinculados | — | Link outline sm | Navega. Triagem e Não vinculados só admin |
+| Cartão (4) | UserRoundX, ListChecks, MessageSquare, Ticket | Branco, número `text-2xl`, selo, ação navy | Navega a fila. Zero permanece |
 | WA status | dot 8px | Pill azul se conectado | Estado real da sessão |
 | Atualizar | RefreshCw | Botão navy h-8 | Refaz `GET /api/dashboard` |
-| Itens Atenção | — | Cartão com faixa esquerda (vermelho/âmbar/azul/cinza) | Só se count > 0 |
+| Itens Atenção | — | Cartão com faixa esquerda (vermelho/âmbar/azul/cinza) | Só se count > 0; bloco omitido se vazio |
 | Tabela | StatusBadge + PriorityIndicator | Cabeçalho `#eef0f4` | `/chamados/[id]` |
-| ActivityRow | MessageSquare | Hora em selo + link Atendimento | `/atendimento` |
+| ActivityRow | — | Hora + contato + condomínio + Abrir atendimento | `/atendimento` |
 
-**Sem `<Button>` na Visão.** Sem rótulo “SLA”, sem “2 horas”, sem cobrança. Loading: 4 skeletons. Empty da tabela: “Nenhum chamado em aberto.” Atenção vazia: “Nada exige atenção agora.” Error: ErrorBanner + ForbiddenState 403.
+**Atalhos da Visão são `Link` + `buttonVariants`, não um segundo `TicketCreateDrawer`.** Sem rótulo “SLA”, sem “2 horas”, sem cobrança. Loading: faixa + 4 skeletons. Empty da tabela: “Nenhum chamado em aberto.” Atenção vazia: bloco omitido. Error: ErrorBanner + ForbiddenState 403.
 
 ### Checklist auditoria — Visão
 
