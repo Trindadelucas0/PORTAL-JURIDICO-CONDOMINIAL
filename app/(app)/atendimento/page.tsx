@@ -477,7 +477,7 @@ function ContextPane({
             className="rounded-[8px] border border-border bg-card px-3"
           >
             <p className="text-xs text-muted-foreground">
-              Documentos e prazos ficam na ficha do chamado. Origem: {conversation.connection.label}.
+              Documentos ficam na ficha do chamado. Origem: {conversation.connection.label}.
             </p>
           </ExpandableRow>
         </div>

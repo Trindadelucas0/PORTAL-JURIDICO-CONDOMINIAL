@@ -35,21 +35,20 @@
 15. [Equipe `/equipe`](#15-equipe-equipe)
 16. [Conexões `/conexoes`](#16-conexões-conexoes)
 16b. [Mensagens automáticas `/mensagens-automaticas`](#16b-mensagens-automáticas-mensagens-automaticas)
-17. [Prazos `/prazos`](#17-prazos-prazos)
-18. [Overlays (prints)](#18-overlays-prints)
-19. [Matriz de papéis](#19-matriz-de-papéis)
-20. [Guia rápido do dia a dia](#20-guia-rápido-do-dia-a-dia)
+17. [Overlays (prints)](#17-overlays-prints)
+18. [Matriz de papéis](#18-matriz-de-papéis)
+19. [Guia rápido do dia a dia](#19-guia-rápido-do-dia-a-dia)
 
 ---
 
 ## 1. O produto em uma página
 
-**Juricon** é o escritório jurídico condominial interno: um WhatsApp do escritório, cadastro de condomínios/contatos, fila de números novos, triagem, chamados, documentos e prazos internos.
+**Juricon** é o escritório jurídico condominial interno: um WhatsApp do escritório, cadastro de condomínios/contatos, fila de números novos, triagem, chamados e documentos.
 
 | Papel | O que faz |
 |-------|-----------|
 | **admin** | Tudo: cadastros, triagem, não vinculados, equipe, conexões, criar chamado, aprovar rascunhos, reatribuir |
-| **funcionario** | Inbox das conversas dos seus chamados, quadro/lista só dos atribuídos, documentos com chamado seu, prazos dos seus, Visão com KPIs sem link em Triagem/Não vinculados |
+| **funcionario** | Inbox das conversas dos seus chamados, quadro/lista só dos atribuídos, documentos com chamado seu, Visão com KPIs sem link em Triagem/Não vinculados |
 
 **Não existe** login do síndico neste sistema.
 
@@ -125,11 +124,10 @@ flowchart TD
 2. No composer, **Enviar** vira **Salvar rascunho** / **Enviar para aprovação**.
 3. Admin vê **Aguardando aprovação** → **Aprovar e enviar**.
 
-### 2.6 Documento e prazo
+### 2.6 Documento
 
 1. Documento do condomínio: **Documentos** → card do condomínio → **Novo documento**.
 2. Documento do escritório: **Documentos do sistema** → categoria → **Novo documento** (admin; quatro perguntas).
-3. Prazo: ficha do chamado → **Adicionar prazo** → aparece em **Prazos** e no header da ficha → **Concluir**.
 
 ---
 
@@ -149,7 +147,6 @@ flowchart TD
 │    Triagem    [3] │                                                          │
 │    Não vinc.  [2] │                                                          │
 │    Chamados   [5] │                                                          │
-│    Prazos     [1] │                                                          │
 │    Documentos     │                                                          │
 │    Documentos do sistema │                                                   │
 │    Condomínios    │                                                          │
@@ -178,7 +175,6 @@ flowchart TD
 │  Visão            │  (sem Novo Chamado; sem Triagem / Não vinc. / Equipe /   │
 │  Atendimento      │   Conexões / Mensagens automáticas no menu)              │
 │  Chamados         │                                                          │
-│  Prazos           │                                                          │
 │  Documentos       │                                                          │
 │  Documentos do sistema │                                                     │
 │  Condomínios      │                                                          │
@@ -210,7 +206,6 @@ flowchart TD
 │ Chamados                         │
 │ Documentos                       │
 │ Condomínios                      │
-│ Prazos                           │
 │ Triagem *        (se não no bar) │
 │ Não vinculados *                 │
 │ ── Administração * ───────────── │
@@ -231,7 +226,6 @@ flowchart TD
 | Triagem | admin | `/triagem` | Funcionário não vê no menu |
 | Não vinculados | admin | `/nao-vinculados` | Idem |
 | Chamados | todos | `/chamados` | — |
-| Prazos | todos | `/prazos` | — |
 | Documentos | todos | `/documentos` | — |
 | Condomínios | todos | `/condominios` | — |
 | Equipe | admin | `/equipe` | — |
@@ -312,10 +306,10 @@ flowchart TD
 │           │ │ Vincular → │ │ Analisar→ │ │ Atender → │ │ Operar →   │     │
 │           │ └────────────┘ └────────────┘ └────────────┘ └────────────┘     │
 │           │ ┌─ ATENÇÃO ──────────────┐ ┌─ MINHA OPERAÇÃO · Chamados → ───┐ │
-│           │ │█ 2 Prazos vencidos     │ │ Protocolo Contato Status Prio  │ │
-│           │ │  Resolver → /prazos    │ │ #2026-01  Maria  Aberto  Alta  │ │
-│           │ │█ 1 Rascunhos…          │ │ #2026-02  João   Andam.  Méd.  │ │
-│           │ │  Revisar →             │ │ Ver todos →                     │ │
+│           │ │█ 1 Rascunhos…          │ │ Protocolo Contato Status Prio  │ │
+│           │ │  Revisar →             │ │ #2026-01  Maria  Aberto  Alta  │ │
+│           │ │█ 1 Envios falhos       │ │ #2026-02  João   Andam.  Méd.  │ │
+│           │ │  Ver →                 │ │ Ver todos →                     │ │
 │           │ └────────────────────────┘ └─────────────────────────────────┘ │
 │           │ ATIVIDADE RECENTE                                    Inbox →   │
 │           │ 14:02  Maria                          Abrir atendimento →      │
@@ -339,7 +333,7 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 | Analisar (KPI) | admin | `/triagem` | Funcionário: sem link |
 | Atender (KPI) | todos | `/atendimento` | — |
 | Operar (KPI) | todos | `/chamados` | — |
-| Cartão Atenção (Resolver, Ver prazos, Revisar, Atribuir, Seguir, Ver chamados) | todos | Vai à fila citada | Só se count > 0 |
+| Cartão Atenção (Revisar, Atribuir, Seguir, Ver chamados) | todos | Vai à fila citada | Só se count > 0 |
 | Linha Minha operação | todos | `/chamados/[id]` | — |
 | Chamados → / Ver todos → | todos | `/chamados` | — |
 | Atividade / Inbox → / Abrir atendimento | todos | `/atendimento` | — |
@@ -578,7 +572,7 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 │           │ │█#2026│ │ │█#2025│ │          │          │                     │
 │           │ │ Ata  │ │ │ Cobran│ │          │          │                     │
 │           │ │Aurora│ │ │ …    │ │          │          │                     │
-│           │ │Prazo…│ │ │  ⋮   │ │          │          │                     │
+│           │ │  ⋮   │ │ │  ⋮   │ │          │          │                     │
 │           │ └──────┘ │ └──────┘ │          │          │                     │
 └───────────┴──────────┴──────────┴──────────┴──────────┘                     │
  * admin
@@ -593,7 +587,7 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 │ │▌ #2026-0002                                                  22h     │   │
 │ │▌ EZEQUIEL — outro                                                   │   │
 │ │▌ MARKETING                                                          │   │
-│ │▌ [● Urgente] [Aguardando]     Administradora         Sem prazo      │   │
+│ │▌ [● Urgente] [Aguardando]     Administradora                    │   │
 │ └──────────────────────────────────────────────────────────────────────┘   │
 │ (cards empilhados; barra = prioridade; clique → ficha)                     │
 ```
@@ -645,12 +639,11 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 ┌─ sidebar ─┬─ ← Chamados                        [Detalhes*] [Editar dados] ──┐
 │ …         │ #2026-001  [Aberto]  [Alta]                                      │
 │           │ Ata da assembleia                                                │
-│           │ Residencial Aurora · Maria Silva · resp · prazo …                │
+│           │ Residencial Aurora · Maria Silva · resp                          │
 │           ├─ [Caso] [Linha do tempo] [Docs 2] [Comunicação] ─┬─ Contexto ───┤
 │           │                                                  │ Condo        │
 │           │ (conteúdo da aba ativa)                          │ Contato      │
 │           │                                                  │ Respons.     │
-│           │                                                  │ Próx.prazo   │
 │           │                                                  │ Origem       │
 └───────────┴──────────────────────────────────────────────────┴──────────────┘
 * Detalhes só no celular (mesmo conteúdo do rail em Drawer)
@@ -660,8 +653,6 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 
 ```text
 │ Categoria: Assembleia     Aberto em: 21/09/2026 14:30                       │
-│ Prazos                       [Adicionar prazo]                              │
-│  · Revisar ata · 25/09  [Concluir]                                          │
 │ (sem formulário — edição no Drawer Editar dados)                            │
 ```
 
@@ -677,7 +668,7 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 
 ```text
 │ Timeline: Cliente / WhatsApp / Nota interna / Rascunho / Documento /        │
-│           Prazo / Auditoria (admin)                                         │
+│           Auditoria (admin)                                                 │
 │ [hora] evento · autor                                                       │
 ```
 
@@ -704,9 +695,6 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 | Editar dados | todos | Drawer | PATCH título/status/prioridade/categoria; responsável só admin |
 | Detalhes | `<lg` | Drawer contexto | Condo/contato/resp/origem |
 | Abas Caso/Linha do tempo/Documentos/Comunicação | todos | Troca painel | — |
-| Adicionar prazo | todos | Dialog | — |
-| Salvar prazo | — | POST deadline | Título + data |
-| Concluir (prazo) | — | PATCH done | — |
 | Baixar | — | Download autenticado | — |
 | Composer / Aprovar | iguais §6 | — | — |
 
@@ -866,16 +854,15 @@ Sem chat de IA. Sem Enviar WhatsApp.
 ```text
 ┌─ sidebar ─┬─ ← Condomínios ──────────────────────────────────────────────────┐
 │ …         │ Residencial Aurora                                              │
-│           │ Contatos 3 · Chamados 5 · Docs 2 · Comunicações · Prazos        │
+│           │ Contatos 3 · Chamados 5 · Docs 2 · Comunicações                 │
 │           │ CADASTRO                                                        │
 │           │ Nome CNPJ Endereço Cidade/UF Observação                         │
 │           │ [Salvar cadastro]*                                              │
-│           │ [Contatos] [Chamados] [Documentos] [Comunicações] [Prazos]      │
+│           │ [Contatos] [Chamados] [Documentos] [Comunicações]               │
 │           │ (conteúdo da aba)                                               │
 │           │ Contatos: lista · [Adicionar] [Editar]                          │
 │           │ Chamados: #PROT → ficha                                         │
 │           │ Documentos: Baixar                                              │
-│           │ Prazos: empty “Nenhum prazo aberto…”                            │
 │           │ ▸ Histórico (auditoria, admin)                                  │
 └───────────┴─────────────────────────────────────────────────────────────────┘
 ```
@@ -889,7 +876,7 @@ Sem chat de IA. Sem Enviar WhatsApp.
 | Adicionar / Editar (contato) | admin | Drawer Novo/Editar contato → Salvar |
 | #protocolo | todos | `/chamados/[id]` |
 | Baixar | todos | arquivo |
-| Abas Contatos…Prazos | todos | Troca painel |
+| Abas Contatos…Comunicações | todos | Troca painel |
 
 **Efeito de negócio:** contato com condomínio + telefone/LID → próximas mensagens abrem **Triagem** sem cadastrar de novo.
 
@@ -1039,38 +1026,9 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 
 ---
 
-## 17. Prazos `/prazos`
+## 17. Overlays (prints)
 
-**Quem:** ambos (funcionário só dos seus chamados).
-
-### Print
-
-```text
-┌─ sidebar ─┬─ Prazos · Datas internas do chamado. Não é prazo processual. ───┐
-│ …         │ [Todos] [Hoje] [Próximos] [Atrasados]                           │
-│           │ 25/09/2026  Revisar ata                                         │
-│           │             #2026-001 · Ata da assembleia        [Concluir]     │
-│           │ 20/09/2026  Enviar cobrança (atrasado, texto danger)            │
-│           │             #2025-088 · …                    Concluído 21/09    │
-└───────────┴─────────────────────────────────────────────────────────────────┘
-```
-
-### Controles
-
-| Rótulo | Ao clicar |
-|--------|-----------|
-| Todos / Hoje / Próximos / Atrasados | Filtra (`dueSoon`, `overdue`; Hoje no cliente) |
-| Link #protocolo · título | `/chamados/[id]` |
-| Concluir | PATCH `{ done: true }` → toast “Prazo concluído” |
-
-**Empty:** “Nenhum prazo neste filtro” / “Adicione prazos na ficha do chamado.”  
-**Criar prazo:** só na ficha do chamado (não nesta tela).
-
----
-
-## 18. Overlays (prints)
-
-### 18.1 Drawer — Novo chamado (`/chamados`)
+### 17.1 Drawer — Novo chamado (`/chamados`)
 
 ```text
 ┌──────── Novo chamado (direita) ─────┐
@@ -1084,7 +1042,7 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 └─────────────────────────────────────┘
 ```
 
-### 18.2 Drawer — Vincular ao fluxo (`/nao-vinculados`)
+### 17.2 Drawer — Vincular ao fluxo (`/nao-vinculados`)
 
 ```text
 ┌──────── Vincular ao fluxo ──────────┐
@@ -1105,7 +1063,7 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 └─────────────────────────────────────┘
 ```
 
-### 18.3 Dialog — Novo documento
+### 17.3 Dialog — Novo documento
 
 ```text
 ┌──────── Novo documento — Residencial Aurora ─┐
@@ -1118,17 +1076,7 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 └──────────────────────────────────────────────┘
 ```
 
-### 18.4 Dialog — Adicionar prazo (ficha)
-
-```text
-┌──────── Adicionar prazo ────────────┐
-│ Título *                            │
-│ Data * (datetime-local)             │
-│              [ Salvar prazo ]       │
-└─────────────────────────────────────┘
-```
-
-### 18.5 ConfirmDialogs
+### 17.4 ConfirmDialogs
 
 | Título | Confirm | Onde |
 |--------|---------|------|
@@ -1140,7 +1088,7 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 
 Cancelar = sempre **Cancelar** (secondary).
 
-### 18.6 Drawers cadastro
+### 17.5 Drawers cadastro
 
 | Overlay | Campos principais | Submit |
 |---------|-------------------|--------|
@@ -1151,7 +1099,7 @@ Cancelar = sempre **Cancelar** (secondary).
 
 ---
 
-## 19. Matriz de papéis
+## 18. Matriz de papéis
 
 | Tela | admin | funcionario |
 |------|-------|-------------|
@@ -1162,7 +1110,6 @@ Cancelar = sempre **Cancelar** (secondary).
 | `/nao-vinculados` | ✓ | 403 · oculto |
 | `/chamados` | todos + Novo | só atribuídos · sem Novo |
 | `/chamados/[id]` | ✓ | se assignedTo = eu |
-| `/prazos` | todos | só dos seus |
 | `/documentos` | todos | pastas dos chamados seus |
 | `/documentos-sistema` | GET + CRUD cat/arquivo | GET + download; POST 403 |
 | `/condominios` | CRUD | leitura filtrada |
@@ -1175,7 +1122,7 @@ Síndico: **sem login**.
 
 ---
 
-## 20. Guia rápido do dia a dia
+## 19. Guia rápido do dia a dia
 
 Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SISTEMA.md).
 
@@ -1184,7 +1131,7 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 3. Mensagem de contato conhecido → **Triagem** → **Criar chamado**.
 4. Número novo → **Não vinculados** → responder se preciso → **Vincular ao fluxo**.
 5. Trabalhar no **Atendimento** ou na ficha (**Comunicação**).
-6. **Documentos** / **Documentos do sistema** / **Prazos** / **Equipe** conforme o dia.
+6. **Documentos** / **Documentos do sistema** / **Equipe** conforme o dia.
 6b. Admin: **Mensagens automáticas** — a regra nasce inativa; a primeira ativação pede confirmação.
 7. Visão `/` mostra o que está parado (zeros também nos quatro cartões).
 
@@ -1208,7 +1155,6 @@ Detalhe operacional e setup: [`DOCUMENTACAO-SISTEMA.md` §8](../DOCUMENTACAO-SIS
 | `/equipe` | `app/(app)/equipe/page.tsx` |
 | `/conexoes` | `app/(app)/conexoes/page.tsx`, `whatsapp-session-card.tsx` |
 | `/mensagens-automaticas` | `app/(app)/mensagens-automaticas/page.tsx`, `[id]/page.tsx` |
-| `/prazos` | `app/(app)/prazos/page.tsx` |
 
 ---
 

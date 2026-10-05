@@ -36,11 +36,10 @@
 14. [12. Equipe `/equipe`](#14-12-equipe-equipe)
 15. [13. Conexões `/conexoes`](#15-13-conexões-conexoes)
 15b. [13b. Mensagens automáticas `/mensagens-automaticas`](#15b-13b-mensagens-automáticas-mensagens-automaticas)
-16. [14. Prazos `/prazos`](#16-14-prazos-prazos)
-17. [Overlays](#17-overlays)
-18. [Apêndice A — Matriz de papéis](#18-apêndice-a--matriz-de-papéis)
-19. [Apêndice B — Mapa Lucide](#19-apêndice-b--mapa-lucide)
-20. [Apêndice C — Checklist global](#20-apêndice-c--checklist-global)
+16. [Overlays](#16-overlays)
+17. [Apêndice A — Matriz de papéis](#17-apêndice-a--matriz-de-papéis)
+18. [Apêndice B — Mapa Lucide](#18-apêndice-b--mapa-lucide)
+19. [Apêndice C — Checklist global](#19-apêndice-c--checklist-global)
 
 ```mermaid
 flowchart TD
@@ -52,7 +51,6 @@ flowchart TD
   shell --> naoVinc["/nao-vinculados"]
   shell --> chamados["/chamados"]
   chamados --> chamadoId["/chamados/id"]
-  shell --> prazos["/prazos"]
   shell --> docs["/documentos"]
   shell --> sysdocs["/documentos-sistema"]
   shell --> condos["/condominios"]
@@ -174,7 +172,6 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │  Triagem * [n]  │                                                  │
 │  Não vinc. *[n] │                                                  │
 │  Chamados [n]   │                                                  │
-│  Prazos [n]     │                                                  │
 │  Documentos     │                                                  │
 │  Docs. sistema  │                                                  │
 │  Condomínios    │                                                  │
@@ -203,7 +200,7 @@ Ativo: `border-primary bg-primary text-primary-foreground` · pill `px-3 py-1.5 
 │ Início  Inbox  Triagem|+  Mais     │  admin: Triagem no 3º slot
 │ Início  Inbox  Chamados  Mais      │  funcionário: Chamados no 3º
 └────────────────────────────────────┘
-+ sheet: Chamados, Documentos, Documentos do sistema, Condomínios, Prazos,
++ sheet: Chamados, Documentos, Documentos do sistema, Condomínios,
   (Triagem/Não vinc. se admin e não no bottom), Equipe, Conexões,
   Mensagens automáticas, Sair
 Sidebar = Sheet offcanvas ao tocar ☰
@@ -219,7 +216,6 @@ Sidebar = Sheet offcanvas ao tocar ☰
 | Triagem | ListChecks | nav Link `/triagem` · badge se count>0 | Fila triagem (admin) |
 | Não vinculados | UserRoundX | nav Link `/nao-vinculados` · badge | Fila identidade (admin) |
 | Chamados | Ticket | nav Link `/chamados` · badge abertos | Quadro/Lista |
-| Prazos | CalendarClock | nav Link `/prazos` · badge vencidos | Deadlines |
 | Documentos | FolderOpen | nav Link `/documentos` | Lista operacional |
 | Documentos do sistema | FolderOpen | nav Link `/documentos-sistema` | Pasta do escritório (Operação + Administração) |
 | Condomínios | Building2 | nav Link `/condominios` | Cadastro |
@@ -544,17 +540,15 @@ DRAWER: Novo chamado (título, condo, contato, responsável)
 ┌─ ← Chamados                                    [Detalhes*] [Editar dados] ─┐
 │ #PROT  [StatusBadge]  [Priority]                                           │
 │ título                                                                     │
-│ condo · contato · responsável · prazo …                                    │
+│ condo · contato · responsável                                              │
 ├─ [Caso|Linha do tempo|Docs n|Comunicação] ─┬─ Contexto 280px (lg+) ───────┤
 │ Caso: categoria · aberto em                │ Condo / Contato / Resp        │
-│ PRAZOS [Adicionar] · Concluir              │ Origem / Próximo prazo        │
-│ (sem selects)                              │ *Detalhes = mesmo em Drawer   │
-│ Linha do tempo: Timeline                   │                               │
+│ (sem selects)                              │ Origem                        │
+│ Linha do tempo: Timeline                   │ *Detalhes = mesmo em Drawer   │
 │ Docs: lista Baixar (sem criar)             │                               │
 │ Comunicação: bolhas + composer             │                               │
 └────────────────────────────────────────────┴───────────────────────────────┘
 DRAWER Editar: Título Prioridade Categoria Status Responsável(admin) [Salvar]
-DIALOG: Adicionar prazo
 ```
 
 | Rótulo | Ícone | Variant | Função |
@@ -563,13 +557,11 @@ DIALOG: Adicionar prazo
 | Editar dados | — | secondary sm | Abre Drawer PATCH ticket |
 | Detalhes | — | ghost sm | Só `<lg`: Drawer com contexto |
 | Baixar | — | link primary | `/api/files/...` |
-| Adicionar prazo | — | secondary sm | Dialog prazo |
-| Concluir (prazo) | — | ghost sm | PATCH deadline done |
 | Salvar (Drawer) | — | default | PATCH ticket |
 | WhatsApp / Nota interna | — | primary/secondary sm | Toggle mode (`publica` / `interna`) |
 | Enviar / Salvar nota | — | default | POST `/api/tickets/{id}/messages` |
 
-**Estados:** 403 · 404 · Skeleton · ErrorBanner · docs/prazos empty quietos.
+**Estados:** 403 · 404 · Skeleton · ErrorBanner.
 
 ### Checklist auditoria — Ficha chamado
 
@@ -865,30 +857,9 @@ CONFIRM Ativar automação?  (só na primeira vez que fica Ativa)
 
 ---
 
-## 16. 14. Prazos `/prazos`
+## 16. Overlays
 
-**Arquivo:** `app/(app)/prazos/page.tsx` · full-bleed · GET `/api/deadlines`.
-
-```text
-┌─ Prazos · datas internas do chamado ── [Todos][Hoje][Próximos][Atrasados] ─┐
-│ vencimento | título                                                       │
-│            | #protocolo · chamado                    [Concluir]           │
-└───────────────────────────────────────────────────────────────────────────┘
-```
-
-Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
-
-### Checklist auditoria — Prazos
-
-- [ ] Chips vs FilterChip
-- [ ] Overdue em danger
-- [ ] Link para ficha do chamado
-
----
-
-## 17. Overlays
-
-### 17.1 Drawers (Sheet direita)
+### 16.1 Drawers (Sheet direita)
 
 | Overlay | Tela | Título | Submit |
 |---------|------|--------|--------|
@@ -902,7 +873,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | Editar usuário | `/equipe` | Usuário | Salvar / Reset / Desativar destructive (fitContent + barra) |
 | Preview documento | `/documentos` | título do doc | Baixar |
 
-### 17.2 Dialogs (centro)
+### 16.2 Dialogs (centro)
 
 | Overlay | Tela | Título | Ações |
 |---------|------|--------|-------|
@@ -910,7 +881,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | QR WhatsApp | `/conexoes` | Conectar WhatsApp | Cancelar secondary |
 | Senha provisória | `/equipe` | Senha provisória | Ok, já copiei secondary |
 
-### 17.3 ConfirmDialog
+### 16.3 ConfirmDialog
 
 | Overlay | Tela | Confirm | Variant |
 |---------|------|---------|---------|
@@ -931,7 +902,7 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 
 ---
 
-## 18. Apêndice A — Matriz de papéis
+## 17. Apêndice A — Matriz de papéis
 
 | Tela | admin | funcionario |
 |------|-------|-------------|
@@ -942,7 +913,6 @@ Empty: “Nenhum prazo neste filtro”. Não é prazo processual oficial.
 | `/nao-vinculados` | ✓ | 403 · oculto |
 | `/chamados` | todos + Novo | só atribuídos · sem Novo |
 | `/chamados/[id]` | ✓ | se assignedTo = eu |
-| `/prazos` | todos visíveis | só dos seus chamados |
 | `/documentos` | todos condomínios | condomínios com ticket seu |
 | `/documentos-sistema` | GET + mutação | GET + Baixar; POST 403 |
 | `/condominios` | CRUD | leitura filtrada |
@@ -955,7 +925,7 @@ Síndico: **sem login** neste sistema.
 
 ---
 
-## 19. Apêndice B — Mapa Lucide
+## 18. Apêndice B — Mapa Lucide
 
 | Ícone | Onde | Size típico |
 |-------|------|-------------|
@@ -964,7 +934,6 @@ Síndico: **sem login** neste sistema.
 | Inbox | Inbox / bottom | nav / 18px |
 | ListChecks | Triagem | nav |
 | UserRoundX | Não vinculados | nav |
-| CalendarClock | Prazos | nav |
 | FolderOpen | Documentos | nav / 16px |
 | Building2 | Condomínios | nav |
 | Users | Equipe | nav |
@@ -982,7 +951,7 @@ Síndico: **sem login** neste sistema.
 
 ---
 
-## 20. Apêndice C — Checklist global
+## 19. Apêndice C — Checklist global
 
 Use ao auditar o produto inteiro (além dos checklists por tela).
 

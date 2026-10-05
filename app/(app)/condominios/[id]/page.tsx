@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
@@ -21,9 +21,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 import { e164ToMaskedInput } from "@/lib/phone/mask";
-import { formatDue as formatDeadline, isOverdue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
 import { ContactCondominiumPicker, fetchAllCondominiums } from "@/components/cadastro/contact-condominium-picker";
 import { AiContactMemory } from "@/components/contatos/ai-contact-memory";
 
@@ -52,7 +50,6 @@ type Condo = {
     status: string;
     priority: string;
     assignedTo: { email: string; nome: string } | null;
-    deadlines?: Array<{ id: string; dueAt: string; title: string; doneAt: string | null }>;
   }>;
   documents: Array<{
     id: string;
@@ -80,7 +77,7 @@ type Audit = {
 };
 
 type Me = { user: { role: string } };
-type TabId = "contatos" | "chamados" | "documentos" | "comunicacoes" | "prazos";
+type TabId = "contatos" | "chamados" | "documentos" | "comunicacoes";
 
 export default function CondominioFichaPage() {
   const params = useParams<{ id: string }>();
@@ -191,13 +188,6 @@ export default function CondominioFichaPage() {
   }
 
   const c = q.data?.data;
-  const prazos = useMemo(
-    () =>
-      (c?.tickets ?? []).flatMap((t) =>
-        (t.deadlines ?? []).map((d) => ({ ...d, ticket: t })),
-      ),
-    [c],
-  );
 
   if (q.isError) {
     const status = (q.error as Error & { status?: number }).status;
@@ -239,12 +229,6 @@ export default function CondominioFichaPage() {
               <span className="tabular font-semibold">{c.conversations.length}</span>
               <span className="ml-1 text-muted-foreground">comunicações</span>
             </li>
-            {prazos.length > 0 ? (
-              <li>
-                <span className="tabular font-semibold">{prazos.length}</span>
-                <span className="ml-1 text-muted-foreground">prazos abertos</span>
-              </li>
-            ) : null}
           </ul>
           <section className="border-b border-border p-4">
             <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Cadastro</h2>
@@ -303,7 +287,6 @@ export default function CondominioFichaPage() {
               { id: "chamados", label: "Chamados", count: c.tickets.length },
               { id: "documentos", label: "Documentos", count: c.documents.length },
               { id: "comunicacoes", label: "Comunicações", count: c.conversations.length },
-              { id: "prazos", label: "Prazos", count: prazos.length },
             ]}
           />
           <SectionTabPanel id="contatos" active={tab === "contatos"} className="p-4">
@@ -397,25 +380,6 @@ export default function CondominioFichaPage() {
                 {c.conversations.map((conv) => (
                   <li key={conv.id} className="py-2">
                     {conv.contact?.nome || "contato"} · {conv.messages[0]?.body || "—"}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </SectionTabPanel>
-          <SectionTabPanel id="prazos" active={tab === "prazos"} className="p-4">
-            {prazos.length === 0 ? (
-              <EmptyState title="Nenhum prazo aberto nestes chamados" hint="Prazos são criados na ficha do chamado." />
-            ) : (
-              <ul className="divide-y divide-border text-sm">
-                {prazos.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center gap-2 py-2">
-                    <span className={cn("w-24 tabular text-xs", isOverdue(d.dueAt, d.doneAt) ? "text-[var(--danger)]" : "text-muted-foreground")}>
-                      {formatDeadline(d.dueAt)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{d.title}</span>
-                    <Link className="text-xs text-primary" href={`/chamados/${d.ticket.id}`}>
-                      #{d.ticket.protocol}
-                    </Link>
                   </li>
                 ))}
               </ul>

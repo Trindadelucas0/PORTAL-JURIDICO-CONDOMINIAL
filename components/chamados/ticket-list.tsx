@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PriorityIndicator, StatusBadge } from "@/components/ui/status-badge";
-import { formatAge, formatDue, isOverdue, PRIORITY_TONE } from "@/lib/ui-labels";
+import { formatAge, PRIORITY_TONE } from "@/lib/ui-labels";
 import type { KanbanTicket } from "@/components/chamados/ticket-card";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +23,6 @@ export function TicketList({
       {tickets.map((ticket, index) => {
         const assignee = ticket.assignedTo?.nome || ticket.assignedTo?.email || "Sem responsável";
         const age = formatAge(ticket.updatedAt || ticket.createdAt);
-        const due = ticket.nextDeadline;
-        const overdue = due ? isOverdue(due.dueAt, due.doneAt) : false;
         const priorityBar = PRIORITY_TONE[ticket.priority]?.bar ?? PRIORITY_TONE.media.bar;
 
         return (
@@ -54,14 +52,6 @@ export function TicketList({
                 </span>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground md:shrink-0">
                   <span className="truncate md:max-w-[9rem]">{assignee}</span>
-                  <span
-                    className={cn(
-                      "tabular md:w-28 md:text-right",
-                      overdue ? "font-medium text-[var(--danger)]" : "text-muted-foreground",
-                    )}
-                  >
-                    {due ? `${due.title} · ${formatDue(due.dueAt)}` : "Sem prazo"}
-                  </span>
                 </span>
               </div>
             </Link>

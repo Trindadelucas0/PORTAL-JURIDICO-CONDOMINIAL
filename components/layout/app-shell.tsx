@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import {
   Building2,
-  CalendarClock,
   FolderOpen,
   Inbox,
   LayoutDashboard,
@@ -57,7 +56,6 @@ const NAV = [
       { href: "/triagem", label: "Triagem", icon: ListChecks, admin: true },
       { href: "/nao-vinculados", label: "Não vinculados", icon: UserRoundX, admin: true },
       { href: "/chamados", label: "Chamados", icon: Ticket, admin: false },
-      { href: "/prazos", label: "Prazos", icon: CalendarClock, admin: false },
       { href: "/documentos", label: "Documentos", icon: FolderOpen, admin: false },
       { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen, admin: false },
       { href: "/condominios", label: "Condomínios", icon: Building2, admin: false },
@@ -74,7 +72,7 @@ const NAV = [
   },
 ];
 
-const FULL_BLEED_PREFIXES = ["/", "/atendimento", "/triagem", "/nao-vinculados", "/chamados", "/prazos"];
+const FULL_BLEED_PREFIXES = ["/", "/atendimento", "/triagem", "/nao-vinculados", "/chamados"];
 
 function isFullBleed(pathname: string) {
   return FULL_BLEED_PREFIXES.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(`${p}/`)));
@@ -94,7 +92,6 @@ function searchTarget(pathname: string) {
   if (pathname.startsWith("/nao-vinculados")) return "/nao-vinculados";
   if (pathname.startsWith("/condominios")) return "/condominios";
   if (pathname.startsWith("/equipe")) return "/equipe";
-  if (pathname.startsWith("/prazos")) return "/prazos";
   return "/atendimento";
 }
 
@@ -142,7 +139,6 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
         naoVinculados?: number;
         naoLidas?: number;
         abertos?: number;
-        prazosVencidos?: number;
         conexao: { status: string; type: string; label: string } | null;
       }>("/api/dashboard"),
     ...livePollQuery,
@@ -151,7 +147,6 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
   const unreadCount = dash.data?.data.naoLidas ?? 0;
   const unlinkedCount = admin ? dash.data?.data.naoVinculados ?? 0 : 0;
   const chamadosCount = dash.data?.data.abertos ?? 0;
-  const prazosCount = dash.data?.data.prazosVencidos ?? 0;
   const wa = dash.data?.data.conexao ? humanSessionStatus(dash.data.data.conexao.status) : null;
   const fullBleed = isFullBleed(pathname);
 
@@ -166,7 +161,6 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
     if (href === "/triagem" && triagemCount > 0) return triagemCount;
     if (href === "/nao-vinculados" && unlinkedCount > 0) return unlinkedCount;
     if (href === "/chamados" && chamadosCount > 0) return chamadosCount;
-    if (href === "/prazos" && prazosCount > 0) return prazosCount;
     return null;
   }
 
@@ -175,7 +169,6 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
     if (href === "/triagem") return "rounded-full bg-secondary text-secondary-foreground";
     if (href === "/nao-vinculados") return "rounded-full bg-secondary text-muted-foreground";
     if (href === "/chamados") return "rounded-full bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]";
-    if (href === "/prazos") return "rounded-full bg-[var(--danger)] text-white";
     return "";
   }
 

@@ -379,12 +379,10 @@ describe("escritorio operacional", () => {
     expect(listed.items.some((row) => row.id === ticket.id)).toBe(true);
   });
 
-  it("ticket list includes nextDeadline; team lists open ticket load", async () => {
-    const { createDeadlineService } = await import("@/lib/services/deadline-service");
+  it("team lists open ticket load", async () => {
     const { createTeamService } = await import("@/lib/services/team-service");
-    const deadlines = createDeadlineService(db);
     const team = createTeamService(db);
-    const suffix = `${Date.now()}-deadline`;
+    const suffix = `${Date.now()}-load`;
     const admin = await db.user.create({
       data: {
         email: `admin-dl-${suffix}@juricon.local`,
@@ -404,24 +402,16 @@ describe("escritorio operacional", () => {
       data: { nome: "DL C", phoneE164: `+55114${String(Date.now()).slice(-8)}`, condominiumId: condo.id },
     });
     const ticket = await tickets.createManual(admin, {
-      title: "Com prazo",
+      title: "Com responsável",
       category: "outro",
       priority: "alta",
       condominiumId: condo.id,
       contactId: contact.id,
       assignedToId: staff.id,
     });
-    const dueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await deadlines.create(admin, {
-      ticketId: ticket.id,
-      title: "Retorno ao síndico",
-      dueAt,
-      kind: "atendimento",
-    });
     const listed = await tickets.list(admin, 1, 20, { condominiumId: condo.id });
     const row = listed.items.find((item) => item.id === ticket.id);
-    expect(row?.nextDeadline?.title).toBe("Retorno ao síndico");
-    expect(row?.nextDeadline?.dueAt).toBeTruthy();
+    expect(row?.id).toBe(ticket.id);
     const members = await team.list();
     const staffRow = members.find((m) => m.id === staff.id);
     expect(staffRow?.openTickets).toBeGreaterThanOrEqual(1);

@@ -95,15 +95,6 @@ export function formatWhen(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-export function formatDue(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-}
-
-export function isOverdue(iso: string, doneAt?: string | null) {
-  if (doneAt) return false;
-  return new Date(iso).getTime() < Date.now();
-}
-
 export function formatAge(iso?: string | null) {
   if (!iso) return null;
   const ms = Date.now() - new Date(iso).getTime();

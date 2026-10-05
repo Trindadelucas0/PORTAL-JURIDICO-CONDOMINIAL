@@ -319,12 +319,6 @@ export const cadastroService = {
           status: true,
           priority: true,
           assignedTo: { select: { id: true, email: true, nome: true } },
-          deadlines: {
-            where: { doneAt: null },
-            orderBy: { dueAt: "asc" },
-            take: 3,
-            select: { id: true, dueAt: true, title: true, doneAt: true },
-          },
         },
       }),
       prisma.officeDocument.findMany({

@@ -10,15 +10,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PRIORITY_TONE, STATUS_LABEL, TICKET_STATUSES, formatAge, formatDue, isOverdue } from "@/lib/ui-labels";
+import { PRIORITY_TONE, STATUS_LABEL, TICKET_STATUSES, formatAge } from "@/lib/ui-labels";
 import { PriorityIndicator } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
-
-export type NextDeadline = {
-  dueAt: string;
-  title: string;
-  doneAt: string | null;
-};
 
 export type KanbanTicket = {
   id: string;
@@ -32,7 +26,6 @@ export type KanbanTicket = {
   assignedTo: { id?: string; email: string; nome?: string } | null;
   condominium: { id?: string; nome: string };
   contact: { nome: string };
-  nextDeadline?: NextDeadline | null;
   _count?: { documents?: number; messages?: number };
 };
 
@@ -78,18 +71,6 @@ export function TicketCard({
             <PriorityIndicator priority={ticket.priority} />
             <span className="truncate text-[11px] text-muted-foreground">{assignee}</span>
           </p>
-          {ticket.nextDeadline ? (
-            <p
-              className={cn(
-                "mt-1 truncate text-[11px] tabular",
-                isOverdue(ticket.nextDeadline.dueAt, ticket.nextDeadline.doneAt)
-                  ? "font-medium text-[var(--danger)]"
-                  : "text-muted-foreground",
-              )}
-            >
-              Prazo {formatDue(ticket.nextDeadline.dueAt)}
-            </p>
-          ) : null}
         </button>
         <div className="flex shrink-0 flex-col items-center gap-0.5">
           {showHandle ? (

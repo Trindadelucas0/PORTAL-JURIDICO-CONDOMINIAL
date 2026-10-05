@@ -26,7 +26,6 @@ async function main() {
     const automationExecutions = await tx.automationExecution.deleteMany();
     const attachments = await tx.messageAttachment.deleteMany();
     const reads = await tx.conversationRead.deleteMany();
-    const deadlines = await tx.deadline.deleteMany();
     const documents = await tx.officeDocument.deleteMany();
     const messages = await tx.message.deleteMany();
     const triage = await tx.triageItem.deleteMany();
@@ -62,7 +61,6 @@ async function main() {
       automationExecutions: automationExecutions.count,
       attachments: attachments.count,
       reads: reads.count,
-      deadlines: deadlines.count,
       documents: documents.count,
       messages: messages.count,
       triage: triage.count,

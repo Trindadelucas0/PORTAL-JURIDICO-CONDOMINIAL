@@ -4,8 +4,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PriorityIndicator, StatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDue, isOverdue } from "@/lib/ui-labels";
-import { cn } from "@/lib/utils";
 
 export type DossieHeaderTicket = {
   protocol: string;
@@ -15,7 +13,6 @@ export type DossieHeaderTicket = {
   condominium: { nome: string };
   contact: { nome: string };
   assignedTo: { nome?: string; email: string } | null;
-  nextOpenDeadline?: { title: string; dueAt: string; doneAt: string | null } | null;
 };
 
 export function TicketDossieHeader({
@@ -87,20 +84,6 @@ export function TicketDossieHeader({
             <span>{ticket.contact.nome}</span>
             <span className="mx-1.5 text-border-strong">·</span>
             <span>{ticket.assignedTo ? ticket.assignedTo.nome || ticket.assignedTo.email : "sem responsável"}</span>
-            {ticket.nextOpenDeadline ? (
-              <>
-                <span className="mx-1.5 text-border-strong">·</span>
-                <span
-                  className={cn(
-                    isOverdue(ticket.nextOpenDeadline.dueAt, ticket.nextOpenDeadline.doneAt)
-                      ? "text-[var(--danger)]"
-                      : undefined,
-                  )}
-                >
-                  prazo {formatDue(ticket.nextOpenDeadline.dueAt)}
-                </span>
-              </>
-            ) : null}
           </p>
         </div>
       )}

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
-import { formatDue, isOverdue } from "@/lib/ui-labels";
 import { formatWhatsAppPeer } from "@/lib/phone/display";
 import { peerAvatarPublicUrl } from "@/lib/phone/avatar-url";
 
@@ -15,7 +14,6 @@ export type ContextRailTicket = {
     connection: { label: string };
     peerAvatarKey?: string | null;
   } | null;
-  nextOpenDeadline?: { title: string; dueAt: string; doneAt: string | null } | null;
 };
 
 export function TicketContextContent({ ticket }: { ticket: ContextRailTicket }) {
@@ -47,19 +45,6 @@ export function TicketContextContent({ ticket }: { ticket: ContextRailTicket }) 
       <ContextBlock label="Responsável">
         {ticket.assignedTo?.nome || ticket.assignedTo?.email || "—"}
       </ContextBlock>
-      {ticket.nextOpenDeadline ? (
-        <ContextBlock label="Próximo prazo">
-          <span
-            className={
-              isOverdue(ticket.nextOpenDeadline.dueAt, ticket.nextOpenDeadline.doneAt)
-                ? "text-[var(--danger)]"
-                : undefined
-            }
-          >
-            {ticket.nextOpenDeadline.title} · {formatDue(ticket.nextOpenDeadline.dueAt)}
-          </span>
-        </ContextBlock>
-      ) : null}
       {ticket.conversation ? (
         <ContextBlock label="Origem">{ticket.conversation.connection.label}</ContextBlock>
       ) : null}

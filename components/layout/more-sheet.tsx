@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Building2,
-  CalendarClock,
   FolderOpen,
   ListChecks,
   LogOut,
@@ -36,7 +35,6 @@ const OPERATION: MoreSheetItem[] = [
   { href: "/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/documentos-sistema", label: "Documentos do sistema", icon: FolderOpen },
   { href: "/condominios", label: "Condomínios", icon: Building2 },
-  { href: "/prazos", label: "Prazos", icon: CalendarClock },
 ];
 
 const ADMIN_OPERATION: MoreSheetItem[] = [

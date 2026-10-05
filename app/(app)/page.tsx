@@ -31,8 +31,6 @@ type Dashboard = {
   semResponsavel?: number;
   altaUrgente?: number;
   rascunhos?: number;
-  prazosProximos?: number;
-  prazosVencidos?: number;
   meusChamadosLista?: Array<{
     id: string;
     protocol: string;
@@ -117,26 +115,6 @@ export default function DashboardPage() {
 
   const attention: AttentionItem[] = [];
   if (data) {
-    if ((data.prazosVencidos ?? 0) > 0) {
-      attention.push({
-        href: "/prazos?overdue=1",
-        label: "Prazos vencidos",
-        detail: "A data interna passou e o prazo não foi concluído.",
-        verb: "Resolver",
-        value: data.prazosVencidos ?? 0,
-        tone: "danger",
-      });
-    }
-    if ((data.prazosProximos ?? 0) > 0) {
-      attention.push({
-        href: "/prazos?dueSoon=1",
-        label: "Prazos próximos",
-        detail: "Vencem nas próximas 72 horas.",
-        verb: "Ver prazos",
-        value: data.prazosProximos ?? 0,
-        tone: "danger",
-      });
-    }
     if ((data.rascunhos ?? 0) > 0) {
       attention.push({
         href: "/atendimento",

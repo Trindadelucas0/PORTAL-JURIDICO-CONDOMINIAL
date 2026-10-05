@@ -7,7 +7,6 @@ import { normalizeE164 } from "@/lib/phone/e164";
 import { e164LookupValues, isLidPeer, uniquePhones } from "@/lib/phone/identity";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { providerFor } from "@/lib/channels/resolve-provider";
-import { deadlineService } from "@/lib/services/deadline-service";
 import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
@@ -757,8 +756,6 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
     },
 
     async dashboardKpis(user: User) {
-      const prazosVencidos = await deadlineService.countOverdue(user);
-      const prazosProximos = await deadlineService.countDueSoon(user);
       const ticketWhere = isAdmin(user) ? {} : { assignedToId: user.id };
       const access: Prisma.ConversationWhereInput = isAdmin(user)
         ? inFlowConversationWhere
@@ -821,8 +818,6 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
           enviosFalhos: 0,
           recent: [] as unknown[],
           connections: [] as unknown[],
-          prazosVencidos,
-          prazosProximos,
           meusChamados: meus,
           meusChamadosLista,
           abertos,
@@ -867,8 +862,6 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         enviosFalhos,
         recent,
         connections,
-        prazosVencidos,
-        prazosProximos,
         meusChamadosLista,
         abertos,
         emAndamento,

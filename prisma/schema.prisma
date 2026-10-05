@@ -98,11 +98,6 @@ enum DocumentKind {
   outro
 }
 
-enum DeadlineKind {
-  atendimento
-  juridico
-}
-
 enum ContactIdentityKind {
   phone
   lid
@@ -345,7 +340,6 @@ model Ticket {
   triageItem     TriageItem?
   messages       Message[]
   documents      OfficeDocument[]
-  deadlines      Deadline[]
   aiInteractions AiInteraction[]
   aiTicketMemories AiTicketMemory[]
   aiMemoryRevisions AiTicketMemoryRevision[]
@@ -424,22 +418,6 @@ model SystemDocument {
   chunks        DocumentChunk[]
 
   @@index([categoryId])
-}
-
-model Deadline {
-  id        String       @id @default(uuid()) @db.Uuid
-  ticketId  String       @db.Uuid
-  title     String
-  dueAt     DateTime
-  kind      DeadlineKind
-  doneAt    DateTime?
-  alertedAt DateTime?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  @@index([dueAt])
-  @@index([ticketId])
 }
 
 model ConversationRead {

@@ -55,12 +55,6 @@ const include = {
   assignedTo: { select: { id: true, email: true, nome: true, role: true } },
   createdBy: { select: { id: true, email: true, nome: true, role: true } },
   triageItem: { select: { id: true, status: true } },
-  deadlines: {
-    where: { doneAt: null },
-    orderBy: { dueAt: "asc" as const },
-    take: 1,
-    select: { dueAt: true, title: true, doneAt: true },
-  },
   _count: { select: { documents: true, messages: true } },
 } as const;
 
@@ -118,17 +112,7 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
           include,
         }),
       ]);
-      const items = rows.map(({ deadlines, ...ticket }) => ({
-        ...ticket,
-        nextDeadline: deadlines[0]
-          ? {
-              dueAt: deadlines[0].dueAt,
-              title: deadlines[0].title,
-              doneAt: deadlines[0].doneAt,
-            }
-          : null,
-      }));
-      return { items, total, page, pageSize };
+      return { items: rows, total, page, pageSize };
     },
 
     async get(user: User, id: string) {
@@ -139,7 +123,6 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
           ...include,
           conversation: { include: { connection: true, contact: true } },
           documents: { orderBy: { createdAt: "desc" }, take: 50 },
-          deadlines: { orderBy: { dueAt: "asc" } },
           messages: {
             where: { sendStatus: "draft", visibility: "publica" },
             orderBy: { createdAt: "desc" },

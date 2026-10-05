@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CalendarClock,
   CheckCircle2,
   FileText,
   MessageSquare,
@@ -29,7 +28,6 @@ export type TimelineKind =
   | "document"
   | "status"
   | "assignee"
-  | "deadline"
   | "approval"
   | "send"
   | "system";
@@ -50,7 +48,6 @@ const KIND_META: Record<TimelineKind, { label: string; icon: typeof MessageSquar
   document: { label: "Documento", icon: FileText },
   status: { label: "Status", icon: CheckCircle2 },
   assignee: { label: "Responsável", icon: UserRound },
-  deadline: { label: "Prazo", icon: CalendarClock },
   approval: { label: "Aprovação", icon: ShieldCheck },
   send: { label: "Envio", icon: Send },
   system: { label: "Sistema", icon: CheckCircle2 },

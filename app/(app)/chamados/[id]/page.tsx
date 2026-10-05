@@ -6,8 +6,6 @@ import { useMemo, useRef, useState } from "react";
 import { ErrorBanner, ForbiddenState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
-import { Dialog } from "@/components/ui/dialog";
 import { Drawer } from "@/components/ui/drawer";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FileItem } from "@/components/ui/file-item";
@@ -37,10 +35,7 @@ import { livePollQuery } from "@/lib/client/live-poll";
 import { useSyncOwnMessages } from "@/lib/client/sync-own-messages";
 import { useScrollThreadToEnd } from "@/lib/client/stick-thread-scroll";
 import { documentKindLabel } from "@/lib/documents/kinds";
-import { formatDue } from "@/lib/ui-labels";
 import { useToast } from "@/components/ui/toast";
-
-type Deadline = { id: string; title: string; dueAt: string; doneAt: string | null; kind: string };
 
 type Ticket = {
   id: string;
@@ -71,7 +66,6 @@ type Ticket = {
     clientSendable?: boolean;
     ticketId?: string | null;
   }>;
-  deadlines: Deadline[];
   messages: Array<{ id: string; body: string; sendStatus: string }>;
 };
 
@@ -86,9 +80,6 @@ export default function ChamadoFichaPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [openDetalhes, setOpenDetalhes] = useState(false);
-  const [openDeadline, setOpenDeadline] = useState(false);
-  const [deadlineTitle, setDeadlineTitle] = useState("");
-  const [deadlineDue, setDeadlineDue] = useState("");
 
   const me = useQuery({
     queryKey: ["me"],
@@ -201,37 +192,6 @@ export default function ChamadoFichaPage() {
       qc.invalidateQueries({ queryKey: ["tickets"] });
     },
   });
-  const createDeadline = useMutation({
-    mutationFn: () =>
-      api("/api/deadlines", {
-        method: "POST",
-        body: JSON.stringify({
-          ticketId: id,
-          title: deadlineTitle,
-          dueAt: new Date(deadlineDue).toISOString(),
-          kind: "atendimento",
-        }),
-      }),
-    onSuccess: () => {
-      toast("Prazo adicionado");
-      setOpenDeadline(false);
-      setDeadlineTitle("");
-      setDeadlineDue("");
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-      qc.invalidateQueries({ queryKey: ["deadlines"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-  const doneDeadline = useMutation({
-    mutationFn: (deadlineId: string) =>
-      api(`/api/deadlines/${deadlineId}`, { method: "PATCH", body: JSON.stringify({ done: true }) }),
-    onSuccess: () => {
-      toast("Prazo concluído");
-      qc.invalidateQueries({ queryKey: ["ticket", id] });
-      qc.invalidateQueries({ queryKey: ["deadlines"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
   const rejectDraft = useMutation({
     mutationFn: (messageId: string) => api(`/api/messages/${messageId}/reject`, { method: "POST" }),
     onSuccess: () => {
@@ -298,15 +258,6 @@ export default function ChamadoFichaPage() {
         label: d.kind ? documentKindLabel(d.kind) : "Documento",
       });
     }
-    for (const d of t?.deadlines ?? []) {
-      items.push({
-        id: `dl-${d.id}`,
-        kind: "deadline",
-        body: `${d.title} · ${formatDue(d.dueAt)}${d.doneAt ? " · concluído" : ""}`,
-        at: d.doneAt || d.dueAt,
-        label: "Prazo",
-      });
-    }
     return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 40);
   }, [messages.data, audit.data, ticket.data]);
 
@@ -327,7 +278,6 @@ export default function ChamadoFichaPage() {
   const canResendFailed = Boolean(
     user && (user.role === "admin" || (user.podeResponderCliente && !user.apenasRascunho)),
   );
-  const nextOpenDeadline = t?.deadlines.find((d) => !d.doneAt) ?? null;
   const contextTicket = t
     ? {
         condominium: t.condominium,
@@ -336,7 +286,6 @@ export default function ChamadoFichaPage() {
         conversation: t.conversation
           ? { connection: { label: t.conversation.connection.label }, peerAvatarKey: t.conversation.peerAvatarKey }
           : null,
-        nextOpenDeadline,
       }
     : null;
 
@@ -354,7 +303,6 @@ export default function ChamadoFichaPage() {
                 condominium: t.condominium,
                 contact: t.contact,
                 assignedTo: t.assignedTo,
-                nextOpenDeadline,
               }
             : null
         }
@@ -404,10 +352,6 @@ export default function ChamadoFichaPage() {
               <TicketCasePanel
                 category={t.category}
                 createdAt={t.createdAt}
-                deadlines={t.deadlines}
-                donePending={doneDeadline.isPending}
-                onAddDeadline={() => setOpenDeadline(true)}
-                onCompleteDeadline={(deadlineId) => doneDeadline.mutate(deadlineId)}
               />
             </SectionTabPanel>
             <SectionTabPanel id="atividade" active={tab === "atividade"} className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -554,37 +498,6 @@ export default function ChamadoFichaPage() {
       <Drawer open={openDetalhes} onClose={() => setOpenDetalhes(false)} title="Detalhes">
         {contextTicket ? <TicketContextContent ticket={contextTicket} /> : null}
       </Drawer>
-
-      <Dialog open={openDeadline} onClose={() => setOpenDeadline(false)} title="Adicionar prazo">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            createDeadline.mutate();
-          }}
-        >
-          <div>
-            <Label htmlFor="dl-title">Título</Label>
-            <Input id="dl-title" required value={deadlineTitle} onChange={(e) => setDeadlineTitle(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="dl-due">Data</Label>
-            <Input
-              id="dl-due"
-              type="datetime-local"
-              required
-              value={deadlineDue}
-              onChange={(e) => setDeadlineDue(e.target.value)}
-            />
-          </div>
-          {createDeadline.isError ? (
-            <p className="text-sm text-[var(--danger)]">{(createDeadline.error as Error).message}</p>
-          ) : null}
-          <Button type="submit" disabled={createDeadline.isPending}>
-            Salvar prazo
-          </Button>
-        </form>
-      </Dialog>
     </div>
   );
 }
