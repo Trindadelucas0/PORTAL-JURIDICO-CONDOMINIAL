@@ -407,7 +407,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       skip: Boolean(jsonForReview.parsed.analysis.injectionSignal) || (jsonForReview.parsed.abstain && !allowAbstainDraft),
       regenerate: async (rejectedDraft) => {
         const retry = buildModelPackage({ ...packageInput, rejectedDraft });
-        if (packageContainsSecret(JSON.stringify(retry))) return { ok: false, reason: "secret_blocked" };
+        if (packageContainsSecret(JSON.stringify(retry))) return { ok: false, reason: "secret_blocked", inputTokens: 0, outputTokens: 0 };
         return completeValidJson(activeProvider, {
           system: `${retry.system}\n${PUBLIC_REPLY_REWRITE}`,
           user: retry.user,

@@ -2,6 +2,10 @@
 
 As regras oficiais estão em [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) (§8). Este arquivo só descreve o dia a dia. Não guarda senha nem chave.
 
+## Manual visual (cada tela e cada botão)
+
+[`docs/manual-cliente.md`](manual-cliente.md) — wireframes em texto para a administradora ensinar o escritório: Visão, Atendimento, Triagem, Chamados, Documentos, Equipe, Conexões, Mensagens automáticas e demais rotas. A análise da IA fica só no último capítulo.
+
 ## Guia visual (para mandar ao escritório)
 
 Abra [`docs/guia-cliente/guia-juricon.html`](guia-cliente/guia-juricon.html) no navegador. É um arquivo só: dá para mandar por e-mail ou WhatsApp. Tem 5 capítulos (mensagem até a resposta aprovada, documento como fonte da IA, número não vinculado, Análise do atendimento, triagem até o chamado). Cada um traz o diagrama do caminho, os prints da tela com números e o passo a passo. Todos os nomes e documentos são fictícios.

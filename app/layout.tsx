@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -23,7 +24,8 @@ export const viewport: Viewport = {
   themeColor: "#1b3a4b",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await connection();
   return (
     <html lang="pt-BR" className={`${inter.variable} ${fraunces.variable} h-full`}>
       <body className="min-h-full antialiased">

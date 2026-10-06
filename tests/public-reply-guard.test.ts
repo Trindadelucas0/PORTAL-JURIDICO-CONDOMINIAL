@@ -180,7 +180,7 @@ describe("revisarRespostaPublica", () => {
       first: saida("Já notificamos o apartamento 202."),
       mensagemCliente: "Vocês já notificaram o apartamento?",
       skip: false,
-      regenerate: async () => ({ ok: false, reason: "not-json" }),
+      regenerate: async () => ({ ok: false, reason: "not-json", inputTokens: 0, outputTokens: 0 }),
     });
     expect(result.verdict).toEqual({ status: "reprovar", codigo: "promessa" });
     expect(result.trail).toEqual(["reprovar:promessa", "regen:json_invalido", "descartado:promessa"]);

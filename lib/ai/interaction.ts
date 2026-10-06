@@ -65,7 +65,7 @@ async function isTechnicalFailure(existing: {
   draftMessageId: string | null;
   status?: string;
   analysisJson?: unknown;
-}): boolean {
+}): Promise<boolean> {
   if (isJsonInvalidFailure(existing.analysisJson, null)) return true;
   return existing.status === "abstained" || existing.status === "failed";
 }

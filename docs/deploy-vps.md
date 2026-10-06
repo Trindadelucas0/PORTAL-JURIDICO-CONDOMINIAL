@@ -60,6 +60,40 @@ curl -sS http://127.0.0.1:3010/api/health/ready
 
 Entrypoint do app roda `prisma migrate deploy` e depois `next start`.
 
+## Variante: Next no PM2 + Evolution/Postgres no Docker
+
+Use quando o app Next e o worker rodam no **host** (PM2) e só a stack Evolution + Postgres/Redis do Juricon ficam no compose (ex. `docker-compose.pm2.yml`), com o túnel apontando para `http://127.0.0.1:<JURICON_HOST_PORT>`.
+
+| Onde roda | Quem chama quem | URL / bind |
+|-----------|-----------------|------------|
+| PM2 (`juricon-app`) | Browser via cloudflared → host | `next start --hostname **0.0.0.0** --port <JURICON_HOST_PORT>` — **não** só `127.0.0.1`, senão o container Evolution não alcança o webhook |
+| PM2 | App → Evolution publicada no host | `EVOLUTION_API_URL=http://127.0.0.1:8080` (porta mapeada do `evolution-api`) |
+| Container Evolution | Evolution → webhook do Next no host | `EVOLUTION_WEBHOOK_URL=http://172.17.0.1:<JURICON_HOST_PORT>/api/webhooks/evolution` (gateway `docker0`; confira com `ip -4 addr show docker0`) |
+
+`host.docker.internal` só funciona se o serviço `evolution-api` tiver `extra_hosts: host.docker.internal:host-gateway`. O `docker-compose.prod.yml` faz `extra_hosts: !reset []` — nessa variante PM2, prefira **`172.17.0.1`** ou reative `extra_hosts` no override do compose.
+
+Após mudar `.env` ou `ecosystem.config.cjs`:
+
+```bash
+cd /caminho/PORTAL-JURIDICO-CONDOMINIAL
+export JURICON_PNPM=/caminho/para/pnpm   # se pnpm não estiver no PATH do PM2
+export JURICON_HOST_PORT=5559            # opcional; default do ecosystem é 3010
+pm2 start ecosystem.config.cjs --update-env
+# ou, se o processo já existia com args antigos:
+pm2 delete juricon-app 2>/dev/null; pm2 start ecosystem.config.cjs --only juricon-app --update-env
+pm2 save
+```
+
+Re-registrar webhook na Evolution (admin **Conexões** → **Atualizar QR**, ou qualquer fluxo que chame `syncWebhook`) para a URL nova. Diagnóstico:
+
+```bash
+curl -sS http://127.0.0.1:<porta>/api/health
+docker exec <evolution-api> node -e "fetch('http://172.17.0.1:<porta>/api/health').then(r=>console.log(r.status))"
+# 127.0.0.1:<porta> de *dentro* do container deve falhar; 172.17.0.1 deve retornar 200
+```
+
+Mensagem **nova** de um número **sem** contato no condomínio deve aparecer em **Não vinculados** (~3s). QR conectado sozinho não prova o webhook.
+
 ## Cloudflare Tunnel (host)
 
 1. Zero Trust → Networks → Tunnels → criar túnel Linux.

@@ -391,7 +391,12 @@ describe("ia operacional", () => {
       ["draft-1", { id: "draft-1", sendStatus: "draft" }],
       ["sent-1", { id: "sent-1", sendStatus: "sent" }],
     ]);
-    let existing: { id: string; draftMessageId: string | null } | null = { id: "old", draftMessageId: "draft-1" };
+    let existing: {
+      id: string;
+      draftMessageId: string | null;
+      status?: string;
+      analysisJson?: unknown;
+    } | null = { id: "old", draftMessageId: "draft-1" };
     let created = 0;
     const db = {
       aiInteraction: {
