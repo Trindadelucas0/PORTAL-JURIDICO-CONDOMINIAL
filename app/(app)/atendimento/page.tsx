@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Forward, Pencil, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,16 +18,27 @@ import { cn } from "@/lib/utils";
 import { conversationIdentityLabel, conversationPhoneLabel } from "@/lib/phone/display";
 import { ExpandableRow } from "@/components/ui/expandable-row";
 import { ContextBlock, ContextSummary } from "@/components/workspace/context-summary";
-import { formatAge, STATUS_TONE } from "@/lib/ui-labels";
+import { CATEGORY_LABEL, formatAge, PRIORITY_LABEL, STATUS_TONE } from "@/lib/ui-labels";
 import { PeerAvatar } from "@/components/atendimento/peer-avatar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { TicketEditDrawer, type EditTicketValues } from "@/components/chamados/ticket-edit-drawer";
+import {
+  ForwardConversationDrawer,
+  type ForwardConversationValues,
+} from "@/components/atendimento/forward-conversation-drawer";
 import Link from "next/link";
+import { intakeListLabel, intakeSessionOpen } from "@/lib/ai/intake-cycle";
 
-type ConversationTicket = { id: string; protocol: string; status: string; updatedAt?: string };
+type ConversationTicket = {
+  id: string;
+  protocol: string;
+  status: string;
+  updatedAt?: string;
+  assignedTo?: { id: string; nome?: string; email: string } | null;
+};
 
 type Conversation = ThreadConversation & {
   unread?: boolean;
@@ -35,9 +46,14 @@ type Conversation = ThreadConversation & {
   updatedAt: string;
   peerAvatarUrl?: string | null;
   peerDisplayName?: string | null;
-  triageItem: { id: string; status: string } | null;
+  triageItem: { id: string; status: string; category: string | null; priority: string | null } | null;
   tickets?: ConversationTicket[];
   messages: { body: string }[];
+  aiIntake?: {
+    status: string;
+    questionCount: number;
+    contextJson: { problema: string; confirmado: string[]; falta: string[]; proximaAcao: string } | null;
+  } | null;
 };
 
 type EditTicket = {
@@ -67,6 +83,7 @@ function InboxInner() {
   const [filter, setFilter] = useState<Filter>("all");
   const [mobilePane, setMobilePane] = useState<"list" | "thread">("list");
   const [editTicketId, setEditTicketId] = useState<string | null>(null);
+  const [forwardOpen, setForwardOpen] = useState(false);
   const [contextWide, setContextWide] = useState(false);
   const list = useQuery({
     queryKey: ["conversations", q, filter],
@@ -111,7 +128,7 @@ function InboxInner() {
   const team = useQuery({
     queryKey: ["team"],
     queryFn: () => api<Array<{ id: string; email: string; nome?: string; ativo: boolean }>>("/api/team"),
-    enabled: Boolean(admin && editTicketId),
+    enabled: Boolean(admin && (editTicketId || forwardOpen)),
   });
   const editTicket = useQuery({
     queryKey: ["ticket", editTicketId],
@@ -139,6 +156,29 @@ function InboxInner() {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
       if (id) qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+  const openTicket = pickTicketForCard(current?.tickets);
+  const forwardTicket = openTicket && openTicket.status !== "resolvido" ? openTicket : undefined;
+  const forward = useMutation({
+    mutationFn: (values: ForwardConversationValues) => {
+      if (!currentId) throw new Error("Conversa não selecionada");
+      return api(`/api/conversations/${currentId}/forward`, {
+        method: "POST",
+        body: JSON.stringify({
+          assignedToId: values.assignedToId,
+          note: values.note.trim() || undefined,
+        }),
+      });
+    },
+    onSuccess: (_row, values) => {
+      const member = (team.data?.data ?? []).find((m) => m.id === values.assignedToId);
+      toast(`Conversa encaminhada para ${member?.nome || member?.email || "o usuário"}`);
+      setForwardOpen(false);
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["messages"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
@@ -193,6 +233,7 @@ function InboxInner() {
                 {items.map((c, index) => {
                   const ticket = pickTicketForCard(c.tickets);
                   const inTriage = c.triageItem?.status === "aberto";
+                  const intakeLabel = intakeListLabel(c.aiIntake?.status, c.aiIntake?.questionCount ?? 0);
                   return (
                   <li key={c.id} className="relative" style={{ "--stagger-i": index } as React.CSSProperties}>
                     <button
@@ -239,11 +280,16 @@ function InboxInner() {
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                           {c.messages[0]?.body || "—"}
                         </span>
-                        {inTriage || ticket ? (
+                        {inTriage || ticket || intakeLabel ? (
                           <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                             {inTriage ? (
                               <span className="text-[10px] font-medium tracking-wide text-[var(--warn)] uppercase">
                                 Triagem
+                              </span>
+                            ) : null}
+                            {intakeLabel ? (
+                              <span className="text-[10px] font-medium tracking-wide text-[var(--brand)]">
+                                {intakeLabel}
                               </span>
                             ) : null}
                             {ticket ? (
@@ -300,7 +346,9 @@ function InboxInner() {
         <WorkspacePane>
           <ContextPane
             conversation={current}
+            admin={Boolean(admin)}
             onEditTicket={setEditTicketId}
+            onForward={admin && forwardTicket ? () => setForwardOpen(true) : undefined}
             wide={contextWide}
             onToggleWide={() => setContextWide((value) => !value)}
             canSend={canSend}
@@ -323,6 +371,19 @@ function InboxInner() {
         }
         onSave={(values) => patchTicket.mutate(values)}
       />
+      <ForwardConversationDrawer
+        open={forwardOpen}
+        onClose={() => {
+          setForwardOpen(false);
+          forward.reset();
+        }}
+        currentAssignedToId={forwardTicket?.assignedTo?.id ?? null}
+        team={team.data?.data ?? []}
+        teamLoading={team.isLoading}
+        pending={forward.isPending}
+        errorMessage={forward.isError ? (forward.error as Error).message : null}
+        onSubmit={(values) => forward.mutate(values)}
+      />
       <ConfirmDialog
         open={pendingDelete != null}
         onClose={() => setPendingDelete(null)}
@@ -341,21 +402,51 @@ function InboxInner() {
 
 const CONTEXT_CARD = "min-w-0 rounded-[8px] border border-border bg-card p-3";
 
+function triageDiagnosisLabel(
+  item: { category: string | null; priority: string | null } | null | undefined,
+): string | null {
+  if (!item) return null;
+  const category = item.category ? CATEGORY_LABEL[item.category] || item.category : null;
+  const priority = item.priority ? PRIORITY_LABEL[item.priority] || item.priority : null;
+  if (!category && !priority) return null;
+  return [category, priority].filter(Boolean).join(" · ");
+}
+
 function ContextPane({
   conversation,
+  admin,
   onEditTicket,
+  onForward,
   wide,
   onToggleWide,
   canSend,
 }: {
   conversation?: Conversation;
+  admin: boolean;
   onEditTicket: (id: string) => void;
+  onForward?: () => void;
   wide: boolean;
   onToggleWide: () => void;
   canSend: boolean;
 }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [stopIntakeOpen, setStopIntakeOpen] = useState(false);
+  const stopIntake = useMutation({
+    mutationFn: (id: string) => api(`/api/conversations/${id}/ai-intake/stop`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Coleta interrompida");
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível interromper a coleta"),
+  });
+  const intake = conversation?.aiIntake;
+  const intakeOpen = intakeSessionOpen(intake?.status);
+  const diagnosis = triageDiagnosisLabel(conversation?.triageItem);
+  const showIntake = Boolean(intake && intake.status !== "interrupted");
+  const cardTicket = conversation ? pickTicketForCard(conversation.tickets) : undefined;
   const ticketTone = conversation
-    ? STATUS_TONE[pickTicketForCard(conversation.tickets)?.status ?? ""]
+    ? STATUS_TONE[cardTicket?.status ?? ""]
     : undefined;
   const triageTone = conversation?.triageItem
     ? STATUS_TONE[conversation.triageItem.status]
@@ -373,37 +464,46 @@ function ContextPane({
               avatarUrl={conversation.peerAvatarUrl}
               size="lg"
             />
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Contato</p>
-              <p className="font-medium break-words">
-                {conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {conversationPhoneLabel(conversation.contact?.phoneE164, conversation.peerPhoneE164)}
-              </p>
-            </div>
+            <p className="min-w-0 font-medium break-words">
+              {conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
+              {conversation.condominium?.nome ? (
+                <>
+                  {" · "}
+                  <Link href="/condominios" className="text-[var(--brand)]">
+                    {conversation.condominium.nome}
+                  </Link>
+                </>
+              ) : null}
+            </p>
           </div>
           <AiContextSummary
             conversationId={conversation.id}
             canSend={canSend}
             contactName={conversation.contact?.nome || conversation.peerDisplayName || "Contato"}
           />
+          {intakeOpen ? (
+            <Button type="button" size="xs" variant="secondary" onClick={() => setStopIntakeOpen(true)}>
+              Interromper coleta
+            </Button>
+          ) : null}
           <div
             className={
-              conversation.condominium?.nome
-                ? cn(
-                    "min-w-0 rounded-[8px] border p-3",
-                    "border-[color-mix(in_srgb,var(--brand)_25%,white)]",
-                    "bg-[color-mix(in_srgb,var(--brand)_8%,white)]",
-                  )
+              triageTone
+                ? cn("min-w-0 rounded-[8px] border border-border p-3", triageTone.column)
                 : CONTEXT_CARD
             }
           >
-            <ContextBlock label="Condomínio" className={conversation.condominium?.nome ? "text-[var(--brand)]" : undefined}>
-              {conversation.condominium?.nome ? (
-                <Link href="/condominios" className="text-[var(--brand)]">
-                  {conversation.condominium.nome}
-                </Link>
+            <ContextBlock label="Triagem" className={triageTone?.header}>
+              {conversation.triageItem ? (
+                <p className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={conversation.triageItem.status} />
+                  {diagnosis ? <span>{diagnosis}</span> : null}
+                  {conversation.triageItem.status === "aberto" ? (
+                    <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
+                      Analisar
+                    </Link>
+                  ) : null}
+                </p>
               ) : (
                 <p>—</p>
               )}
@@ -429,19 +529,29 @@ function ContextPane({
                       <StatusBadge status={t.status} />
                     </Link>
                   ))}
-                  {pickTicketForCard(conversation.tickets) ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      onClick={() => {
-                        const ticket = pickTicketForCard(conversation.tickets);
-                        if (ticket) onEditTicket(ticket.id);
-                      }}
-                    >
-                      <Pencil data-icon="inline-start" />
-                      Atualizar chamado
-                    </Button>
+                  {cardTicket ? (
+                    <>
+                      <p className="text-sm">
+                        Responsável: {cardTicket.assignedTo?.nome || cardTicket.assignedTo?.email || "Sem responsável"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          onClick={() => onEditTicket(cardTicket.id)}
+                        >
+                          <Pencil data-icon="inline-start" />
+                          Atualizar chamado
+                        </Button>
+                        {admin && cardTicket.status !== "resolvido" && onForward ? (
+                          <Button type="button" variant="outline" size="xs" onClick={onForward}>
+                            <Forward data-icon="inline-start" />
+                            Encaminhar
+                          </Button>
+                        ) : null}
+                      </div>
+                    </>
                   ) : null}
                 </div>
               ) : (
@@ -449,39 +559,66 @@ function ContextPane({
               )}
             </ContextBlock>
           </div>
-          <div
-            className={
-              triageTone
-                ? cn("min-w-0 rounded-[8px] border border-border p-3", triageTone.column)
-                : CONTEXT_CARD
-            }
-          >
-            <ContextBlock label="Triagem" className={triageTone?.header}>
-              {conversation.triageItem ? (
-                <p className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={conversation.triageItem.status} />
-                  {conversation.triageItem.status === "aberto" ? (
-                    <Link className="text-[var(--brand)]" href={`/triagem/${conversation.triageItem.id}`}>
-                      Analisar
-                    </Link>
-                  ) : null}
-                </p>
-              ) : (
-                <p>—</p>
-              )}
-            </ContextBlock>
-          </div>
           <ExpandableRow
             title="Mais informações"
-            summary="Histórico e documentos no chamado"
+            summary={showIntake ? "Telefone, coleta e origem" : "Telefone e origem"}
             className="rounded-[8px] border border-border bg-card px-3"
           >
-            <p className="text-xs text-muted-foreground">
-              Documentos ficam na ficha do chamado. Origem: {conversation.connection.label}.
-            </p>
+            <div className="space-y-3">
+              <ContextBlock label="Telefone">
+                <p className="break-words">
+                  {conversationPhoneLabel(conversation.contact?.phoneE164, conversation.peerPhoneE164)}
+                </p>
+              </ContextBlock>
+              {showIntake && intake ? (
+                <div>
+                  <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Coleta IA</p>
+                  {diagnosis ? <p className="mt-1 text-sm">{diagnosis}</p> : null}
+                  <div className="mt-2 space-y-2">
+                    <ContextBlock label="Problema">
+                      <p className="break-words">{intake.contextJson?.problema || "—"}</p>
+                    </ContextBlock>
+                    <ContextBlock label="Confirmado">
+                      <p className="break-words">{intake.contextJson?.confirmado?.length ? intake.contextJson.confirmado.join("; ") : "—"}</p>
+                    </ContextBlock>
+                    <ContextBlock label="Falta">
+                      <p className="break-words">{intake.contextJson?.falta?.length ? intake.contextJson.falta.join("; ") : "—"}</p>
+                    </ContextBlock>
+                    <ContextBlock label="Próxima ação">
+                      <p className="break-words">{intake.contextJson?.proximaAcao || "—"}</p>
+                    </ContextBlock>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => document.getElementById("resumo-ia")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      Ver análise completa
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                Documentos ficam na ficha do chamado. Origem: {conversation.connection.label}.
+              </p>
+            </div>
           </ExpandableRow>
         </div>
       )}
+      <ConfirmDialog
+        open={stopIntakeOpen}
+        onClose={() => setStopIntakeOpen(false)}
+        title="Interromper coleta"
+        message="Interromper a coleta automática?"
+        confirmLabel="Interromper"
+        danger
+        pending={stopIntake.isPending}
+        onConfirm={() => {
+          if (conversation) stopIntake.mutate(conversation.id);
+        }}
+      />
     </ContextSummary>
   );
 }

@@ -216,6 +216,26 @@ describe("interpretEvolutionWebhook", () => {
     });
   });
 
+  it("prefers remoteJid phone over remoteJidAlt phone", () => {
+    const result = interpretEvolutionWebhook({
+      event: "messages.upsert",
+      data: {
+        key: {
+          id: "PNPREF1",
+          remoteJid: "5511911110000@s.whatsapp.net",
+          remoteJidAlt: "5511962437373@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: { conversation: "mensagem atual" },
+      },
+    });
+    expect(result.kind).toBe("messages");
+    if (result.kind === "messages") {
+      expect(result.items[0]?.fromPhone).toBe("+5511911110000");
+      expect(result.items[0]?.fromPhone).not.toBe("+5511962437373");
+    }
+  });
+
   it("extracts only @lid when remoteJid is @lid and no remoteJidAlt available", () => {
     /**
      * Cenário: mensagem chega com @lid puro (sem remoteJidAlt).

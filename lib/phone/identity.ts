@@ -35,14 +35,21 @@ export function identityKind(value: string): "phone" | "lid" {
   return isLidPeer(value) ? "lid" : "phone";
 }
 
+function realWhatsAppPhone(value: string | null | undefined): string | null {
+  if (!value || isLidPeer(value) || isOrphanPeer(value)) return null;
+  return value;
+}
+
+/** Peer real desta mensagem. Telefone do contato só quando não há peer; LID e órfão não herdam o cadastro. */
 export function sendableWhatsAppE164(input: {
   contactPhoneE164?: string | null;
   peerPhoneE164?: string | null;
 }): string | null {
-  for (const value of [input.contactPhoneE164, input.peerPhoneE164]) {
-    if (value && !isLidPeer(value) && !isOrphanPeer(value)) return value;
-  }
-  return null;
+  const peer = input.peerPhoneE164?.trim() || null;
+  const realPeer = realWhatsAppPhone(peer);
+  if (realPeer) return realPeer;
+  if (peer && (isLidPeer(peer) || isOrphanPeer(peer))) return null;
+  return realWhatsAppPhone(input.contactPhoneE164);
 }
 
 /** Drawer "Puxar do WhatsApp": só com sessão Baileys open e telefone ainda não travado. */

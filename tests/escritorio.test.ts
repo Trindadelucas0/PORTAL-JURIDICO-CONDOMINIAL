@@ -762,4 +762,115 @@ describe("documentos do sistema", () => {
     const folder = cats.find((c) => c.id === cat.id);
     expect(folder?.count).toBeGreaterThanOrEqual(1);
   });
+
+  it("admin forwards open ticket; staff cannot; note stays internal", async () => {
+    const suffix = `${Date.now()}-fwd`;
+    const admin = await db.user.create({
+      data: {
+        email: `admin-fwd-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "admin",
+      },
+    });
+    const staffA = await db.user.create({
+      data: {
+        email: `staff-a-fwd-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+        podeResponderCliente: true,
+      },
+    });
+    const staffB = await db.user.create({
+      data: {
+        email: `staff-b-fwd-${suffix}@juricon.local`,
+        passwordHash: await hashPassword("x"),
+        role: "funcionario",
+        podeResponderCliente: true,
+      },
+    });
+    const condo = await db.condominium.create({ data: { nome: `Condo fwd ${suffix}` } });
+    const contact = await db.contact.create({
+      data: {
+        nome: "Contato Fwd",
+        phoneE164: `+55117${String(Date.now()).slice(-8)}`,
+        condominiumId: condo.id,
+      },
+    });
+    if (!(await db.channelConnection.findFirst({ where: { type: "dev_mock" } }))) {
+      await db.channelConnection.create({
+        data: { type: "dev_mock", status: "open", label: "Dev / mock" },
+      });
+    }
+    const ticket = await tickets.createManual(admin, {
+      title: "Encaminhar teste",
+      category: "outro",
+      priority: "media",
+      condominiumId: condo.id,
+      contactId: contact.id,
+      assignedToId: staffA.id,
+    });
+    const conversationId = ticket.conversationId!;
+
+    try {
+      await atendimento.forward(staffA, conversationId, { assignedToId: staffB.id });
+      throw new Error("expected forbidden");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AppError);
+      expect((e as AppError).status).toBe(403);
+    }
+
+    try {
+      await atendimento.forward(admin, conversationId, { assignedToId: staffA.id });
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AppError);
+      expect((e as AppError).status).toBe(422);
+    }
+
+    const withoutNote = await atendimento.forward(admin, conversationId, { assignedToId: staffB.id });
+    expect(withoutNote.assignedToId).toBe(staffB.id);
+    expect(withoutNote.id).toBe(ticket.id);
+    const unchanged = await db.ticket.findFirstOrThrow({ where: { id: ticket.id } });
+    expect(unchanged.title).toBe("Encaminhar teste");
+    expect(unchanged.status).toBe("aberto");
+    expect(
+      await db.message.count({ where: { conversationId, visibility: "interna" } }),
+    ).toBe(0);
+
+    const listedA = await atendimento.listConversations(staffA, 1, 50);
+    expect(listedA.items.some((c) => c.id === conversationId)).toBe(false);
+    const listedB = await atendimento.listConversations(staffB, 1, 50);
+    const card = listedB.items.find((c) => c.id === conversationId);
+    expect(card).toBeTruthy();
+    expect(card?.tickets[0]?.assignedTo?.id).toBe(staffB.id);
+
+    const withNote = await atendimento.forward(admin, conversationId, {
+      assignedToId: staffA.id,
+      note: "  segue o caso  ",
+    });
+    expect(withNote.assignedToId).toBe(staffA.id);
+    const notes = await db.message.findMany({
+      where: { conversationId, visibility: "interna" },
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.body).toBe("segue o caso");
+    expect(notes[0]?.sendStatus).toBe("draft");
+    expect(notes[0]?.direction).toBe("out");
+    expect(notes[0]?.ticketId).toBe(ticket.id);
+
+    const audit = await db.auditEvent.findFirst({
+      where: { action: "ticket.forward", entityId: ticket.id },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit).toBeTruthy();
+
+    await db.ticket.update({ where: { id: ticket.id }, data: { status: "resolvido" } });
+    try {
+      await atendimento.forward(admin, conversationId, { assignedToId: staffB.id });
+      throw new Error("expected unprocessable");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AppError);
+      expect((e as AppError).status).toBe(422);
+    }
+  });
 });

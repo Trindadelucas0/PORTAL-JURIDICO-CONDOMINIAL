@@ -136,26 +136,25 @@ export function TriageAnalysisPanel({
   const titleOk = title.trim().length >= 3;
 
   const classification = (
-    <section className="flex min-h-0 flex-col overflow-hidden bg-card">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        <h2 className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Classificação</h2>
-        <div className="flex items-center gap-3">
+        <h2 className="text-sm font-semibold">Classificação</h2>
+        <div className="flex items-center gap-2">
           <PeerAvatar
             name={item.conversation.contact?.nome || item.conversation.peerDisplayName || "Contato"}
             avatarUrl={item.conversation.peerAvatarUrl}
-            size="lg"
+            className="size-8"
           />
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Contato</p>
-            <p className="font-medium">{item.conversation.contact?.nome}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate text-sm font-medium">{item.conversation.contact?.nome}</p>
+            <p className="truncate text-xs text-muted-foreground">
               {conversationPhoneLabel(item.conversation.contact?.phoneE164, item.conversation.peerPhoneE164)}
             </p>
           </div>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Condomínio</p>
-          <p>{item.conversation.condominium?.nome}</p>
+          <p className="truncate text-sm">{item.conversation.condominium?.nome}</p>
         </div>
         <div>
           <Label htmlFor={`title-${id}`}>Título</Label>
@@ -229,15 +228,23 @@ export function TriageAnalysisPanel({
   );
 
   const thread = showThread ? (
-    <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Mensagens">
-      <div className="shrink-0 border-b border-border px-3 py-2">
-        <p className="font-medium">{threadTitle}</p>
-        <p className="truncate text-xs text-muted-foreground">{threadSub}</p>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden" aria-label="Mensagens">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+        <PeerAvatar
+          name={item.conversation.contact?.nome || item.conversation.peerDisplayName || "Contato"}
+          avatarUrl={item.conversation.peerAvatarUrl}
+          className="size-8"
+        />
+        <div className="min-w-0">
+          <p className="truncate font-medium">{threadTitle}</p>
+          <p className="truncate text-xs text-muted-foreground">{threadSub}</p>
+          <p className="truncate text-[11px] text-muted-foreground">A resposta ao cliente fica no Atendimento.</p>
+        </div>
       </div>
       <div
         ref={threadScrollRef}
         onScroll={onThreadScroll}
-        className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto bg-[var(--chat-wallpaper)] px-3 py-3"
+        className="overflow-anchor-none min-h-0 flex-1 overflow-y-auto bg-[var(--chat-wallpaper)] px-4 py-3"
       >
         {messagesQ.isLoading ? <Skeleton className="h-20" /> : null}
         {messagesQ.isError ? (
@@ -256,20 +263,20 @@ export function TriageAnalysisPanel({
   ) : null;
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
         className={cn(
           showThread
-            ? "grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px]"
-            : "flex min-h-0 flex-1 flex-col overflow-hidden",
+            ? "grid h-full min-h-0 flex-1 grid-rows-[minmax(0,40%)_minmax(0,1fr)] gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-[minmax(0,1fr)]"
+            : "flex h-full min-h-0 flex-1 flex-col overflow-hidden",
         )}
       >
         {showThread ? (
           <>
-            <div className="order-1 min-h-0 overflow-hidden lg:order-2 lg:border-l lg:border-border">
+            <div className="order-1 h-full min-h-0 overflow-hidden lg:order-2 lg:border-l lg:border-border">
               {classification}
             </div>
-            <div className="order-2 min-h-0 overflow-hidden border-t border-border lg:order-1 lg:border-t-0">
+            <div className="order-2 h-full min-h-0 overflow-hidden border-t border-border lg:order-1 lg:border-t-0">
               {thread}
             </div>
           </>
@@ -286,6 +293,6 @@ export function TriageAnalysisPanel({
         danger
         onConfirm={() => patch.mutate({ action: "archive" })}
       />
-    </>
+    </div>
   );
 }

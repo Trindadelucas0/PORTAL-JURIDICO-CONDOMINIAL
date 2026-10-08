@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
   serverExternalPackages: ["pdfjs-dist"],
+  experimental: {
+    proxyClientMaxBodySize: "64mb",
+  },
 };
 
 export default nextConfig;

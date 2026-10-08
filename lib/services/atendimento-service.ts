@@ -4,11 +4,12 @@ import { prisma as defaultPrisma } from "@/lib/db/prisma";
 import { forbidden, notFound, unprocessable } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/auth/guards";
 import { normalizeE164 } from "@/lib/phone/e164";
-import { e164LookupValues, isLidPeer, uniquePhones } from "@/lib/phone/identity";
+import { e164LookupValues, isLidPeer, isOrphanPeer, uniquePhones } from "@/lib/phone/identity";
 import { localDiskStorage } from "@/lib/storage/local-disk";
 import { providerFor } from "@/lib/channels/resolve-provider";
 import { writeAudit } from "@/lib/services/audit-service";
 import { canSendPublicWhatsApp, dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
+import { slimIntakeContext } from "@/lib/ai/intake-cycle";
 import { findContactByPhones, upsertContactIdentities } from "@/lib/services/contact-identity";
 import { mergeConversations } from "@/lib/services/conversation-merge";
 import { interpretEvolutionMessageRows } from "@/lib/channels/evolution-webhook";
@@ -100,12 +101,13 @@ async function promoteLidPeerToPhone(
   conversation: Conversation,
   phone: string,
 ): Promise<Conversation> {
-  if (!isLidPeer(conversation.peerPhoneE164) || isLidPeer(phone)) return conversation;
-  const peerLid = conversation.peerLid || conversation.peerPhoneE164;
+  if (isLidPeer(phone) || isOrphanPeer(phone) || conversation.peerPhoneE164 === phone) return conversation;
+  const peerLid =
+    conversation.peerLid || (isLidPeer(conversation.peerPhoneE164) ? conversation.peerPhoneE164 : null);
   try {
     return await db.conversation.update({
       where: { id: conversation.id },
-      data: { peerPhoneE164: phone, peerLid },
+      data: { peerPhoneE164: phone, ...(peerLid ? { peerLid } : {}) },
     });
   } catch (error) {
     if (error instanceof PrismaNs.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -242,7 +244,6 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         { peerPhoneE164: { in: lookupKeys } },
         { peerLid: { in: lookupKeys } },
       ];
-      if (contact) or.push({ contactId: contact.id });
       const matches = await db.conversation.findMany({
         where: { connectionId: connection.id, OR: or },
         orderBy: [{ unidentified: "asc" }, { createdAt: "asc" }],
@@ -299,7 +300,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         });
       }
 
-      const realPhone = !isLidPeer(phone) ? phone : contact && !isLidPeer(contact.phoneE164) ? contact.phoneE164 : null;
+      const realPhone = !isLidPeer(phone) && !isOrphanPeer(phone) ? phone : null;
       if (realPhone) {
         conversation = await promoteLidPeerToPhone(db, conversation, realPhone);
       }
@@ -514,11 +515,23 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             triageItem: true,
             tickets: {
               where: isAdmin(user) ? undefined : { assignedToId: user.id },
-              select: { id: true, protocol: true, assignedToId: true, status: true, updatedAt: true },
+              select: {
+                id: true,
+                protocol: true,
+                assignedToId: true,
+                status: true,
+                updatedAt: true,
+                assignedTo: { select: { id: true, nome: true, email: true } },
+              },
               orderBy: { updatedAt: "desc" },
               take: 5,
             },
             messages: { where: { sendStatus: { not: "draft" } }, orderBy: { createdAt: "desc" }, take: 1 },
+            aiIntakeSessions: {
+              orderBy: { startedAt: "desc" },
+              take: 1,
+              select: { status: true, questionCount: true, contextJson: true },
+            },
             reads: { select: { lastReadAt: true } },
           },
         }),
@@ -532,10 +545,18 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
       const mapped = items
         .map((row) => {
           const unopenedMessages = unopenedById.get(row.id) ?? 0;
-          const { reads, ...rest } = row;
+          const { reads, aiIntakeSessions, ...rest } = row;
           void reads;
+          const latestIntake = aiIntakeSessions[0];
           return {
             ...rest,
+            aiIntake: latestIntake
+              ? {
+                  status: latestIntake.status,
+                  questionCount: latestIntake.questionCount,
+                  contextJson: slimIntakeContext(latestIntake.contextJson),
+                }
+              : null,
             unopenedMessages,
             unread: unopenedMessages > 0,
             peerAvatarUrl:
@@ -596,6 +617,53 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         },
       });
       return { id: conversationId };
+    },
+
+    async forward(user: User, conversationId: string, input: { assignedToId: string; note?: string }) {
+      if (!isAdmin(user)) throw forbidden("Acesso restrito a administradores");
+      await this.getConversationForUser(user, conversationId);
+      const ticket = await db.ticket.findFirst({
+        where: { conversationId, status: { not: "resolvido" } },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (!ticket) throw unprocessable("Não há chamado aberto nesta conversa");
+      const assignee = await db.user.findFirst({
+        where: { id: input.assignedToId, deletedAt: null, ativo: true },
+      });
+      if (!assignee) throw notFound("Responsável não encontrado");
+      if (assignee.id === ticket.assignedToId) throw unprocessable("Já é o responsável");
+      const note = (input.note ?? "").trim();
+      if (note.length > 2000) throw unprocessable("Observação muito longa");
+
+      const updated = await db.$transaction(async (tx) => {
+        const row = await tx.ticket.update({
+          where: { id: ticket.id },
+          data: { assignedToId: assignee.id },
+          select: { id: true, protocol: true, assignedToId: true },
+        });
+        if (note) {
+          await tx.message.create({
+            data: {
+              conversationId,
+              ticketId: ticket.id,
+              direction: "out",
+              visibility: "interna",
+              sendStatus: "draft",
+              body: note.slice(0, 2000),
+            },
+          });
+        }
+        return row;
+      });
+      await writeAudit(db, {
+        actorId: user.id,
+        action: "ticket.forward",
+        entityType: "ticket",
+        entityId: ticket.id,
+        before: { assignedToId: ticket.assignedToId },
+        after: { assignedToId: updated.assignedToId },
+      });
+      return updated;
     },
 
     async getConversationForUser(user: User, id: string) {

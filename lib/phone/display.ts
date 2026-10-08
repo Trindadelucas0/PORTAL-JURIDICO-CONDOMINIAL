@@ -21,7 +21,7 @@ export function formatWhatsAppPeer(phone?: string | null): string {
 }
 
 export function conversationPhoneLabel(contactPhone?: string | null, peerPhone?: string | null): string {
-  return formatWhatsAppPeer(contactPhone || peerPhone);
+  return formatWhatsAppPeer(peerPhone || contactPhone);
 }
 
 /** Nome operacional da thread: cadastro → pushName → telefone → rótulo curto (nunca o parágrafo LID). */

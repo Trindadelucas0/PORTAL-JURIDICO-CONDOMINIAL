@@ -362,15 +362,15 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 │ …         │ [Todas] [Não lidas] [Triagem]                                   │
 │           ├─ 240px ──────┬─ thread ──────────────────┬─ 220px contexto ────┤
 │           │ Conversas    │ Maria Silva               │ Contexto do contato │
-│           │ [Buscar…]    │ Residencial Aurora · WA   │ Contato             │
-│           │              │                           │ Maria Silva         │
-│           │ ● Maria      │ ── hoje ────────────────  │ Condomínio          │
-│           │   Preciso…   │ [cliente] Preciso da ata  │ Residencial Aurora  │
+│           │ [Buscar…]    │ Residencial Aurora · WA   │ Maria · Aurora      │
+│           │              │                           │ Resumo IA           │
+│           │ ● Maria      │ ── hoje ────────────────  │ Triagem             │
+│           │   Preciso…   │ [cliente] Preciso da ata  │ Analisar →          │
 │           │   14:02      │ [você] Segue em anexo     │ Chamado             │
 │           │              │                           │ #2026-01 →          │
-│           │ João (triag.)│ [Resposta] [Nota interna] │ Triagem             │
-│           │              │ [Digite uma mensagem…]    │ Analisar →          │
-│           │              │ [📎] [Áudio]    [Enviar]  │ [Mais informações]  │
+│           │ João (triag.)│ [Resposta] [Nota interna] │ [Atualizar chamado] │
+│           │              │ [Digite uma mensagem…]    │ [Mais informações]  │
+│           │              │ [📎] [Áudio]    [Enviar]  │                     │
 └───────────┴──────────────┴───────────────────────────┴─────────────────────┘
 ```
 
@@ -437,16 +437,18 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 
 ```text
 ┌─ sidebar ─┬─ Triagem · 3 aguardando classificação · [Buscar…] ──────────────┐
-│ …         ├─ lista ──────────┬─ análise ────────────────────────────────────┤
-│           │ ● Maria Silva    │ Contato / mensagens (bolhas, SEM composer)   │
-│           │   Preciso da ata │ ── Classificação ─────────────────────────── │
-│           │   Aurora · 2h    │ Contato (só leitura): Maria Silva            │
-│           │                  │ Condomínio (só leitura): Residencial Aurora  │
-│           │ João Costa       │ Título *                                     │
-│           │   …              │ Categoria ▼  Prioridade ▼  Responsável ▼     │
-│           │                  │ [        Criar chamado        ]  (navy)      │
-│           │                  │ [           Arquivar          ]  (ghost)     │
-└───────────┴──────────────────┴──────────────────────────────────────────────┘
+│ …         ├─ fila ────────┬─ conversa (bege até embaixo) ─┬─ Classificação ─┤
+│           │ ● Maria Silva │ [av] Maria Silva              │ [av] Maria      │
+│           │   Preciso da  │ Aurora · telefone             │ telefone        │
+│           │   ata         │ A resposta ao cliente fica    │ Condomínio      │
+│           │   Aurora · 2h │ no Atendimento.               │ Residencial…    │
+│           │   · tel       │ -------- HOJE --------        │ Título *        │
+│           │ João Costa    │ (bolhas, SEM composer)        │ Categoria ▼     │
+│           │   …           │                               │ Prioridade ▼    │
+│           │               │                               │ Responsável ▼   │
+│           │               │                               │ [Criar chamado] │
+│           │               │                               │ [Arquivar]      │
+└───────────┴───────────────┴───────────────────────────────┴─────────────────┘
 ```
 
 ### Controles
@@ -488,7 +490,8 @@ Os quatro KPIs **sempre** aparecem, inclusive com **0**. Atenção só lista car
 │ …         │ ← Triagem                                                       │
 │           │ Analisar solicitação                                            │
 │           ├─────────────────────────────────────────────────────────────────┤
-│           │ (mesmo painel da §7: thread + Classificação + Criar/Arquivar)   │
+│           │ (mesmo painel da §7: conversa bege | Classificação 320px;       │
+│           │  no celular classificação acima da conversa)                    │
 └───────────┴─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -529,7 +532,7 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 | Vincular ao fluxo (painel) | Abre drawer | — | — |
 | Puxar do WhatsApp | POST enrich-peer (deep) | Preenche telefone se Evolution liberar (chat → mensagem → agenda única) | Só se WA `open` e telefone ainda não travado |
 | Conectar WhatsApp | Navega `/conexoes` | Abre Conexões para reconectar a sessão | Se telefone não travado e WA ≠ `open` |
-| Vincular ao fluxo (submit drawer) | Abre ConfirmDialog | — | Nome + condo; telefone se sem PN |
+| Vincular ao fluxo (submit drawer) | Abre ConfirmDialog | — | Nome + condomínio |
 | Confirmar vínculo | POST enroll | Cria/atualiza Contact + TriageItem → `/triagem/[id]` | **Não** cria Ticket |
 | Cancelar | Fecha | — | — |
 
@@ -539,11 +542,10 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 |-------|-------------|-------|
 | Já cadastrado no condomínio | Não | “Novo cadastro” ou contato existente |
 | Nome | Sim | — |
-| Telefone | Condicional | Travado se veio do WhatsApp; senão obrigatório se LID |
 | Papel | Não | Síndico / Administrador / Outro |
 | Cargo (livre) | Não | — |
 | E-mail | Não | — |
-| Condomínio | Sim | Select |
+| Condomínio | Sim | Select. Outros condomínios só em Editar contato. |
 
 ### Estados
 
@@ -653,15 +655,20 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 
 ```text
 │ Categoria: Assembleia     Aberto em: 21/09/2026 14:30                       │
-│ (sem formulário — edição no Drawer Editar dados)                            │
+│ (sem formulário — edição no Dialog Editar chamado)                          │
 ```
 
-### Drawer Editar dados
+### Dialog Editar chamado
 
 ```text
-│ Título [________]                                                           │
-│ Prioridade ▼  Categoria ▼  Status ▼                                         │
-│ Responsável ▼ (só admin)                                   [Cancelar][Salvar]│
+┌──────── Editar chamado ─────────┐
+│ Título *                        │
+│ Prioridade ▼                    │
+│ Categoria ▼                     │
+│ Status ▼                        │
+│ Responsável ▼ (só admin)        │
+│         [Cancelar] [Salvar]     │
+└─────────────────────────────────┘
 ```
 
 ### Aba Linha do tempo
@@ -692,7 +699,7 @@ Card da fila = mesmo de Atendimento (borda, raio, barra navy selecionada). Ordem
 | Rótulo | Quem | Ao clicar | Resultado |
 |--------|------|-----------|-----------|
 | ← Chamados | todos | `/chamados` | — |
-| Editar dados | todos | Drawer | PATCH título/status/prioridade/categoria; responsável só admin |
+| Editar dados | todos | Dialog | PATCH título/status/prioridade/categoria; responsável só admin |
 | Detalhes | `<lg` | Drawer contexto | Condo/contato/resp/origem |
 | Abas Caso/Linha do tempo/Documentos/Comunicação | todos | Troca painel | — |
 | Baixar | — | Download autenticado | — |
@@ -1047,18 +1054,20 @@ Não há **Nova automação**. O aviso de WhatsApp desconectado não bloqueia o 
 ```text
 ┌──────── Vincular ao fluxo ──────────┐
 │ Informe quem é o contato…           │
+│ [avatar] nome / número WhatsApp     │
 │ Já cadastrado [Novo cadastro ▼]     │
 │ Nome *                              │
-│ Telefone *  [+55…] [Puxar do WA]    │
-│ Papel ○ Síndico ○ Admin ○ Outro     │
-│ Cargo / E-mail / Condomínio *       │
+│ Papel [ Síndico ][ Admin ][ Outro ] │
+│ Cargo (livre) / E-mail              │
+│ Condomínio *                        │
+│ Outros: Condomínios → Editar contato│
 │              [ Vincular ao fluxo ]  │
 └─────────────────────────────────────┘
         ↓ ConfirmDialog
 ┌──────── Confirmar vínculo ──────────┐
 │ Cadastra contato e abre triagem.    │
 │ Não cria chamado.                   │
-│ Nome / Telefone / Condomínio        │
+│ Nome / Condomínio / Papel           │
 │ [Cancelar] [Confirmar vínculo]      │
 └─────────────────────────────────────┘
 ```

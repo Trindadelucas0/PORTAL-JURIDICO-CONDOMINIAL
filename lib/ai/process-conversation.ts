@@ -43,6 +43,8 @@ import { retrieveForConversation, type RetrievalChunk, type RetrievalResult } fr
 import { classifyLocal } from "@/lib/ai/router";
 import { dispatchToWhatsApp } from "@/lib/services/whatsapp-dispatch";
 import { ticketService } from "@/lib/services/ticket-service";
+import { SAUDACAO_ABERTURA, type IntakeAnexo } from "@/lib/ai/intake-cycle";
+import { commitIntakeTurn, holdInboundForMedia, loadIntakePackageContext, prepareIntakeTurn } from "@/lib/ai/intake-runtime";
 
 export async function processConversation(db: PrismaClient, conversationId: string, provider: AiProvider | null = createAiProviderFromEnv()) {
   const started = Date.now();
@@ -114,6 +116,9 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     );
     const messageLimit = selected ? selected.length : undefined;
     const messageIds = [...new Set([...inbound.map((row) => row.id), ...relato.map((row) => row.id)])];
+    const batchStartedAt = new Date(Math.min(...jobs.map((job) => new Date(job.createdAt).getTime())));
+    const batchAttempts = Math.max(0, ...jobs.map((job) => Number(job.attempts) || 0));
+    let intakeAnexos: IntakeAnexo[] = [];
     const joined = inbound.map((row) => row.body).join("\n").slice(0, 4000);
     const intent = classifyLocal(joined);
     const retrieval = await retrieveForConversation(
@@ -218,6 +223,25 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     }
 
     if (intent === "injection" || ambiguous) {
+      const prepared = await prepareIntakeTurn(db, {
+        conversationId,
+        ticketId,
+        manual: replaceManualDraft,
+        hasCondominium: Boolean(conversation.condominiumId),
+        messageIds,
+        batchStartedAt,
+        modelDecision: null,
+        question: null,
+        confirmedFacts: [],
+        missingInformation: [],
+        mensagemCliente: joined,
+        riskHigh: true,
+        injection: intent === "injection",
+        jsonInvalid: false,
+        problema: ambiguous ? "A IA não escolhe o chamado." : joined.slice(0, 500),
+        proximaAcao: ambiguous ? "Escolher o chamado na ficha." : "Aguardar o humano.",
+        anexos: [],
+      });
       await persistTurn(db, {
         conversationId,
         ticketId,
@@ -252,7 +276,72 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         outputTokens: 0,
         extraActions: intent === "injection" ? ["SEND_WHATSAPP", "SEND_DOCUMENT"] : [],
         fluxo: fluxoParado(fluxoBase, { llm: "falhou", validacao: "ok", citations: "falhou" }),
+        suppressDraft: prepared.plan.suppressDraft,
       });
+      await commitIntakeTurn(db, prepared);
+      return;
+    }
+
+    if (intent === "saudacao" && !replaceManualDraft && conversation.condominiumId) {
+      const held = await holdInboundForMedia(db, {
+        conversationId,
+        jobIds,
+        messageIds,
+        attempts: batchAttempts,
+      });
+      if (held) return;
+      const prepared = await prepareIntakeTurn(db, {
+        conversationId,
+        ticketId,
+        manual: false,
+        hasCondominium: true,
+        messageIds,
+        batchStartedAt,
+        modelDecision: "ASK",
+        question: SAUDACAO_ABERTURA,
+        confirmedFacts: [],
+        missingInformation: [],
+        mensagemCliente: joined,
+        riskHigh: false,
+        injection: false,
+        jsonInvalid: false,
+        problema: joined.slice(0, 500),
+        proximaAcao: "Coletar o relato.",
+        anexos: intakeAnexos,
+      });
+      await persistTurn(db, {
+        conversationId,
+        ticketId,
+        key,
+        messageIds,
+        jobIds,
+        currentVersion,
+        replaceManualDraft,
+        allowAbstainDraft,
+        chunks,
+        draftText: null,
+        abstain: true,
+        injection: false,
+        summary: splitSummary({
+          ...EMPTY_SUMMARY,
+          contexto: "Saudação sem pergunta.",
+          analise: "ABSTAIN",
+        }, false),
+        analysis: {
+          intencao: intent,
+          risco: "baixo",
+          conflitos: [],
+          motivoEscalonamento: null,
+          confianca: "insuficiente",
+        },
+        model: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        extraActions: [],
+        fluxo: fluxoParado(fluxoBase, { llm: "falhou", validacao: "ok", citations: "falhou" }),
+        suppressDraft: prepared.plan.suppressDraft,
+      });
+      await commitIntakeTurn(db, prepared);
       return;
     }
 
@@ -302,6 +391,19 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       others.map((row) => row.nome),
     );
 
+    let intakeContext: Awaited<ReturnType<typeof loadIntakePackageContext>> = null;
+    if (!replaceManualDraft && conversation.condominiumId) {
+      const held = await holdInboundForMedia(db, {
+        conversationId,
+        jobIds,
+        messageIds,
+        attempts: batchAttempts,
+      });
+      if (held) return;
+      intakeContext = await loadIntakePackageContext(db, conversationId, messageIds);
+      intakeAnexos = intakeContext?.anexos ?? [];
+    }
+
     const modelName = process.env.AI_MODEL_MAIN?.trim() || "main";
     const rejectedDraft = jobRejectedDraft || previous?.clientDraft || null;
     const rejectedContexto = previous?.summary.contexto?.trim() || null;
@@ -326,6 +428,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       chunks: chunks.map((row) => ({ id: row.id, content: row.content, corpus: row.corpus })),
       rejectedDraft,
       rejectedContexto,
+      intakeContext,
     };
     const packed = buildModelPackage(packageInput);
     if (packageContainsSecret(JSON.stringify(packed))) {
@@ -342,6 +445,25 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       timeoutMs: aiTimeoutMs(),
     });
     if (!valid.ok) {
+      const prepared = await prepareIntakeTurn(db, {
+        conversationId,
+        ticketId,
+        manual: replaceManualDraft,
+        hasCondominium: Boolean(conversation.condominiumId),
+        messageIds,
+        batchStartedAt,
+        modelDecision: null,
+        question: null,
+        confirmedFacts: [],
+        missingInformation: [],
+        mensagemCliente: joined,
+        riskHigh: true,
+        injection: false,
+        jsonInvalid: true,
+        problema: joined.slice(0, 500),
+        proximaAcao: "Revisão humana.",
+        anexos: intakeAnexos,
+      });
       await persistTurn(db, {
         conversationId,
         ticketId,
@@ -377,7 +499,9 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         outputTokens: valid.outputTokens,
         extraActions: [],
         fluxo: fluxoParado(fluxoBase, { llm: "ok", validacao: "falhou", citations: "falhou" }),
+        suppressDraft: true,
       });
+      await commitIntakeTurn(db, prepared);
       return;
     }
     const activeProvider = provider;
@@ -460,6 +584,28 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       publicReplyPendencia(revisao.verdict),
     ].filter((line): line is string => Boolean(line));
     const rawActions = readRawActions(raw);
+    const prepared = await prepareIntakeTurn(db, {
+      conversationId,
+      ticketId,
+      manual: replaceManualDraft,
+      hasCondominium: Boolean(conversation.condominiumId),
+      messageIds,
+      batchStartedAt,
+      modelDecision: parsed.decision ?? null,
+      question: parsed.question ?? null,
+      clientDraft: parsed.clientDraft ?? null,
+      triageCategory: parsed.triageCategory ?? null,
+      triagePriority: parsed.triagePriority ?? null,
+      confirmedFacts: parsed.confirmedFacts ?? [],
+      missingInformation: parsed.missingInformation ?? [],
+      mensagemCliente: joined,
+      riskHigh: parsed.analysis.risco === "alto",
+      injection: injectionFromModel,
+      jsonInvalid: false,
+      problema: summary.problema,
+      proximaAcao: summary.proximaAcao,
+      anexos: intakeAnexos,
+    });
     await persistTurn(db, {
       conversationId,
       ticketId,
@@ -470,7 +616,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
       replaceManualDraft,
       allowAbstainDraft,
       chunks,
-      draftText,
+      draftText: prepared.plan.suppressDraft ? null : draftText,
       abstain: (forceAbstain && !injectionFromModel) || gated.leaked,
       injection: injectionFromModel,
       serverFallback,
@@ -502,7 +648,10 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         citations: "ok",
         citedCount: cited.length,
       }),
+      suppressDraft: prepared.plan.suppressDraft,
+      respostaSugerida: prepared.plan.kind === "answer" ? prepared.plan.text : undefined,
     });
+    await commitIntakeTurn(db, prepared);
     console.log(
       JSON.stringify({
         jobId: jobIds[0],
@@ -573,6 +722,9 @@ type PersistInput = {
   fluxo: AnalysisFluxo;
   allowAbstainDraft?: boolean;
   replaceManualDraft?: boolean;
+  suppressDraft?: boolean;
+  /** Frase da coleta automática (`answer`): vai ao resumo sem criar bolha Rascunho. */
+  respostaSugerida?: string | null;
 };
 
 async function persistTurn(db: PrismaClient, input: PersistInput) {
@@ -586,7 +738,7 @@ async function persistTurn(db: PrismaClient, input: PersistInput) {
     interactionExists: false,
     currentVersion: input.currentVersion,
     expectedVersion: input.currentVersion,
-    draftText: input.draftText,
+    draftText: input.suppressDraft ? null : input.draftText,
     summary: input.summary,
     allowAbstainDraft: input.allowAbstainDraft,
   });
@@ -1028,7 +1180,7 @@ function summaryPayload(input: PersistInput): Prisma.InputJsonValue {
       trechos,
     },
     fluxo: input.fluxo,
-    respostaSugerida: input.draftText,
+    respostaSugerida: input.respostaSugerida !== undefined ? input.respostaSugerida : input.draftText,
   };
 }
 
@@ -1206,7 +1358,7 @@ async function audit(
 }
 
 export async function claimQueuedInbound(db: PrismaClient, conversationId: string) {
-  const rows = await db.$queryRaw<Array<{ id: string; idempotencyKey: string; payload: unknown; createdAt: Date }>>`
+  const rows = await db.$queryRaw<Array<{ id: string; idempotencyKey: string; payload: unknown; createdAt: Date; attempts: number }>>`
     UPDATE "AiJob"
     SET status = 'running',
         "lockedAt" = NOW(),
@@ -1215,7 +1367,9 @@ export async function claimQueuedInbound(db: PrismaClient, conversationId: strin
       AND type = 'ai.inbound'
       AND status = 'queued'
       AND "runAfter" <= NOW()
-    RETURNING id, "idempotencyKey", payload, "createdAt"
+    RETURNING id, "idempotencyKey", payload, "createdAt", attempts
   `;
-  return rows.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return rows
+    .map((row) => ({ ...row, attempts: Number(row.attempts) || 0, createdAt: new Date(row.createdAt) }))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }

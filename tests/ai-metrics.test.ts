@@ -4,6 +4,7 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     aiJob: { count: async () => 0 },
     aiInteraction: { aggregate: async () => ({ _sum: { inputTokens: 0, outputTokens: 0 } }) },
+    aiAuditEvent: { groupBy: async () => [] },
   },
 }));
 

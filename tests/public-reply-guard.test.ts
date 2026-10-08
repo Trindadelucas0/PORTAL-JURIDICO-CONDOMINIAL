@@ -12,6 +12,9 @@ const BARULHO = "Mestre apto 202 está fazendo muito barulho, precisa resolver i
 const PARECER =
   "Olá, agradecemos a comunicação. Para verificar se o barulho do apto 202 está em desacordo com o regimento, é necessário confirmar o horário em que o ruído ocorre. O Regimento Interno estabelece horários de silêncio: de domingo a quinta-feira, das 22h às 7h; e sexta-feira e sábado, das 23h às 8h. Caso o barulho esteja acontecendo dentro desses períodos, recomendamos que você registre a ocorrência e acione a administração ou o síndico para que seja tomada a providência cabível. Se o barulho ocorrer fora do horário de silêncio, sugerimos tentar uma conversa amistosa com o vizinho ou registrar a situação para eventual acompanhamento futuro.";
 
+const PARECER_VIZINHO =
+  "Olá! Recebi sua reclamação sobre barulho do vizinho. Para orientá-lo corretamente, preciso verificar o regulamento interno do condomínio Exito. Enquanto isso, recomendo anotar datas, horários e descrições do barulho e, se possível, tentar conversar amigavelmente com o vizinho. Fico à disposição para seguir com o procedimento adequado após confirmar as normas.";
+
 function veredito(mensagemCliente: string, draft: string): PublicReplyVerdict {
   return avaliarRespostaPublica({ draft, mensagemCliente });
 }
@@ -19,6 +22,24 @@ function veredito(mensagemCliente: string, draft: string): PublicReplyVerdict {
 describe("avaliarRespostaPublica", () => {
   it("reprova o parecer do apto 202 que despeja as duas faixas de silêncio", () => {
     expect(veredito(BARULHO, PARECER)).toEqual({ status: "reprovar", codigo: "despejo" });
+  });
+
+  it("reprova o parecer que manda falar com o vizinho ou adia o regulamento", () => {
+    expect(veredito(BARULHO, PARECER_VIZINHO)).toEqual({ status: "reprovar", codigo: "parecer" });
+  });
+
+  it.each([
+    "Tente conversar com o vizinho.",
+    "Fale com o vizinho primeiro.",
+    "Sugiro um acordo com o vizinho.",
+  ])("reprova paráfrase que manda resolver com o vizinho: %s", (texto) => {
+    expect(veredito(BARULHO, texto)).toEqual({ status: "reprovar", codigo: "parecer" });
+  });
+
+  it("aceita menção ao vizinho só como autor do barulho", () => {
+    expect(veredito(BARULHO, "Recebi a reclamação de barulho do vizinho. Em que horário acontece?")).toEqual({
+      status: "ok",
+    });
   });
 
   it("aceita o pedido curto do horário", () => {
@@ -78,7 +99,7 @@ describe("avaliarRespostaPublica", () => {
   });
 
   it("sinaliza interrogatório", () => {
-    const texto = "Qual o horário? Quanto tempo dura? Já falou com o vizinho?";
+    const texto = "Qual o horário? Quanto tempo dura? O barulho é contínuo?";
     expect(veredito(BARULHO, texto)).toEqual({ status: "sinal", codigo: "perguntas" });
   });
 
@@ -94,6 +115,9 @@ describe("avaliarRespostaPublica", () => {
   it("gera a pendência de cada veredito", () => {
     expect(publicReplyPendencia({ status: "ok" })).toBeNull();
     expect(publicReplyPendencia({ status: "reprovar", codigo: "despejo" })).toContain("descartada");
+    expect(publicReplyPendencia({ status: "reprovar", codigo: "parecer" })).toBe(
+      "Resposta sugerida descartada: mandava o morador resolver com o vizinho ou adiava o regulamento.",
+    );
     expect(publicReplyPendencia({ status: "sinal", codigo: "tamanho" })).toContain("longa");
   });
 });
@@ -137,6 +161,30 @@ describe("revisarRespostaPublica", () => {
     });
     expect(calls).toBe(0);
     expect(result).toMatchObject({ verdict: { status: "ok" }, regenerated: false, trail: [] });
+  });
+
+  it("regenera o parecer do vizinho e fica com a pergunta curta", async () => {
+    const result = await revisarRespostaPublica({
+      first: saida(PARECER_VIZINHO),
+      mensagemCliente: BARULHO,
+      skip: false,
+      regenerate: async () => saida(CURTA),
+    });
+    expect(result.output.parsed.clientDraft).toBe(CURTA);
+    expect(result.verdict).toEqual({ status: "ok" });
+    expect(result.trail).toEqual(["reprovar:parecer", "regen:ok"]);
+  });
+
+  it("descarta quando a regeneração também é parecer", async () => {
+    const result = await revisarRespostaPublica({
+      first: saida(PARECER_VIZINHO),
+      mensagemCliente: BARULHO,
+      skip: false,
+      regenerate: async () => saida(PARECER_VIZINHO),
+    });
+    expect(result.verdict).toEqual({ status: "reprovar", codigo: "parecer" });
+    expect(result.trail).toEqual(["reprovar:parecer", "descartado:parecer"]);
+    expect(publicReplyPendencia(result.verdict)).toContain("vizinho");
   });
 
   it("regenera uma vez o parecer e fica com a resposta curta", async () => {

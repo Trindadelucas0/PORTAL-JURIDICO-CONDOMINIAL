@@ -7,7 +7,7 @@ import { aiEmbedTimeoutMs } from "@/lib/ai/env";
 import { officeDocumentRagEligible } from "@/lib/ai/rag-eligibility";
 import { createAiProviderFromEnv } from "@/lib/ai/provider";
 import { localDiskStorage } from "@/lib/storage/local-disk";
-import { isMarkdownFile } from "@/lib/storage/provider";
+import { isMarkdownFile, OFFICE_DOCUMENT_MAX_UPLOAD_BYTES } from "@/lib/storage/provider";
 
 export type IngestResult =
   | { status: "indexed"; condominiumId?: string }
@@ -162,7 +162,7 @@ export async function extractDocumentText(
   originalName: string,
   mime: string,
 ): Promise<{ kind: "pdf" | "md" | "image"; text: string } | null> {
-  if (buffer.length > 8 * 1024 * 1024) return null;
+  if (buffer.length > OFFICE_DOCUMENT_MAX_UPLOAD_BYTES) return null;
   if (isMarkdownFile(originalName, mime)) {
     return {
       kind: "md",

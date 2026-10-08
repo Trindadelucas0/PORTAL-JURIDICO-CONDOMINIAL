@@ -33,6 +33,11 @@ const OFFICE_DOCUMENT_ONLY_MIME = new Set(["text/markdown"]);
 const MARKDOWN_BROWSER_MIME = new Set(["", "application/octet-stream", "text/plain", "text/x-markdown"]);
 
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+export const OFFICE_DOCUMENT_MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
+
+export function maxUploadBytes(options: SaveOptions = {}) {
+  return options.officeDocument ? OFFICE_DOCUMENT_MAX_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
+}
 
 export function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "arquivo";

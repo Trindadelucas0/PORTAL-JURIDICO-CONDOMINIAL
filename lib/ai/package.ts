@@ -34,6 +34,29 @@ export function packageMessages(messages: Array<{ body: string }>, messageLimit 
   return kept;
 }
 
+function intakeContextLines(context: {
+  problema?: string;
+  confirmado?: string[];
+  falta?: string[];
+  proximaAcao?: string;
+  anexos?: Array<{ nome: string; texto?: string }>;
+} | null | undefined): string[] {
+  if (!context) return [];
+  const lines = [
+    context.problema?.trim() ? `problema: ${context.problema.replace(/\s+/g, " ").slice(0, 300)}` : "",
+    ...(context.confirmado ?? []).slice(0, 8).map((item) => `confirmado: ${item.replace(/\s+/g, " ").slice(0, 200)}`),
+    ...(context.falta ?? []).slice(0, 8).map((item) => `falta: ${item.replace(/\s+/g, " ").slice(0, 200)}`),
+    context.proximaAcao?.trim() ? `proxima: ${context.proximaAcao.replace(/\s+/g, " ").slice(0, 300)}` : "",
+    ...(context.anexos ?? []).slice(0, 3).map((item) =>
+      item.texto?.trim()
+        ? `anexo ${item.nome.replace(/\s+/g, " ").slice(0, 120)}: ${item.texto.replace(/\s+/g, " ").slice(0, 1500)}`
+        : `anexo ${item.nome.replace(/\s+/g, " ").slice(0, 120)}`,
+    ),
+  ].filter(Boolean);
+  if (!lines.length) return [];
+  return ["<CURRENT_INTAKE_CONTEXT>", ...lines, "</CURRENT_INTAKE_CONTEXT>"];
+}
+
 export function buildModelPackage(input: {
   system: string;
   model: string;
@@ -51,6 +74,14 @@ export function buildModelPackage(input: {
   rejectedDraft?: string | null;
   /** Regeneração: parágrafo do card recusado, antes de `<DOCUMENT_DATA>`. */
   rejectedContexto?: string | null;
+  /** Coleta em andamento. Os dados do cliente continuam em MESSAGE_DATA. */
+  intakeContext?: {
+    problema?: string;
+    confirmado?: string[];
+    falta?: string[];
+    proximaAcao?: string;
+    anexos?: Array<{ nome: string; texto?: string }>;
+  } | null;
 }): ModelPackage {
   const messages = packageMessages(input.messages, input.messageLimit);
   const relato = input.relato?.length ? packageMessages(input.relato, input.relato.length) : [];
@@ -70,6 +101,7 @@ export function buildModelPackage(input: {
     "<MESSAGE_DATA>",
     ...messages.map((body) => `- ${body}`),
     "</MESSAGE_DATA>",
+    ...intakeContextLines(input.intakeContext),
     ...(relato.length ? ["<RELATO_DATA>", ...relato.map((body) => `- ${body}`), "</RELATO_DATA>"] : []),
     "<MEMORY_DATA>",
     input.memorySummary ? input.memorySummary.slice(0, 400) : "",

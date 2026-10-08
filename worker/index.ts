@@ -3,6 +3,7 @@ import { processConversation } from "@/lib/ai/process-conversation";
 import { retentionIdempotencyKey, runRetentionPurge } from "@/lib/ai/retention";
 import { ingestOfficeDocument, ingestSystemDocument } from "./ingest-document";
 import { downloadInboundMedia } from "./download-inbound-media";
+import { runIntakeTimeoutJob } from "@/lib/ai/intake-runtime";
 
 const GLOBAL_CONCURRENCY = 2;
 let active = 0;
@@ -135,6 +136,27 @@ async function tick() {
           await prisma.aiJob.update({
             where: { id: job.id },
             data: { status: "failed", lockedAt: null, lastErrorCode: "MEDIA" },
+          });
+        }
+      })().finally(() => {
+        active -= 1;
+      });
+      continue;
+    }
+    if (job.type === "ai.intake.timeout") {
+      active += 1;
+      void (async () => {
+        await prisma.aiJob.update({
+          where: { id: job.id },
+          data: { status: "running", lockedAt: new Date(), attempts: { increment: 1 } },
+        });
+        try {
+          await runIntakeTimeoutJob(prisma, job);
+          await prisma.aiJob.update({ where: { id: job.id }, data: { status: "succeeded", lockedAt: null } });
+        } catch {
+          await prisma.aiJob.update({
+            where: { id: job.id },
+            data: { status: "failed", lockedAt: null, lastErrorCode: "INTAKE_TIMEOUT" },
           });
         }
       })().finally(() => {

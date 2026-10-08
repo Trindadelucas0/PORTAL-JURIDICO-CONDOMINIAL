@@ -146,7 +146,7 @@ flowchart TD
 | Item lista ativo | `border-l-2` brand + `bg color-mix(brand 6%, white)` |
 | Workspace Inbox | `280px / 1fr / 300px` (lg); com **Expandir**: `280px / 1fr / max(300px, min(640px, 100% − 600px))` |
 | Workspace Unlinked | `280px / 1fr / 240px` (xl) |
-| Workspace Triagem | `240–320px / 1fr` (lg) |
+| Workspace Triagem | fila `minmax(240px,320px)` + conversa + classificação 320px (lg) |
 
 ### 1.5 FilterChip
 
@@ -382,26 +382,30 @@ MOBILE: (lista | thread) à esquerda + contexto fixo à direita
 ## 6. 4. Triagem `/triagem`
 
 **Arquivos:** `app/(app)/triagem/page.tsx` · `triage-analysis-panel.tsx`  
-**Admin only · full-bleed · split 240–320 / 1fr.**
+**Admin only · full-bleed · fila `minmax(240px,320px)` + conversa + classificação 320px.**
 
 ```text
 ┌─ Triagem · N aguardando classificação · [Buscar…] ──────────┐
-├─ lista ──────────┬─ análise (thread + form 240px) ──────────┤
-│ Nome             │ Contato / mensagens (bolhas, sem composer)│
-│ preview msg      │ │ Análise                                 │
-│ condo · quando   │ │ Contato (ro) Condo (ro)                 │
-│ telefone         │ │ Categoria ▼ Prioridade ▼ Responsável ▼  │
-│ (ativo brand)    │ │ [ Promover a chamado ]  default w-full  │
-│                  │ │ [ Arquivar ]            ghost w-full    │
-└──────────────────┴───────────────────────────────────────────┘
-MOBILE: lista OU análise (← Solicitações)
+├─ fila 240–320px ─┬─ conversa (bege até embaixo) ─┬─ 320px ──┤
+│ [av] Nome        │ [av] Nome                     │ Classificação
+│ prévia (1 linha) │ condomínio · telefone         │ [av] Nome
+│ condo · hora · tel│ A resposta ao cliente fica   │ telefone
+│ (ativo brand)    │ no Atendimento.               │ Condomínio
+│                  │ -------- HOJE --------        │ Título [____]
+│                  │ (bolhas)                      │ Categoria ▼
+│                  │                               │ Prioridade ▼
+│                  │                               │ Responsável ▼
+│                  │                               │ [Criar chamado]
+│                  │                               │ [Arquivar]
+└──────────────────┴───────────────────────────────┴──────────┘
+MOBILE: lista OU análise (← Solicitações); classificação no máximo ~40% da altura, conversa bege embaixo
 ```
 
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
 | Item fila | — | button row | Select + `?id=` |
 | ← Solicitações | — | link brand | Mobile back |
-| Promover a chamado | — | default w-full | PATCH action promote → `/chamados` |
+| Criar chamado | — | default w-full | PATCH action promote → `/chamados/[id]` |
 | Arquivar | — | ghost w-full | Abre ConfirmDialog |
 | Confirm Arquivar | — | danger | PATCH action archive |
 | Confirm Cancelar | — | secondary | Fecha dialog |
@@ -412,7 +416,7 @@ MOBILE: lista OU análise (← Solicitações)
 
 ### Checklist auditoria — Triagem
 
-- [ ] CTA Promover vs Arquivar (hierarquia)
+- [ ] CTA Criar chamado vs Arquivar (hierarquia)
 - [ ] Thread sem composer — clareza de que resposta é na Inbox
 - [ ] Densidade lista py-2.5
 
@@ -426,7 +430,8 @@ MOBILE: lista OU análise (← Solicitações)
 ┌─ ← Triagem ─────────────────────────────────────────────────┐
 │ Analisar solicitação                                        │
 ├─────────────────────────────────────────────────────────────┤
-│ (mesmo TriageAnalysisPanel: thread + Análise)               │
+│ (mesmo TriageAnalysisPanel: conversa bege | Classificação 320px;
+│  no celular classificação acima da conversa)                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -461,7 +466,8 @@ MOBILE: lista OU análise (← Solicitações)
 │ └──────────┘    │                        │                    │
 └─────────────────┴────────────────────────┴────────────────────┘
 DRAWER: Vincular ao fluxo (form enroll)
-Telefone*  [+55 …]  [Puxar do WhatsApp | Conectar WhatsApp]
+Já cadastrado · Nome* · Papel · Cargo · E-mail · Condomínio*
+(sem telefone, sem outros condomínios; extras em Editar contato)
 ```
 
 **Card da fila** = mesmo chrome de Atendimento (`rounded` + `border` + `border-l-2` primary quando selecionado). Hierarquia: nome/idade → telefone → preview → origem WhatsApp/DEV (sem protocolo).
@@ -469,14 +475,12 @@ Telefone*  [+55 …]  [Puxar do WhatsApp | Conectar WhatsApp]
 |--------|-------|---------|--------|
 | Item fila | — | select | Abre thread (coluna da esquerda no mobile; identidade permanece à direita) |
 | Vincular ao fluxo (painel) | — | default w-full | Abre Drawer |
-| Vincular ao fluxo (drawer) | — | default submit | POST enroll → `/triagem/[id]` |
-| Puxar do WhatsApp | — | secondary | POST enrich-peer deep; só se PN livre e WA `open` |
-| Conectar WhatsApp | — | secondary | → `/conexoes` se WA ≠ `open` e sem PN |
+| Vincular ao fluxo (drawer) | — | default submit | Abre ConfirmDialog; POST enroll → `/triagem/[id]` |
 | (+ ThreadPanel) | — | — | Ver Inbox; sem botão Contexto nesta página |
 
-**Campos drawer:** Já cadastrado (Select) · Nome* · Telefone* (se sem E.164; **Puxar do WhatsApp** se sessão `open`, senão **Conectar WhatsApp**) · Papel radio (Síndico/Administrador/Outro) · Cargo livre · E-mail · Condomínio*.
+**Campos drawer:** Já cadastrado (Select) · Nome* · Papel (Síndico/Administrador/Outro) · Cargo livre · E-mail · Condomínio*. Sem telefone. Sem **Também nestes condomínios**.
 
-**Estados:** 403 · ErrorBanner · loading “Carregando fila…” · enrich “Puxando…” / “Consultando Evolution…” · toast se Evolution não liberar PN.
+**Estados:** 403 · ErrorBanner · loading “Carregando fila…” · select condomínio “Carregando…” · toast “Vinculado ao fluxo”.
 
 ### Checklist auditoria — Não vinculados
 
@@ -548,16 +552,16 @@ DRAWER: Novo chamado (título, condo, contato, responsável)
 │ Docs: lista Baixar (sem criar)             │                               │
 │ Comunicação: bolhas + composer             │                               │
 └────────────────────────────────────────────┴───────────────────────────────┘
-DRAWER Editar: Título Prioridade Categoria Status Responsável(admin) [Salvar]
+DIALOG Editar (centro): Título Prioridade Categoria Status Responsável(admin) [Cancelar][Salvar]
 ```
 
 | Rótulo | Ícone | Variant | Função |
 |--------|-------|---------|--------|
 | ← Chamados | — | Link brand | Volta kanban |
-| Editar dados | — | secondary sm | Abre Drawer PATCH ticket |
+| Editar dados | — | secondary sm | Abre Dialog no centro; PATCH ticket |
 | Detalhes | — | ghost sm | Só `<lg`: Drawer com contexto |
 | Baixar | — | link primary | `/api/files/...` |
-| Salvar (Drawer) | — | default | PATCH ticket |
+| Salvar (Dialog) | — | default | PATCH ticket |
 | WhatsApp / Nota interna | — | primary/secondary sm | Toggle mode (`publica` / `interna`) |
 | Enviar / Salvar nota | — | default | POST `/api/tickets/{id}/messages` |
 
@@ -864,7 +868,7 @@ CONFIRM Ativar automação?  (só na primeira vez que fica Ativa)
 | Overlay | Tela | Título | Submit |
 |---------|------|--------|--------|
 | Novo chamado | `/chamados` | Novo chamado | Criar |
-| Editar chamado | `/atendimento`, `/chamados/[id]` | Editar chamado | Salvar (fitContent + barra) |
+| Editar chamado | `/atendimento`, `/chamados/[id]` | Editar chamado | Salvar (Dialog no centro) |
 | Novo condomínio | `/condominios` | Novo condomínio | Salvar |
 | Novo contato | `/condominios`, `/[id]` | Novo contato | Salvar |
 | Editar contato | `/condominios/[id]` | Editar contato | Salvar |

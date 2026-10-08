@@ -201,14 +201,14 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 ```
 +-- Lista ----------+-- Conversa ------------------+-- Contexto ----------+
 | [Todas]          |  Nome do contato              | Contexto  [Expandir] |
-| [Não lidas]      |  #2026-0001 · Aberto          | Contato              |
-| [Triagem]        |  +---------------------------+| Condomínio           |
-|                  |  | bolhas do chat            || Chamado              |
-| (cartão conv.)   |  | verde = escritório        ||  [Atualizar chamado] |
-|  Não aberta (2)  |  | branco = cliente          || Triagem              |
-|  [lixeira]       |  | vermelho = Falha [Reenviar]|| Mais informações     |
-|                  |  +---------------------------+|                      |
-|                  |  [Carregar anteriores]        |                      |
+| [Não lidas]      |  #2026-0001 · Aberto          | Nome · condomínio    |
+| [Triagem]        |  +---------------------------+| Resumo IA            |
+|                  |  | bolhas do chat            || Triagem              |
+| (cartão conv.)   |  | verde = escritório        || Chamado              |
+|  Não aberta (2)  |  | branco = cliente          ||  Responsável         |
+|  [lixeira]       |  | vermelho = Falha [Reenviar]|| [Atualizar chamado] |
+|                  |  +---------------------------+| [Encaminhar]        |
+|                  |  [Carregar anteriores]        | Mais informações     |
 |                  |  [ ] Nota interna             |                      |
 |                  |  [Anexar] [Áudio] [msg…][Enviar]                     |
 +------------------+--------------------------------+----------------------+
@@ -230,7 +230,8 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 | 12 | **Reenviar** (bolha vermelha) | Tenta de novo um envio que falhou. |
 | 13 | **Aprovar e enviar** (em rascunho antigo na bolha) | Admin envia um rascunho que ficou pendente. |
 | 14 | **Atualizar chamado** (painel Contexto) | Só se já existir chamado na conversa. Abre o mesmo editor da ficha (título, status, prioridade, categoria, responsável). |
-| 15 | **Expandir** / **Recolher** | Só no computador: alarga o painel Contexto; a conversa encolhe mas continua visível. |
+| 15 | **Encaminhar** (painel Contexto) | Só admin, e só com chamado Aberto, Em andamento ou Aguardando. Abre o diálogo no centro **Encaminhar conversa**: escolhe **Para** (outro usuário ativo) e pode escrever **Observação** (nota interna, não vai ao WhatsApp). O responsável anterior deixa de ver a conversa na fila. |
+| 16 | **Expandir** / **Recolher** | Só no computador: alarga o painel Contexto; a conversa encolhe mas continua visível. |
 
 **Cores das bolhas**
 
@@ -244,9 +245,9 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 - Lista vazia conforme filtro.
 - Erro ao carregar conversas ou mensagens — banner com tentar de novo.
 
-**O funcionário não vê:** conversas de chamados **não atribuídos a ele**. Não aprova rascunho de outra pessoa (só admin).
+**O funcionário não vê:** conversas de chamados **não atribuídos a ele**. Não aprova rascunho de outra pessoa (só admin). Não vê **Encaminhar**.
 
-*Conferido em:* `app/(app)/atendimento/page.tsx`, `components/atendimento/thread-panel.tsx`, `components/atendimento/message-composer.tsx`, `components/atendimento/message-bubbles.tsx`
+*Conferido em:* `app/(app)/atendimento/page.tsx`, `components/atendimento/thread-panel.tsx`, `components/atendimento/forward-conversation-drawer.tsx`, `components/atendimento/message-composer.tsx`, `components/atendimento/message-bubbles.tsx`
 
 ---
 
@@ -257,15 +258,20 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 **Rotas:** `/triagem` e `/triagem/[id]`
 
 ```
-+-- Fila (esquerda) ----------+-- Classificação (direita) ------------+
-| Triagem                     | CLASSIFICAÇÃO                        |
-| N aguardando classificação  | Contato · Condomínio (leitura)       |
-| [busca local]               | Título [________________]            |
-|                             | Categoria [▼]  Prioridade [▼]        |
-| cartões da fila             | Responsável [▼]                      |
-|                             | [ Criar chamado ]                    |
-|                             | [ Arquivar ]                         |
-+-- (no PC: mensagens abaixo ou ao lado da classificação) ----------+
++-- Fila 240–320px --+-- Conversa (bege até embaixo) --+-- 320px --------+
+| Triagem            | [av] Nome                       | Classificação  |
+| N aguardando…      | condomínio · telefone           | [av] Nome      |
+| [busca local]      | A resposta ao cliente fica      | telefone       |
+|                    | no Atendimento.                 | Condomínio     |
+| cartões:           | -------- HOJE --------          | Título [____]  |
+| nome, 1 linha de   | bolhas (sem campo de resposta)  | Categoria [▼]  |
+| prévia,            |                                 | Prioridade [▼] |
+| condo · hora · tel |                                 | Responsável [▼]|
+|                    |                                 | [Criar chamado]|
+|                    |                                 | [Arquivar]     |
++--------------------+---------------------------------+----------------+
+No celular: lista OU análise (← Solicitações). Na análise, classificação
+em cima (rola) e conversa bege embaixo.
 ```
 
 | # | Controle | O que acontece |
@@ -307,12 +313,12 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 Drawer "Vincular ao fluxo":
   Já cadastrado no condomínio [▼]  (ou Novo cadastro)
   Nome *
-  Papel: ( ) Síndico  ( ) Administrador  ( ) Outro
+  Papel: [ Síndico ] [ Administrador ] [ Outro ]
   Cargo (livre)
   E-mail
-  Condomínio (principal) *
-  (outros condomínios — opcional)
-  [ Vincular ao fluxo ]
+  Condomínio *
+  Outros condomínios: Condomínios → Editar contato.
+  [ Vincular ao fluxo ] (rodapé)
 ```
 
 | # | Controle | O que acontece |
@@ -320,13 +326,13 @@ Drawer "Vincular ao fluxo":
 | 1 | Conversa na fila | Mostra nome/foto do WhatsApp quando já vieram. |
 | 2 | **Vincular ao fluxo** (painel) | Abre o formulário. |
 | 3 | **Já cadastrado no condomínio** | Escolhe contato existente; **não troca** o celular real dele pelo identificador interno do WhatsApp. |
-| 4 | **Nome** / **Condomínio (principal)** | Obrigatórios. **Não pede telefone** — a conversa já identifica a pessoa. |
+| 4 | **Nome** / **Condomínio** | Obrigatórios. **Não pede telefone** — a conversa já identifica a pessoa. Outros condomínios só em **Editar contato**. |
 | 5 | **Vincular ao fluxo** (salvar) | Cadastra/vincula e coloca a conversa na **triagem**. |
 | 6 | Responder no chat | Dá para responder mesmo sem telefone visível (WhatsApp via identificador interno). |
 
 **Textos úteis**
 
-- **Número não informado pelo WhatsApp** — o sistema **não inventa** número.
+- **Número não informado pelo WhatsApp** — o sistema **não inventa** número e **não** copia o celular de um contato já salvo. O telefone da tela é o desta mensagem.
 - Segunda mensagem da mesma pessoa **não volta** para esta fila.
 
 **O funcionário não vê:** menu e rota inteira.
@@ -392,12 +398,12 @@ Drawer "Vincular ao fluxo":
 | (PC: coluna Contexto à direita)                                |
 +----------------------------------------------------------------+
 
-Drawer "Editar dados": Título, Prioridade, Categoria, Status, Responsável → [ Salvar ]
+Dialog "Editar chamado" (centro): Título, Prioridade, Categoria, Status, Responsável → [ Cancelar ] [ Salvar ]
 ```
 
 | # | Controle | O que acontece |
 |---|----------|----------------|
-| 1 | **Editar dados** | Abre drawer com **Salvar** — altera título, status, prioridade, categoria, responsável (admin escolhe responsável). |
+| 1 | **Editar dados** | Abre dialog no centro com **Salvar** — altera título, status, prioridade, categoria, responsável (admin escolhe responsável). |
 | 2 | **Detalhes** (celular) | Abre drawer com o mesmo **Contexto** do computador. |
 | 3 | Aba **Caso** | Visão somente leitura do caso. |
 | 4 | Aba **Linha do tempo** | Auditoria e eventos (patch, notas, etc.). |
@@ -658,14 +664,15 @@ Além do que já viu no [capítulo 4](#4-atendimento-inbox):
 ```
 Contexto
   [ Expandir ]
-  Contato
+  Nome · condomínio
   ┌─ Resumo IA (card azul) ─────────────────────┐
   │ parágrafo do resumo                          │
   │ nome do contato + mensagem sugerida          │
   │ [ Aprovar ] [ Não aprovar ]   (só admin)     │
   │ [ Ver mais ] [ Ver histórico ]               │
   └──────────────────────────────────────────────┘
-  Condomínio · Chamado · Triagem · Mais informações
+  Triagem · Chamado · Mais informações
+  (telefone e Coleta IA só no clique)
 
 Cabeçalho do chat: [ Gerar resumo ] ou [ Gerar resumo (N) ]
   enquanto roda: [ Gerando… ]

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Drawer } from "@/components/ui/drawer";
+import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
@@ -23,6 +23,9 @@ export type EditTicketValues = {
 };
 
 type TeamMember = { id: string; email: string; nome?: string; ativo: boolean };
+
+const fieldClass =
+  "h-10 w-full transition-colors duration-150 hover:border-[var(--brand)]";
 
 export function TicketEditDrawer({
   open,
@@ -65,46 +68,32 @@ export function TicketEditDrawer({
   }, [open, ticket]);
 
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="Editar chamado"
-      fitContent
-      footer={
-        ticket ? (
-          <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending} form="ticket-edit-form">
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={pending} form="ticket-edit-form">
-              {pending ? "Salvando…" : "Salvar"}
-            </Button>
-          </div>
-        ) : null
-      }
-    >
+    <Dialog open={open} onClose={onClose} title="Editar chamado" className="sm:max-w-[28rem]">
       {!ticket ? null : (
         <form
           id="ticket-edit-form"
-          className="space-y-3"
+          className="space-y-5"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!title.trim()) return;
             onSave({ title, priority, category, status, assignedToId });
           }}
         >
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="edit-title">Título</Label>
             <Input
               id="edit-title"
               required
+              className={fieldClass}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="edit-priority">Prioridade</Label>
             <Select
               id="edit-priority"
+              className={fieldClass}
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
@@ -115,10 +104,11 @@ export function TicketEditDrawer({
               ))}
             </Select>
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="edit-category">Categoria</Label>
             <Select
               id="edit-category"
+              className={fieldClass}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
@@ -129,9 +119,14 @@ export function TicketEditDrawer({
               ))}
             </Select>
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="edit-status">Status</Label>
-            <Select id="edit-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select
+              id="edit-status"
+              className={fieldClass}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
               {TICKET_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABEL[s]}
@@ -140,10 +135,11 @@ export function TicketEditDrawer({
             </Select>
           </div>
           {admin ? (
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="edit-assignee">Responsável</Label>
               <Select
                 id="edit-assignee"
+                className={fieldClass}
                 value={assignedToId}
                 onChange={(e) => setAssignedToId(e.target.value)}
               >
@@ -159,8 +155,16 @@ export function TicketEditDrawer({
             </div>
           ) : null}
           {errorMessage ? <p className="text-sm text-[var(--danger)]">{errorMessage}</p> : null}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={pending || !title.trim()}>
+              {pending ? "Salvando…" : "Salvar"}
+            </Button>
+          </div>
         </form>
       )}
-    </Drawer>
+    </Dialog>
   );
 }

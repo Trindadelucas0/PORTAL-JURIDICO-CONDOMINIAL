@@ -2,7 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { isAiEnabled } from "@/lib/ai/flags";
 import { isUniqueConflict, prismaErrorCode } from "@/lib/ai/errors";
 import { REJECTED_DRAFT_CHAR_LIMIT, SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
-import { INBOUND_DEBOUNCE_MS, wakeInbound } from "@/lib/ai/queue";
+import { inboundKeysToShift } from "@/lib/ai/intake-cycle";
+import { inboundDebounceMs, wakeInbound } from "@/lib/ai/queue";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -12,6 +13,74 @@ export function shouldEnqueueInbound(input: {
   condominiumId: string | null;
 }): boolean {
   return Boolean(input.created && input.inOperationalFlow && input.condominiumId && isAiEnabled());
+}
+
+/**
+ * Entradas até a triagem que nunca viraram job.
+ * Mensagem posterior à triagem e job já existente (qualquer status) ficam de fora.
+ */
+export function inboundIdsMissingJob(input: {
+  inbound: Array<{ id: string; createdAt: Date }>;
+  triageCreatedAt: Date | null;
+  existingJobKeys: ReadonlySet<string>;
+  limit?: number;
+}): string[] {
+  if (!input.triageCreatedAt) return [];
+  const until = input.triageCreatedAt.getTime();
+  const limit = input.limit ?? SELECTED_MESSAGE_LIMIT;
+  return input.inbound
+    .filter((row) => row.createdAt.getTime() <= until && !input.existingJobKeys.has(row.id))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((row) => row.id);
+}
+
+/** Depois do vínculo, enfileira o que chegou antes da triagem. Não propaga erro. */
+export async function enqueueInboundMissedOnLink(db: Db, conversationId: string): Promise<void> {
+  try {
+    if (!isAiEnabled()) return;
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        condominiumId: true,
+        contact: { select: { condominiumId: true } },
+      },
+    });
+    if (!conversation?.condominiumId || !conversation.contact?.condominiumId) return;
+    const triage = await db.triageItem.findUnique({
+      where: { conversationId },
+      select: { createdAt: true },
+    });
+    if (!triage) return;
+    const inbound = await db.message.findMany({
+      where: { conversationId, direction: "in", createdAt: { lte: triage.createdAt } },
+      select: { id: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: SELECTED_MESSAGE_LIMIT,
+    });
+    if (inbound.length === 0) return;
+    const jobs = await db.aiJob.findMany({
+      where: { idempotencyKey: { in: inbound.map((row) => row.id) } },
+      select: { idempotencyKey: true },
+    });
+    const ids = inboundIdsMissingJob({
+      inbound,
+      triageCreatedAt: triage.createdAt,
+      existingJobKeys: new Set(jobs.map((job) => job.idempotencyKey)),
+    });
+    for (const messageId of ids) {
+      await enqueueInboundJob(db, {
+        conversationId,
+        messageId,
+        created: true,
+        inOperationalFlow: true,
+        condominiumId: conversation.condominiumId,
+      });
+    }
+  } catch (error) {
+    console.error("[ai] fila após vínculo", error instanceof Error ? error.message : "erro");
+  }
 }
 
 export async function enqueueInboundJob(
@@ -25,6 +94,7 @@ export async function enqueueInboundJob(
   },
 ): Promise<{ queued: boolean }> {
   if (!shouldEnqueueInbound(input)) return { queued: false };
+  const runAfter = new Date(Date.now() + inboundDebounceMs());
   try {
     await db.aiJob.create({
       data: {
@@ -32,13 +102,29 @@ export async function enqueueInboundJob(
         idempotencyKey: input.messageId,
         conversationId: input.conversationId,
         status: "queued",
-        runAfter: new Date(Date.now() + INBOUND_DEBOUNCE_MS),
+        runAfter,
       },
     });
   } catch (error) {
     if (isUniqueConflict(error)) return { queued: false };
     console.error(`[ai] job insert errorCode=${prismaErrorCode(error)}`);
     return { queued: false };
+  }
+  try {
+    const queued = await db.aiJob.findMany({
+      where: { conversationId: input.conversationId, type: "ai.inbound", status: "queued" },
+      select: { id: true, idempotencyKey: true },
+    });
+    const shift = new Set(inboundKeysToShift(queued.map((job) => job.idempotencyKey), isMessageUuid));
+    const ids = queued.filter((job) => shift.has(job.idempotencyKey)).map((job) => job.id);
+    if (ids.length) {
+      await db.aiJob.updateMany({
+        where: { id: { in: ids } },
+        data: { runAfter },
+      });
+    }
+  } catch {
+    console.error("[ai] debounce shift errorCode=DEBOUNCE");
   }
   try {
     const wake = await wakeInbound(input.conversationId);

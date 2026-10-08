@@ -1,6 +1,6 @@
 {
   "name": "portal-juridico-condominial",
-  "version": "0.11.41",
+  "version": "0.12.11",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3010",

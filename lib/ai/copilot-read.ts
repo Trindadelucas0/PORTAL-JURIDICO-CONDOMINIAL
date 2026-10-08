@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { isAiEnabled } from "@/lib/ai/flags";
 import { isMissingTable } from "@/lib/ai/errors";
 import { buildCopilotRevisionView, type CopilotIndex, type CopilotRevisionView } from "@/lib/ai/copilot-view";
+import { enqueueInboundMissedOnLink } from "@/lib/ai/enqueue";
 
 export function parseCopilotVersion(raw: string | null): number | "absent" | "invalid" {
   if (raw == null || raw === "") return "absent";
@@ -16,6 +17,7 @@ function emptyIndex(enabled: boolean, error = false): CopilotIndex {
 }
 
 export async function readConversationCopilot(db: PrismaClient, conversationId: string) {
+  await enqueueInboundMissedOnLink(db, conversationId);
   return readTicketCopilot(db, { id: conversationId, conversationId });
 }
 

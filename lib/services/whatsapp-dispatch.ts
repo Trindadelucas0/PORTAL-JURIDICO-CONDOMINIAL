@@ -9,6 +9,7 @@ import { writeAudit } from "@/lib/services/audit-service";
 import { sendableWhatsAppE164 } from "@/lib/services/operational-flow";
 import { isLidPeer } from "@/lib/phone/identity";
 import { resolveLidJidForPlaceholder } from "@/lib/channels/evolution-lid-map";
+import { closeIntakeOnHumanOutbound } from "@/lib/ai/intake-close";
 
 export function canSendPublicWhatsApp(user: User) {
   if (isAdmin(user)) return true;
@@ -20,14 +21,14 @@ export async function resolveWhatsAppSendDestination(conversation: {
   peerPhoneE164: string;
   connection: { type: string };
 }): Promise<string | null> {
-  const phone = sendableWhatsAppE164({
+  if (isLidPeer(conversation.peerPhoneE164)) {
+    if (conversation.connection.type === "dev_mock") return conversation.peerPhoneE164;
+    return resolveLidJidForPlaceholder(conversation.peerPhoneE164);
+  }
+  return sendableWhatsAppE164({
     contactPhoneE164: conversation.contact?.phoneE164,
     peerPhoneE164: conversation.peerPhoneE164,
   });
-  if (phone) return phone;
-  if (!isLidPeer(conversation.peerPhoneE164)) return null;
-  if (conversation.connection.type === "dev_mock") return conversation.peerPhoneE164;
-  return resolveLidJidForPlaceholder(conversation.peerPhoneE164);
 }
 
 async function assertConversationAccess(db: PrismaClient, user: User, conversationId: string) {
@@ -130,7 +131,7 @@ export async function deliverStoredPublicMessage(db: PrismaClient | Prisma.Trans
 export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId: string) {
   const message = await db.message.findFirst({
     where: { id: messageId },
-    select: { id: true, conversationId: true, visibility: true, direction: true, sendStatus: true },
+    select: { id: true, conversationId: true, visibility: true, direction: true, sendStatus: true, automated: true },
   });
   if (!message) throw notFound("Mensagem não encontrada");
   if (message.visibility === "interna") {
@@ -143,6 +144,9 @@ export async function dispatchToWhatsApp(db: PrismaClient, user: User, messageId
 
   try {
     const updated = await deliverStoredPublicMessage(db, messageId);
+    if (!message.automated) {
+      await closeIntakeOnHumanOutbound(db, message.conversationId, user.id);
+    }
     await writeAudit(db, {
       actorId: user.id,
       action: "message.send",

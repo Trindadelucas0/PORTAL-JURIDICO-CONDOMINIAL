@@ -384,6 +384,7 @@ export function RespostaSugerida({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(texto ?? "");
   const enviada = revision.resposta.sendStatus === "sent";
+  const awaitingDraft = Boolean(revision.resposta.messageId && revision.resposta.sendStatus === "draft");
 
   useEffect(() => {
     setDraft(texto ?? "");
@@ -446,7 +447,7 @@ export function RespostaSugerida({
         {contactName ? <p className="text-sm font-medium break-words">{contactName}</p> : null}
         <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
         {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
-        {canSend ? (
+        {canSend && awaitingDraft ? (
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               type="button"

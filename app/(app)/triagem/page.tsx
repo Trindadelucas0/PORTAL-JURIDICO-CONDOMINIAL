@@ -115,24 +115,22 @@ export default function TriagemPage() {
                       <PeerAvatar
                         name={item.conversation.contact?.nome || item.conversation.peerDisplayName || "Contato"}
                         avatarUrl={item.conversation.peerAvatarUrl}
-                        className="mt-0.5 size-7"
+                        className="mt-0.5 size-8"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{item.conversation.contact?.nome || "Contato"}</p>
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        <p className="truncate text-sm font-medium">{item.conversation.contact?.nome || "Contato"}</p>
+                        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                           {item.conversation.messages[0]?.body || "—"}
                         </p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
+                        <p className="mt-1 truncate text-[11px] text-muted-foreground">
                           {item.conversation.condominium?.nome || "—"} · {formatWhen(item.updatedAt)}
+                          {item.conversation.peerPhoneE164 || item.conversation.contact?.phoneE164
+                            ? ` · ${conversationPhoneLabel(
+                                item.conversation.contact?.phoneE164,
+                                item.conversation.peerPhoneE164,
+                              )}`
+                            : ""}
                         </p>
-                        {(item.conversation.peerPhoneE164 || item.conversation.contact?.phoneE164) && (
-                          <p className="text-[11px] text-muted-foreground">
-                            {conversationPhoneLabel(
-                              item.conversation.contact?.phoneE164,
-                              item.conversation.peerPhoneE164,
-                            )}
-                          </p>
-                        )}
                       </div>
                     </div>
                   </button>
@@ -140,7 +138,7 @@ export default function TriagemPage() {
               ))}
             </ul>
           </WorkspacePane>
-          <WorkspacePane className={cn(mobilePane !== "analysis" && "hidden lg:flex")}>
+          <WorkspacePane className={cn("min-h-0", mobilePane !== "analysis" && "hidden lg:flex")}>
             <div className="flex shrink-0 items-center border-b border-border px-3 py-2 lg:hidden">
               <button type="button" className="text-sm text-[var(--brand)]" onClick={() => setMobilePane("list")}>
                 ← Solicitações

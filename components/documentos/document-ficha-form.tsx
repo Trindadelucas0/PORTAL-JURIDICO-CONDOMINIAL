@@ -83,7 +83,7 @@ export function DocumentFichaForm({
 
   return (
     <form className="space-y-3" onSubmit={handleSubmit}>
-      <p className="text-sm text-muted-foreground">JPEG, PNG, PDF ou áudio · até 8 MB</p>
+      <p className="text-sm text-muted-foreground">JPEG, PNG, PDF ou áudio · até 64 MB</p>
 
       <fieldset className="space-y-3 rounded-[var(--radius)] border border-border p-3">
         <legend className="px-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">

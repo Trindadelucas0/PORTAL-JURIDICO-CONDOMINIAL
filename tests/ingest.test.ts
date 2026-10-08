@@ -373,6 +373,61 @@ describe("inbound ingest", () => {
     const conv = await db.conversation.findFirstOrThrow({ where: { id: inbound.conversationId } });
     expect(conv.contactId).toBe(contact.id);
     expect(conv.condominiumId).toBe(condo.id);
+    expect(conv.peerPhoneE164).toBe(lidPhone);
+  });
+
+  it("enrich does not copy saved contact phone onto a LID peer", async () => {
+    const suffix = `${Date.now()}`;
+    const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}99887711@lid`);
+    expect(lidPhone).toBeTruthy();
+    const savedPhone = `+55116${suffix.slice(-8)}`;
+    const condo = await db.condominium.create({ data: { nome: `NoCopy ${suffix}` } });
+    const contact = await db.contact.create({
+      data: { nome: `Bia ${suffix}`, phoneE164: savedPhone, condominiumId: condo.id },
+    });
+    await db.contactIdentity.create({
+      data: { contactId: contact.id, kind: "lid", value: lidPhone! },
+    });
+    const inbound = await svc.ingestInbound({
+      waMessageId: `nocopy-${suffix}`,
+      fromPhone: lidPhone!,
+      waLid: lidPhone,
+      body: "lid sem pn",
+      connectionType: "dev_mock",
+    });
+    await enrichConversationPeerProfile(inbound.conversationId, db, {});
+    const conv = await db.conversation.findFirstOrThrow({ where: { id: inbound.conversationId } });
+    expect(conv.peerPhoneE164).toBe(lidPhone);
+    expect(conv.peerPhoneE164).not.toBe(savedPhone);
+    expect(contact.phoneE164).toBe(savedPhone);
+  });
+
+  it("replaces a saved peer phone when the inbound message has a different real number", async () => {
+    const suffix = `${Date.now()}`;
+    const lidPhone = phoneFromWhatsAppLid(`${suffix.slice(-10)}88776655@lid`);
+    expect(lidPhone).toBeTruthy();
+    const savedPhone = `+55116${suffix.slice(-8)}`;
+    const messagePhone = `+55119${suffix.slice(-8)}`;
+    const connection = await db.channelConnection.findFirstOrThrow({ where: { type: "dev_mock" } });
+    const conv = await db.conversation.create({
+      data: {
+        connectionId: connection.id,
+        unidentified: true,
+        peerPhoneE164: savedPhone,
+        peerLid: lidPhone,
+      },
+    });
+    const inbound = await svc.ingestInbound({
+      waMessageId: `replace-peer-${suffix}`,
+      fromPhone: messagePhone,
+      waLid: lidPhone,
+      body: "oi teste",
+      connectionType: "dev_mock",
+    });
+    expect(inbound.conversationId).toBe(conv.id);
+    const updated = await db.conversation.findFirstOrThrow({ where: { id: conv.id } });
+    expect(updated.peerPhoneE164).toBe(messagePhone);
+    expect(updated.peerLid).toBe(lidPhone);
   });
 
   it("ingestOwnOutbound skips when conversation does not exist", async () => {

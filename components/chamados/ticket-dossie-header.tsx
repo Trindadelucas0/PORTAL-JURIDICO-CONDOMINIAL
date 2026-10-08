@@ -25,6 +25,9 @@ export function TicketDossieHeader({
   onResumo,
   onRun,
   runPending,
+  intakeOpen,
+  onStopIntake,
+  stopIntakePending,
 }: {
   ticket: DossieHeaderTicket | null;
   loading?: boolean;
@@ -35,6 +38,9 @@ export function TicketDossieHeader({
   onResumo?: () => void;
   onRun?: () => void;
   runPending?: boolean;
+  intakeOpen?: boolean;
+  onStopIntake?: () => void;
+  stopIntakePending?: boolean;
 }) {
   return (
     <header className="shrink-0 border-b border-border px-4 py-3">
@@ -52,6 +58,11 @@ export function TicketDossieHeader({
                 {aiAnalyzing ? "Em análise" : "Rodar IA"}
               </Button>
             </>
+          ) : null}
+          {intakeOpen && onStopIntake ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onStopIntake} disabled={loading || stopIntakePending}>
+              Interromper coleta
+            </Button>
           ) : null}
           {onDetalhes ? (
             <Button type="button" size="sm" variant="ghost" className="lg:hidden" onClick={onDetalhes}>

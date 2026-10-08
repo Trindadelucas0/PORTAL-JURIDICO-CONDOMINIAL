@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
@@ -8,7 +8,7 @@ import { evaluateAction } from "@/lib/ai/action-gate";
 import { chunkCondominiumId, sniffDocument } from "@/lib/ai/chunks";
 import { keepCitations } from "@/lib/ai/citations";
 import { decideTurn } from "@/lib/ai/decide-turn";
-import { enqueueInboundJob } from "@/lib/ai/enqueue";
+import { enqueueInboundJob, inboundIdsMissingJob } from "@/lib/ai/enqueue";
 import { isAiEnabled, isAiWhatsappSendEnabled, isAiCreateTicketEnabled } from "@/lib/ai/flags";
 import { shouldDispatchAiDraft } from "@/lib/ai/auto-actions";
 import { runRetentionPurge, AI_REJECTED_MEMORY_DAYS, shouldPurge, AI_AUDIT_RETENTION_DAYS } from "@/lib/ai/retention";
@@ -28,7 +28,7 @@ import { chunksVisibleToConversation, retrieveForConversation } from "@/lib/ai/r
 import { enqueueDocumentIndex, enqueueSystemDocumentIndex } from "@/lib/search/document-index-port";
 import { requireTicketAccess } from "@/lib/auth/ticket-access";
 import { localDiskStorage } from "@/lib/storage/local-disk";
-import { isAllowedMime, isMarkdownFile, sniffMime } from "@/lib/storage/provider";
+import { isAllowedMime, isMarkdownFile, MAX_UPLOAD_BYTES, sniffMime } from "@/lib/storage/provider";
 import { REJECTED_SUMMARY_REWRITE } from "@/lib/ai/prompts/inbound-v2";
 import { PUBLIC_REPLY_REWRITE } from "@/lib/ai/prompts/inbound-v3";
 import { createAtendimentoService } from "@/lib/services/atendimento-service";
@@ -74,6 +74,22 @@ describe("ia operacional", () => {
     expect(result.queued).toBe(false);
     expect(create.calls).toBe(0);
     restore(prev, "AI_ENABLED");
+  });
+
+  it("mensagens até a triagem sem job entram; as posteriores e as que já têm job ficam de fora", () => {
+    const triage = new Date("2026-10-08T17:09:08.966Z");
+    const ids = inboundIdsMissingJob({
+      inbound: [
+        { id: "antes", createdAt: new Date("2026-10-08T17:08:36.287Z") },
+        { id: "junto", createdAt: triage },
+        { id: "depois", createdAt: new Date("2026-10-08T17:10:00.000Z") },
+        { id: "com-job", createdAt: new Date("2026-10-08T17:08:00.000Z") },
+      ],
+      triageCreatedAt: triage,
+      existingJobKeys: new Set(["com-job"]),
+    });
+    expect(ids).toEqual(["antes", "junto"]);
+    expect(inboundIdsMissingJob({ inbound: [{ id: "a", createdAt: triage }], triageCreatedAt: null, existingJobKeys: new Set() })).toEqual([]);
   });
 
   it("conversation without condominiumId does not create a job", async () => {
@@ -599,6 +615,21 @@ describe("ia operacional", () => {
     expect(isMarkdownFile("regimento.md", "application/octet-stream")).toBe(true);
     expect(isMarkdownFile("regimento.pdf", "application/pdf")).toBe(false);
     expect(isMarkdownFile("pagina.md", "text/html")).toBe(false);
+
+    const header = Buffer.from("%PDF-1.4\n");
+    const oversized = Buffer.concat([header, Buffer.alloc(MAX_UPLOAD_BYTES + 1 - header.length)]);
+    expect(oversized.length).toBe(MAX_UPLOAD_BYTES + 1);
+    try {
+      await localDiskStorage.save(oversized, "grande.pdf", "application/pdf");
+      throw new Error("expected throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppError);
+      expect((error as AppError).status).toBe(422);
+      expect((error as AppError).message).toBe("Arquivo excede 8 MB");
+    }
+    const stored = await localDiskStorage.save(oversized, "grande.pdf", "application/pdf", { officeDocument: true });
+    expect(stored.sizeBytes).toBe(oversized.length);
+    unlinkSync(path.join(process.cwd(), "uploads", stored.storageKey));
   });
 
   it("keeps condominium rule as data, not as the system prompt", () => {
@@ -897,8 +928,15 @@ describe("inbound prompt v2", () => {
   it("inbound-v3 keeps the v2 guards and adds the WhatsApp reply rules", async () => {
     const { INBOUND_V2_SYSTEM } = await import("@/lib/ai/prompts/inbound-v2");
     const { INBOUND_V3_SYSTEM } = await import("@/lib/ai/prompts/inbound-v3");
-    const kept = INBOUND_V2_SYSTEM.split("\n").filter((line) => !line.startsWith("clientDraft é a resposta potencial"));
+    const kept = INBOUND_V2_SYSTEM.split("\n").filter(
+      (line) =>
+        !line.startsWith("clientDraft é a resposta potencial") &&
+        !line.startsWith("Responda somente JSON válido com clientDraft"),
+    );
     for (const line of kept) expect(INBOUND_V3_SYSTEM).toContain(line);
+    expect(INBOUND_V3_SYSTEM).toContain("não manda o morador conversar, falar ou resolver com o vizinho");
+    expect(INBOUND_V3_SYSTEM).toContain("summary.analise usa o trecho de DOCUMENT_DATA");
+    expect(PUBLIC_REPLY_REWRITE).toContain("Não mande o morador falar com o vizinho");
     expect(INBOUND_V3_SYSTEM).toContain("não pergunte de novo");
     expect(INBOUND_V3_SYSTEM).toContain("não invente horário, multa, regra ou procedimento");
     expect(INBOUND_V3_SYSTEM).toContain("Não liste as faixas de silêncio");

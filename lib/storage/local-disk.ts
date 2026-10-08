@@ -6,7 +6,7 @@ import {
   isMarkdownFile,
   mimeMatchesSniff,
   sniffMime,
-  MAX_UPLOAD_BYTES,
+  maxUploadBytes,
   sanitizeFileName,
   type SaveOptions,
   type StorageProvider,
@@ -18,8 +18,9 @@ const ROOT = path.join(process.cwd(), "uploads");
 
 export class LocalDiskStorage implements StorageProvider {
   async save(buffer: Buffer, originalName: string, mime: string, options: SaveOptions = {}): Promise<StoredFile> {
-    if (buffer.length > MAX_UPLOAD_BYTES) {
-      throw unprocessable("Arquivo excede 8 MB");
+    const limit = maxUploadBytes(options);
+    if (buffer.length > limit) {
+      throw unprocessable(`Arquivo excede ${Math.round(limit / (1024 * 1024))} MB`);
     }
     if (!isAllowedMime(mime, options)) {
       throw unprocessable("Tipo de arquivo não permitido");

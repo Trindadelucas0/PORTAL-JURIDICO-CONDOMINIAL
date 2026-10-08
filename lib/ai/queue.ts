@@ -1,4 +1,15 @@
 export const INBOUND_DEBOUNCE_MS = 6000;
+
+/** Lê `AI_INBOUND_DEBOUNCE_MS`. Valor inválido cai em `INBOUND_DEBOUNCE_MS`. */
+export function inboundDebounceMs(
+  env: { AI_INBOUND_DEBOUNCE_MS?: string } = { AI_INBOUND_DEBOUNCE_MS: process.env.AI_INBOUND_DEBOUNCE_MS },
+): number {
+  const raw = env.AI_INBOUND_DEBOUNCE_MS?.trim();
+  if (!raw) return INBOUND_DEBOUNCE_MS;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return INBOUND_DEBOUNCE_MS;
+  return Math.floor(value);
+}
 export const INBOUND_QUEUE = "ai-inbound";
 
 export type InboundJobData = { conversationId: string };
@@ -38,7 +49,7 @@ export async function wakeInbound(conversationId: string): Promise<{ duplicated:
   const url = process.env.JURICON_REDIS_URL?.trim();
   const jobId = inboundJobId(conversationId);
   if (!url) {
-    const result = memoryQueue.add(INBOUND_QUEUE, { conversationId }, { jobId, delay: INBOUND_DEBOUNCE_MS });
+    const result = memoryQueue.add(INBOUND_QUEUE, { conversationId }, { jobId, delay: inboundDebounceMs() });
     return { duplicated: result.duplicated, mode: "memory" };
   }
   const { Queue } = await import("bullmq");
@@ -56,7 +67,7 @@ export async function wakeInbound(conversationId: string): Promise<{ duplicated:
       { conversationId },
       {
         jobId,
-        delay: INBOUND_DEBOUNCE_MS,
+        delay: inboundDebounceMs(),
         attempts: 3,
         removeOnComplete: 100,
         backoff: { type: "exponential", delay: 10000 },

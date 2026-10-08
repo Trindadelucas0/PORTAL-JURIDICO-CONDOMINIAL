@@ -36,6 +36,8 @@ import { useSyncOwnMessages } from "@/lib/client/sync-own-messages";
 import { useScrollThreadToEnd } from "@/lib/client/stick-thread-scroll";
 import { documentKindLabel } from "@/lib/documents/kinds";
 import { useToast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { intakeSessionOpen } from "@/lib/ai/intake-cycle";
 
 type Ticket = {
   id: string;
@@ -53,6 +55,7 @@ type Ticket = {
     connection: { status: string; label: string; type: string };
     peerAvatarKey?: string | null;
     peerDisplayName?: string | null;
+    aiIntakeSessions?: Array<{ status: string; questionCount: number }>;
   } | null;
   documents: Array<{
     id: string;
@@ -80,6 +83,7 @@ export default function ChamadoFichaPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [openDetalhes, setOpenDetalhes] = useState(false);
+  const [stopIntakeOpen, setStopIntakeOpen] = useState(false);
 
   const me = useQuery({
     queryKey: ["me"],
@@ -115,6 +119,15 @@ export default function ChamadoFichaPage() {
   const aiCurrent = aiEnabled ? aiSummary.data?.data.current ?? null : null;
   const suggested = aiCurrent ? presentCopilotRevision(aiCurrent).resposta.texto?.trim() ?? "" : "";
   const sentBodies = useMemo(() => sentPublicBodies(messages.data?.data ?? []), [messages.data]);
+  const stopIntake = useMutation({
+    mutationFn: (conversationId: string) => api(`/api/conversations/${conversationId}/ai-intake/stop`, { method: "POST" }),
+    onSuccess: () => {
+      toast("Coleta interrompida");
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "Não foi possível interromper a coleta"),
+  });
   const runAi = useMutation({
     mutationFn: () => api(`/api/tickets/${id}/ai-run`, { method: "POST", body: JSON.stringify({}) }),
     onSuccess: () => {
@@ -313,6 +326,21 @@ export default function ChamadoFichaPage() {
         onResumo={() => setSummaryOpen(true)}
         onRun={() => runAi.mutate()}
         runPending={runAi.isPending}
+        intakeOpen={Boolean(t?.conversationId && intakeSessionOpen(t.conversation?.aiIntakeSessions?.[0]?.status))}
+        onStopIntake={() => setStopIntakeOpen(true)}
+        stopIntakePending={stopIntake.isPending}
+      />
+      <ConfirmDialog
+        open={stopIntakeOpen}
+        onClose={() => setStopIntakeOpen(false)}
+        title="Interromper coleta"
+        message="Interromper a coleta automática?"
+        confirmLabel="Interromper"
+        danger
+        pending={stopIntake.isPending}
+        onConfirm={() => {
+          if (t?.conversationId) stopIntake.mutate(t.conversationId);
+        }}
       />
       {ticket.isLoading || !t || !contextTicket ? (
         <Skeleton className="m-4 h-48" />

@@ -8,6 +8,7 @@ import { requireTicketAccess, ticketListWhere } from "@/lib/auth/ticket-access";
 import { writeAudit } from "@/lib/services/audit-service";
 import { upsertContactIdentities } from "@/lib/services/contact-identity";
 import { CATEGORY_LABEL } from "@/lib/ui-labels";
+import { categoriaChamadoUnclear, decidirChamadoUnclear, prioridadeAposImagem } from "@/lib/ai/intake-cycle";
 
 export const ticketCategorySchema = z.enum([
   "cobranca",
@@ -121,7 +122,17 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
         where: { id },
         include: {
           ...include,
-          conversation: { include: { connection: true, contact: true } },
+          conversation: {
+            include: {
+              connection: true,
+              contact: true,
+              aiIntakeSessions: {
+                orderBy: { startedAt: "desc" },
+                take: 1,
+                select: { status: true, questionCount: true },
+              },
+            },
+          },
           documents: { orderBy: { createdAt: "desc" }, take: 50 },
           messages: {
             where: { sendStatus: "draft", visibility: "publica" },
@@ -445,6 +456,88 @@ export function createTicketService(db: PrismaClient = defaultPrisma) {
         });
         return { id: ticket.id, protocol: ticket.protocol, created: true };
       });
+    },
+
+    /** Só a segunda resposta UNCLEAR. Não altera promoteFromTriageAsSystem (continua prioridade média). */
+    async prioritizeUnclearIntake(conversationId: string): Promise<{
+      sendPhrase: boolean;
+      action: "promote" | "raise" | "keep" | "none";
+      ticketId: string | null;
+    }> {
+      const admin = await db.user.findFirst({
+        where: { role: "admin", ativo: true, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      const conversation = await db.conversation.findFirst({
+        where: { id: conversationId },
+        include: { contact: { select: { condominiumId: true } }, triageItem: { select: { id: true, status: true, category: true } } },
+      });
+      const open = await db.ticket.findFirst({
+        where: { conversationId, status: { not: "resolvido" } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, priority: true },
+      });
+      const decision = decidirChamadoUnclear({
+        hasAdmin: Boolean(admin),
+        triageOpen: conversation?.triageItem?.status === "aberto",
+        contactHasCondominium: Boolean(conversation?.contact?.condominiumId),
+        openTicket: open ? { priority: open.priority } : null,
+      });
+      if (!decision.sendPhrase || !admin) {
+        return { sendPhrase: false, action: decision.action, ticketId: open?.id ?? null };
+      }
+      if (decision.action === "raise" && open) {
+        await db.ticket.update({ where: { id: open.id }, data: { priority: "alta" } });
+        return { sendPhrase: true, action: "raise", ticketId: open.id };
+      }
+      if (decision.action === "keep" && open) {
+        return { sendPhrase: true, action: "keep", ticketId: open.id };
+      }
+      if (decision.action === "promote" && conversation?.triageItem) {
+        try {
+          const ticket = await this.promoteFromTriage(admin, conversation.triageItem.id, {
+            category: categoriaChamadoUnclear(conversation.triageItem.category),
+            priority: "alta",
+          });
+          return { sendPhrase: true, action: "promote", ticketId: ticket.id };
+        } catch {
+          return { sendPhrase: false, action: "none", ticketId: open?.id ?? null };
+        }
+      }
+      return { sendPhrase: false, action: "none", ticketId: open?.id ?? null };
+    },
+
+    /** Foto no meio da conversa. Não baixa urgente. Sem chamado aberto, promove a triagem com prioridade alta. */
+    async applyImagePriority(conversationId: string): Promise<void> {
+      const conversation = await db.conversation.findFirst({
+        where: { id: conversationId },
+        include: { contact: { select: { condominiumId: true } }, triageItem: { select: { id: true, status: true, category: true } } },
+      });
+      const open = await db.ticket.findFirst({
+        where: { conversationId, status: { not: "resolvido" } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, priority: true },
+      });
+      const action = prioridadeAposImagem(open ? open.priority : null);
+      if (action === "raise" && open) {
+        await db.ticket.update({ where: { id: open.id }, data: { priority: "alta" } });
+        return;
+      }
+      if (action !== "promote" || !conversation?.triageItem || conversation.triageItem.status !== "aberto") return;
+      if (!conversation.contact?.condominiumId) return;
+      const admin = await db.user.findFirst({
+        where: { role: "admin", ativo: true, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!admin) return;
+      try {
+        await this.promoteFromTriage(admin, conversation.triageItem.id, {
+          category: categoriaChamadoUnclear(conversation.triageItem.category),
+          priority: "alta",
+        });
+      } catch {
+        return;
+      }
     },
   };
 }

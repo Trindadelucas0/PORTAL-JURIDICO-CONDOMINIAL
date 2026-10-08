@@ -178,6 +178,11 @@ function phoneFromKey(
 
   const waLid = lidFromCandidates(candidates);
 
+  if (primary && isPhoneJid(primary)) {
+    const fromRemote = phoneFromPnCandidate(primary);
+    if (fromRemote) return { phone: fromRemote, waLid, group: false };
+  }
+
   for (const jid of candidates) {
     if (!isPhoneJid(jid)) continue;
     const phone = phoneFromPnCandidate(jid);

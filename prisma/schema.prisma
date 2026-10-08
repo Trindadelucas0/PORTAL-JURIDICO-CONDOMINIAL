@@ -251,6 +251,7 @@ model Conversation {
   aiTicketMemoryRevisions AiTicketMemoryRevision[]
   aiAuditEvents  AiAuditEvent[]
   automationExecutions AutomationExecution[]
+  aiIntakeSessions AiIntakeSession[]
 
   @@unique([connectionId, peerPhoneE164])
   @@index([updatedAt])
@@ -522,6 +523,26 @@ model DocumentChunk {
   @@unique([systemDocumentId, contentHash])
   @@index([condominiumId, active])
   @@index([systemDocumentId])
+}
+
+/// Sessão da coleta. Status é string. O índice único parcial (uma aberta por conversa) está na migração.
+model AiIntakeSession {
+  id                    String    @id @default(uuid()) @db.Uuid
+  conversationId        String    @db.Uuid
+  status                String
+  questionCount         Int       @default(0)
+  nudgeSent             Boolean   @default(false)
+  unclearCount          Int       @default(0)
+  lastQuestionMessageId String?   @db.Uuid
+  lastQuestionAt        DateTime?
+  contextJson           Json?
+  closeReason           String?
+  startedAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  completedAt           DateTime?
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }
 
 model AiJob {

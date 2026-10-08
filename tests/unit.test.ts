@@ -228,7 +228,8 @@ describe("evolution send errors", () => {
     expect(conversationPhoneLabel(null, "+999885504524400")).toBe(WHATSAPP_HIDDEN_NUMBER_LABEL);
     expect(formatWhatsAppPeer("+5511988880000")).toBe("+55 (11) 98888-0000");
     expect(formatWhatsAppPeer("+553898034252")).toBe("+55 (38) 99803-4252");
-    expect(conversationPhoneLabel("+5511999990000", "+999111")).toBe("+55 (11) 99999-0000");
+    expect(conversationPhoneLabel("+5511999990000", "+999111")).toBe(WHATSAPP_HIDDEN_NUMBER_LABEL);
+    expect(conversationPhoneLabel("+5511962437373", "+5511999990000")).toBe("+55 (11) 99999-0000");
     expect(conversationIdentityLabel({ peerPhoneE164: "+999885504524400" })).toBe("Contato WhatsApp");
     expect(conversationIdentityLabel({ peerDisplayName: "Ezequiel", peerPhoneE164: "+999885504524400" })).toBe("Ezequiel");
     expect(conversationIdentityLabel({ contact: { nome: "Ana", phoneE164: "+5511999990000" }, peerDisplayName: "X" })).toBe("Ana");
@@ -275,6 +276,15 @@ describe("evolution send errors", () => {
         },
       }),
     ).toBe("+5511977770000");
+    expect(
+      phoneFromMessageRow({
+        key: {
+          id: "MSG-PN",
+          remoteJid: "5511911110000@s.whatsapp.net",
+          remoteJidAlt: "5511977770000@s.whatsapp.net",
+        },
+      }),
+    ).toBe("+5511911110000");
     expect(
       resolvePhoneFromMessages(
         [
@@ -434,6 +444,15 @@ describe("evolution send errors", () => {
     expect(isInOperationalFlow({ condominiumId: "x" })).toBe(true);
     expect(sendableWhatsAppE164({ peerPhoneE164: "+5511988880000" })).toBe("+5511988880000");
     expect(sendableWhatsAppE164({ peerPhoneE164: "+999111" })).toBeNull();
+    expect(
+      sendableWhatsAppE164({ contactPhoneE164: "+5511962437373", peerPhoneE164: "+5511999990000" }),
+    ).toBe("+5511999990000");
+    expect(
+      sendableWhatsAppE164({ contactPhoneE164: "+5511962437373", peerPhoneE164: "+999111222333" }),
+    ).toBeNull();
+    expect(
+      sendableWhatsAppE164({ contactPhoneE164: "+5511962437373", peerPhoneE164: "+5511962437373" }),
+    ).toBe("+5511962437373");
   });
 
   it("shows Puxar do WhatsApp only when session is open and phone unlocked", () => {

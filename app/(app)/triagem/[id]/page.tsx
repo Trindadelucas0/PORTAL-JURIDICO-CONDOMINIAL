@@ -34,7 +34,13 @@ export default function TriagemAnalisePage() {
         </Link>
         <h1 className="mt-1 text-sm font-semibold">Analisar solicitação</h1>
       </div>
-      {itemQ.isLoading ? <Skeleton className="m-3 h-48" /> : <TriageAnalysisPanel id={id} showThread />}
+      {itemQ.isLoading ? (
+        <Skeleton className="m-3 h-48" />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TriageAnalysisPanel id={id} showThread />
+        </div>
+      )}
     </div>
   );
 }

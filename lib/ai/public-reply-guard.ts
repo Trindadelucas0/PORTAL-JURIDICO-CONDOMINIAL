@@ -5,8 +5,9 @@ import type { completeValidJson } from "@/lib/ai/complete-json";
  * Checagem determinística do texto que pode ir ao morador (`clientDraft`).
  *
  * `reprovar`: o texto expõe análise interna, afirma ação que o copiloto não executa
- * (ele só grava rascunho e memória) ou despeja as faixas de horário do documento
- * quando o morador não perguntou a regra. `sinal`: longo ou com mais de uma pergunta;
+ * (ele só grava rascunho e memória), despeja as faixas de horário do documento
+ * quando o morador não perguntou a regra, manda o morador resolver com o vizinho
+ * ou adia a norma do regulamento já consultado. `sinal`: longo ou com mais de uma pergunta;
  * o rascunho continua e a revisão humana vê o aviso.
  *
  * Frases e combinações, não palavras soltas: "análise", "regimento" ou "registrar"
@@ -15,7 +16,7 @@ import type { completeValidJson } from "@/lib/ai/complete-json";
 export type PublicReplyVerdict =
   | { status: "ok" }
   | { status: "sinal"; codigo: "tamanho" | "perguntas" }
-  | { status: "reprovar"; codigo: "interno" | "promessa" | "despejo" };
+  | { status: "reprovar"; codigo: "interno" | "promessa" | "despejo" | "parecer" };
 
 const PUBLIC_INTERNAL_MARKERS = [
   "segundo o rag",
@@ -53,6 +54,26 @@ const FALSE_ACTION_MARKERS = [
   "para registrarmos",
 ];
 
+/** Verbo de conversa, fala, diálogo ou acordo. "falta" não entra. */
+const NEIGHBOR_TALK_VERB =
+  "conversar|conversando|conversaram|conversem|converse|conversou|conversa|falar|falando|falaram|falem|falou|fale|fala|dialogar|dialogando|dialogaram|dialogou|dialogue|dialogo|acordar|acordando|acordaram|acordem|acordou|acorde|acordo";
+
+/** Até 50 caracteres entre o verbo e "vizinh", nos dois sentidos. */
+const NEIGHBOR_TALK = new RegExp(
+  `(?:\\b(?:${NEIGHBOR_TALK_VERB})\\b.{0,50}vizinh|vizinh.{0,50}\\b(?:${NEIGHBOR_TALK_VERB})\\b)`,
+);
+
+const FRIENDLY_TALK = ["amigavelmente", "conversa amistosa"];
+
+const DEFER_RULE = [
+  "preciso verificar o regulamento",
+  "preciso verificar o regimento",
+  "preciso verificar as normas",
+  "apos confirmar as normas",
+  "recomendo anotar",
+  "recomendamos que voce",
+];
+
 const RULE_WORD = /\b(regimento|regulamento|silencio|regra|norma)\b/;
 const RULE_QUESTION_TOPIC = /\b(horario|horarios|hora|horas|silencio|obra|obras|mudanca|piscina|salao)\b/;
 const RULE_QUESTION_WORD = /\b(qual|quais|que horas|ate que|a partir de que|quando|pode|posso|permite)\b/;
@@ -83,6 +104,13 @@ function dumpsRule(draft: string, message: string): boolean {
   return own.length >= PUBLIC_REPLY_HOUR_DUMP;
 }
 
+/** Manda resolver com o vizinho, ou diz que a norma ainda será conferida. "barulho do vizinho" sozinho não entra. */
+function isParecer(draft: string): boolean {
+  if (FRIENDLY_TALK.some((phrase) => draft.includes(phrase))) return true;
+  if (DEFER_RULE.some((phrase) => draft.includes(phrase))) return true;
+  return NEIGHBOR_TALK.test(draft);
+}
+
 function sentenceCount(text: string): number {
   return text.split(/[.!?]+(?:\s|$)/).map((part) => part.trim()).filter(Boolean).length;
 }
@@ -101,6 +129,7 @@ export function avaliarRespostaPublica(input: {
   if (PUBLIC_INTERNAL_MARKERS.some((marker) => draft.includes(marker))) return { status: "reprovar", codigo: "interno" };
   if (FALSE_ACTION_MARKERS.some((marker) => draft.includes(marker))) return { status: "reprovar", codigo: "promessa" };
   if (dumpsRule(draft, message)) return { status: "reprovar", codigo: "despejo" };
+  if (isParecer(draft)) return { status: "reprovar", codigo: "parecer" };
 
   if ((raw.match(/\?/g) ?? []).length > 1) return { status: "sinal", codigo: "perguntas" };
   const words = draft.split(" ").filter(Boolean).length;
@@ -182,5 +211,8 @@ export function publicReplyPendencia(verdict: PublicReplyVerdict): string | null
   }
   if (verdict.codigo === "despejo") return "Resposta sugerida descartada: copiava as regras do documento.";
   if (verdict.codigo === "promessa") return "Resposta sugerida descartada: afirmava ação que o sistema não executou.";
+  if (verdict.codigo === "parecer") {
+    return "Resposta sugerida descartada: mandava o morador resolver com o vizinho ou adiava o regulamento.";
+  }
   return "Resposta sugerida descartada: expunha análise interna.";
 }

@@ -14,6 +14,7 @@ import { findContactByPhones, upsertContactIdentities } from "@/lib/services/con
 import { mergeConversations } from "@/lib/services/conversation-merge";
 import { inFlowConversationWhere, isInOperationalFlow } from "@/lib/services/operational-flow";
 import { resolveUniqueLidPlaceholderForContact } from "@/lib/channels/evolution-lid-map";
+import { enqueueInboundMissedOnLink } from "@/lib/ai/enqueue";
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -183,17 +184,24 @@ async function rememberWhatsAppLidIdentity(db: Db, contactId: string, nome: stri
   if (lid) await upsertContactIdentities(db, contactId, [lid]);
 }
 
+async function enqueueAfterLink(conversationIds: string[]) {
+  for (const conversationId of conversationIds) {
+    await enqueueInboundMissedOnLink(prisma, conversationId);
+  }
+}
+
 async function attachContactToMatchingConversations(
   db: Db,
   contact: { id: string; phoneE164: string; condominiumId: string | null },
-) {
+): Promise<string[]> {
   if (!isInOperationalFlow(contact)) {
     await db.conversation.updateMany({
       where: { contactId: contact.id },
       data: { condominiumId: null },
     });
-    return;
+    return [];
   }
+  const linked: string[] = [];
   const identities = await db.contactIdentity.findMany({ where: { contactId: contact.id } });
   const keys = uniquePhones(
     contact.phoneE164,
@@ -239,10 +247,13 @@ async function attachContactToMatchingConversations(
         },
       });
       await openTriageForConversation(db, rival.id);
+      linked.push(rival.id);
       continue;
     }
     await openTriageForConversation(db, conv.id);
+    linked.push(conv.id);
   }
+  return linked;
 }
 
 export const cadastroService = {
@@ -447,7 +458,7 @@ export const cadastroService = {
       replace: true,
     });
 
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, linked } = await prisma.$transaction(async (tx) => {
       const created = await tx.contact.create({
         data: {
           nome: data.nome,
@@ -460,12 +471,14 @@ export const cadastroService = {
       await syncContactMemberships(tx, created.id, membership, { replace: true });
       await upsertContactIdentities(tx, created.id, [phoneE164, ...e164LookupValues(phoneE164)]);
       await rememberWhatsAppLidIdentity(tx, created.id, created.nome);
-      await attachContactToMatchingConversations(tx, created);
-      return tx.contact.findFirstOrThrow({
+      const ids = await attachContactToMatchingConversations(tx, created);
+      const row = await tx.contact.findFirstOrThrow({
         where: { id: created.id },
         include: contactWithMemberships,
       });
+      return { row, linked: ids };
     });
+    await enqueueAfterLink(linked);
     return row;
   },
 
@@ -497,7 +510,7 @@ export const cadastroService = {
       replace: true,
     });
 
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, linked } = await prisma.$transaction(async (tx) => {
       const updated = await tx.contact.update({
         where: { id },
         data: {
@@ -513,18 +526,21 @@ export const cadastroService = {
       }
       await upsertContactIdentities(tx, id, [phoneE164, ...e164LookupValues(phoneE164)]);
       await rememberWhatsAppLidIdentity(tx, id, updated.nome);
+      let linked: string[] = [];
       if (membershipTouched || data.phone || data.nome) {
         await tx.conversation.updateMany({
           where: { contactId: id },
           data: { condominiumId: updated.condominiumId },
         });
-        await attachContactToMatchingConversations(tx, updated);
+        linked = await attachContactToMatchingConversations(tx, updated);
       }
-      return tx.contact.findFirstOrThrow({
+      const row = await tx.contact.findFirstOrThrow({
         where: { id },
         include: contactWithMemberships,
       });
+      return { row, linked };
     });
+    await enqueueAfterLink(linked);
 
     await writeAudit(prisma, {
       actorId: user.id,
@@ -802,6 +818,7 @@ export const cadastroService = {
         return { conversation: updated, contact, triage };
       });
 
+      await enqueueInboundMissedOnLink(prisma, result.conversation.id);
       await writeAudit(prisma, {
         actorId: actor.id,
         action: "conversation.enroll",
@@ -828,7 +845,8 @@ export const cadastroService = {
     });
     for (const contact of contacts) {
       await rememberWhatsAppLidIdentity(prisma, contact.id, contact.nome);
-      await attachContactToMatchingConversations(prisma, contact);
+      const linked = await attachContactToMatchingConversations(prisma, contact);
+      await enqueueAfterLink(linked);
     }
     return { scanned: contacts.length };
   },

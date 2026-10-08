@@ -4,7 +4,6 @@ import { isLidPeer, isOrphanPeer } from "@/lib/phone/identity";
 import {
   contactNameMatchesPushName,
   fetchEvolutionChatRows,
-  fetchEvolutionContacts,
   fetchEvolutionMessages,
   lidJidsMatchingPlaceholder,
   type EvolutionChatLidRow,
@@ -53,6 +52,11 @@ function phoneFromChatPnFields(chat: EvolutionChatLidRow): string | null {
 export function phoneFromMessageRow(row: EvolutionMessageRow): string | null {
   const key = row.key && typeof row.key === "object" ? row.key : {};
   const contextInfo = row.contextInfo && typeof row.contextInfo === "object" ? row.contextInfo : null;
+  const remote = asString(key.remoteJid);
+  if (remote) {
+    const fromRemote = phoneFromPnCandidate(remote);
+    if (fromRemote) return fromRemote;
+  }
   const candidates = [
     key.remoteJidAlt,
     key.remote_jid_alt,
@@ -165,13 +169,13 @@ export function resolvePhoneFromContacts(contacts: EvolutionContactRow[], pushNa
 }
 
 export type ResolvePhoneForLidPeerOpts = {
-  /** Cascata findMessages + findContacts (só no enrich-peer / Puxar). */
+  /** Cascata findChats + findMessages desta waMessageId (só no enrich-peer / Puxar). */
   deep?: boolean;
   waMessageId?: string;
   pushName?: string | null;
 };
 
-/** Look up real phone for a LID peer via Evolution (shallow: findChats; deep: + messages + contacts). */
+/** Look up real phone for a LID peer via Evolution (shallow: findChats; deep: + messages). */
 export async function resolvePhoneForLidPeer(
   lidPlaceholder: string,
   opts?: ResolvePhoneForLidPeerOpts,
@@ -199,26 +203,7 @@ export async function resolvePhoneForLidPeer(
     });
     if (fromMsg) return fromMsg;
   }
-
-  // Prefer pushName da conversa; se vazio, usa o do chat LID na Evolution
-  let pushName = opts.pushName?.trim() || "";
-  if (!pushName && chats) {
-    for (const chat of chats) {
-      const jid = chat.remoteJid || "";
-      if (!jid.toLowerCase().includes("@lid")) continue;
-      if (phoneFromWhatsAppLid(jid) !== lidPlaceholder) continue;
-      const name = asString(chat.pushName)?.trim();
-      if (name) {
-        pushName = name;
-        break;
-      }
-    }
-  }
-  if (!pushName) return null;
-
-  const contacts = await fetchEvolutionContacts();
-  if (!contacts) return null;
-  return resolvePhoneFromContacts(contacts, pushName);
+  return null;
 }
 
 function evoBase() {

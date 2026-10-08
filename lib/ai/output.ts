@@ -22,6 +22,12 @@ export const modelOutputSchema = z.object({
   abstain: z.boolean(),
   citations: z.array(z.object({ chunkId: z.string().min(1).max(80) })).max(8),
   contactFacts: z.array(z.string().max(200)).max(3).optional(),
+  decision: z.enum(["ASK", "COMPLETE", "HUMAN_REVIEW", "UNCLEAR"]).optional(),
+  question: z.string().max(500).optional(),
+  confirmedFacts: z.array(z.string().max(200)).max(8).optional(),
+  missingInformation: z.array(z.string().max(200)).max(8).optional(),
+  triageCategory: z.enum(["cobranca", "assembleia", "obras", "vizinhanca", "administrativo", "outro"]).optional(),
+  triagePriority: z.enum(["baixa", "media", "alta", "urgente"]).optional(),
 });
 
 export type ModelOutput = z.infer<typeof modelOutputSchema>;
