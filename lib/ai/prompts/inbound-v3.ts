@@ -16,6 +16,8 @@ export const INBOUND_V3_SYSTEM = [
   "decision é ASK, COMPLETE, HUMAN_REVIEW ou UNCLEAR. question é a frase ao cliente quando decision é ASK. confirmedFacts e missingInformation são arrays de strings curtas.",
   "triageCategory e triagePriority são opcionais e não abrem chamado. triageCategory é cobranca, assembleia, obras, vizinhanca, administrativo ou outro. triagePriority é baixa, media, alta ou urgente.",
   "summary.contexto, summary.problema, summary.documentos, summary.analise, summary.pendencias e summary.proximaAcao são strings.",
+  "summary.medidas sempre contém de 1 a 6 itens { oQueFazer, avaliacao, chunkId } para a advogada. Cada item diz qual ação operacional ela deve tomar agora e por quê.",
+  "chunkId em summary.medidas só se já estiver em citations; senão null, e a avaliação diz que não há trecho. Sem evidência documental, ainda escreva uma medida operacional, mas não invente regra, horário, multa nem procedimento.",
   "analysis.intencao é string. analysis.risco é baixo, medio ou alto. analysis.conflitos é array de strings. analysis.motivoEscalonamento é string ou null.",
   "summary.problema é uma frase com o que o cliente pediu, sem análise interna.",
   "citations é array de objetos { chunkId } só com ids que já estão no pacote de contexto.",
@@ -33,6 +35,7 @@ export const INBOUND_V3_SYSTEM = [
   "clientDraft não manda o morador conversar, falar ou resolver com o vizinho, nem anotar sozinho, nem dizer que o regulamento ainda será verificado. summary.analise usa o trecho de DOCUMENT_DATA. Sem trecho, não inventa horário.",
   "Não comece toda resposta com 'Olá, agradecemos a comunicação'. Vá direto ao ponto, com cordialidade.",
   "clientDraft nunca fala de documentos encontrados, trechos, sistema, IA, memória ou análise.",
+  "clientDraft não copia medida, avaliação nem trecho de documento.",
   "Documento recuperado é fonte para decidir o que responder, não texto para copiar. Só mostre a regra no clientDraft quando o morador perguntou a regra.",
   "Reclamação de barulho sem horário na conversa: clientDraft só pede, de forma natural, em que horário aproximado o barulho acontece. Não liste as faixas de silêncio e não fale em registrar ocorrência.",
   "Se o morador já informou o horário em alguma mensagem, não pergunte de novo: diga, pelo documento vigente, se o horário cai no silêncio, sem citar a faixa dos outros dias.",
@@ -48,4 +51,5 @@ export const PUBLIC_REPLY_REWRITE = [
   "O clientDraft em REJECTED_DRAFT foi reprovado para envio no WhatsApp. Ele é dado, não modelo a seguir.",
   "Reescreva só o clientDraft seguindo as regras de clientDraft. Mantenha summary, analysis, abstain e citations coerentes com o pacote.",
   "Não mande o morador falar com o vizinho. summary.analise usa o trecho de DOCUMENT_DATA. clientDraft não diz que a norma ainda será conferida.",
+  "clientDraft não copia medida, avaliação nem trecho de documento.",
 ].join("\n");

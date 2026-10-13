@@ -11,6 +11,13 @@ export type CopilotFonte = {
   tipo: string | null;
   versao: number | null;
   status: string | null;
+  chunkId: string | null;
+};
+
+export type CopilotMedida = {
+  oQueFazer: string;
+  avaliacao: string;
+  fonte: CopilotFonte | null;
 };
 
 export type CopilotTecnica = {
@@ -86,6 +93,7 @@ export type CopilotRevisionView = {
   execucao: CopilotExecucao;
   resposta: CopilotResposta;
   memoria: CopilotMemoria | null;
+  medidas: CopilotMedida[] | null;
 };
 
 export type CopilotHistoryItem = {
@@ -103,6 +111,7 @@ export type CopilotIndex = {
 };
 
 export type CopilotCitationInput = {
+  chunkId?: string | null;
   distance: number | null;
   pageNumber: number | null;
   documentTitle: string | null;
@@ -206,6 +215,7 @@ export function presentCopilotRevision(view: CopilotRevisionView): CopilotRevisi
     ...view,
     pendencias: typeof view.pendencias === "string" ? view.pendencias : "",
     fontes: Array.isArray(view.fontes) ? view.fontes : [],
+    medidas: Array.isArray(view.medidas) ? view.medidas : null,
     contextoUtilizado: ctx
       ? { ...EMPTY_CONTEXTO, ...ctx, recuperados: Array.isArray(ctx.recuperados) ? ctx.recuperados : [] }
       : EMPTY_CONTEXTO,
@@ -340,6 +350,7 @@ export function buildCopilotRevisionView(input: CopilotRevisionInput): CopilotRe
       tipo: citation.kind?.trim() ? citation.kind : null,
       versao: typeof citation.contentRevision === "number" ? citation.contentRevision : null,
       status: citation.ingestStatus?.trim() ? citation.ingestStatus : null,
+      chunkId: citation.chunkId?.trim() ? citation.chunkId : null,
     };
   });
 
@@ -369,5 +380,23 @@ export function buildCopilotRevisionView(input: CopilotRevisionInput): CopilotRe
     execucao: readExecucao(fluxo),
     resposta: readResposta(summary, input.draft),
     memoria: readMemoria(fluxo),
+    medidas: readMedidas(summary, fontes),
   };
+}
+
+function readMedidas(summary: Record<string, unknown>, fontes: CopilotFonte[]): CopilotMedida[] | null {
+  if (!Object.prototype.hasOwnProperty.call(summary, "medidas")) return null;
+  if (!Array.isArray(summary.medidas)) return [];
+  const byId = new Map(fontes.flatMap((fonte) => (fonte.chunkId ? [[fonte.chunkId, fonte] as const] : [])));
+  return summary.medidas.flatMap((item) => {
+    const row = asRecord(item);
+    const oQueFazer = asString(row.oQueFazer).trim();
+    if (!oQueFazer) return [];
+    const chunkId = blankToNull(row.chunkId);
+    return [{
+      oQueFazer,
+      avaliacao: asString(row.avaliacao).trim(),
+      fonte: chunkId ? byId.get(chunkId) ?? null : null,
+    }];
+  }).slice(0, 6);
 }

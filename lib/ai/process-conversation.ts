@@ -3,7 +3,7 @@ import { completeValidJson, shouldMarkJobDead } from "@/lib/ai/complete-json";
 import { otherCondominiumNamed } from "@/lib/ai/condo-name";
 import { confidenceBand } from "@/lib/ai/confidence";
 import { prismaErrorCode } from "@/lib/ai/errors";
-import { keepCitations } from "@/lib/ai/citations";
+import { keepCitations, keepMedidas } from "@/lib/ai/citations";
 import { decideTurn, type ServerFallback } from "@/lib/ai/decide-turn";
 import { isAiAutoDraftEnabled, isAiEnabled, isAiMemoryEnabled, aiPromptVersion } from "@/lib/ai/flags";
 import { rejectedDraftForJobs } from "@/lib/ai/enqueue";
@@ -548,6 +548,7 @@ export async function processConversation(db: PrismaClient, conversationId: stri
     const publicDiscarded = revisao.verdict.status === "reprovar";
     const allowed = new Set(chunks.map((row) => row.id));
     const cited = keepCitations(parsed.citations, allowed);
+    const medidas = keepMedidas(parsed.summary.medidas, new Set(cited.map((row) => row.chunkId)));
     const distanceById = new Map(chunks.map((row) => [row.id, row.distance ?? null]));
     const band = confidenceBand(cited.map((row) => distanceById.get(row.chunkId)));
     const injectionFromModel = Boolean(parsed.analysis.injectionSignal);
@@ -575,8 +576,8 @@ export async function processConversation(db: PrismaClient, conversationId: stri
         : null;
     const summary = splitSummary(
       namedOther
-        ? { ...parsed.summary, pendencias: parsed.summary.pendencias || FALLBACK_DOCUMENT_CONFLICT }
-        : parsed.summary,
+        ? { ...parsed.summary, pendencias: parsed.summary.pendencias || FALLBACK_DOCUMENT_CONFLICT, medidas }
+        : { ...parsed.summary, medidas },
       relato.length > 0,
     );
     const avisos = [
@@ -955,6 +956,7 @@ async function loadPreviousTurn(db: PrismaClient, conversationId: string, versio
       analise: text(json.analise),
       pendencias: text(json.pendencias),
       proximaAcao: text(json.proximaAcao),
+      ...storedMedidas(json),
     },
     analysis: {
       intencao: text(tecnica.intencao),
@@ -1157,6 +1159,22 @@ function text(value: unknown): string {
 
 function textOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function storedMedidas(json: Record<string, unknown>): Pick<SummaryJson, "medidas"> | Record<string, never> {
+  if (!Object.prototype.hasOwnProperty.call(json, "medidas")) return {};
+  if (!Array.isArray(json.medidas)) return { medidas: [] };
+  const medidas = json.medidas.flatMap((item) => {
+    const row = asRecord(item);
+    const oQueFazer = text(row.oQueFazer).trim();
+    if (!oQueFazer) return [];
+    return [{
+      oQueFazer: oQueFazer.slice(0, 500),
+      avaliacao: text(row.avaliacao).slice(0, 800),
+      chunkId: textOrNull(row.chunkId),
+    }];
+  }).slice(0, 6);
+  return { medidas };
 }
 
 function summaryPayload(input: PersistInput): Prisma.InputJsonValue {

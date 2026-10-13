@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ export function UnlinkedQueue({
   q,
   onQuery,
   onSelect,
+  onRequestDelete,
 }: {
   items: UnlinkedConversation[];
   loading: boolean;
@@ -37,6 +39,7 @@ export function UnlinkedQueue({
   q: string;
   onQuery: (value: string) => void;
   onSelect: (id: string) => void;
+  onRequestDelete: (row: UnlinkedConversation) => void;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -70,11 +73,11 @@ export function UnlinkedQueue({
               const age = formatAge(c.updatedAt);
               const origin = c.connection.type === "dev_mock" ? "DEV" : "WhatsApp";
               return (
-                <li key={c.id}>
+                <li key={c.id} className="relative">
                   <button
                     type="button"
                     className={cn(
-                      "flex w-full items-start gap-2 rounded-[var(--radius)] border border-border border-l-2 px-2 py-2 text-left text-sm transition-colors duration-[var(--motion-fast)]",
+                      "flex w-full items-start gap-2 rounded-[var(--radius)] border border-border border-l-2 px-2 py-2 pr-9 text-left text-sm transition-colors duration-[var(--motion-fast)]",
                       selectedId === c.id
                         ? "border-l-primary bg-[color-mix(in_srgb,var(--brand)_6%,white)]"
                         : "border-l-transparent bg-card hover:border-[var(--border-strong)]",
@@ -99,6 +102,15 @@ export function UnlinkedQueue({
                         {origin}
                       </span>
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute top-1 right-0.5 inline-flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-[var(--danger)]"
+                    aria-label={`Excluir conversa de ${title} só do sistema`}
+                    title="Excluir do sistema"
+                    onClick={() => onRequestDelete(c)}
+                  >
+                    <Trash2 className="size-3.5" />
                   </button>
                 </li>
               );

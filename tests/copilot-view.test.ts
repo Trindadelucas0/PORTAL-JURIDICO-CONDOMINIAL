@@ -69,7 +69,9 @@ describe("buildCopilotRevisionView", () => {
       tipo: null,
       versao: null,
       status: null,
+      chunkId: null,
     });
+    expect(view.medidas).toBeNull();
     expect(view.fontes[1]?.titulo).toBe("Documento sem título");
     expect(view.fontes[1]?.storageKey).toBeNull();
     expect(view.fontes[1]?.trecho).toBeNull();
@@ -146,6 +148,37 @@ describe("buildCopilotRevisionView", () => {
     expect(view.resposta.messageId).toBe("m1");
     expect(view.analise).toBe("ler o artigo");
     expect(view.resposta.texto).not.toBe(view.analise);
+    expect(view.medidas).toBeNull();
+  });
+
+  it("liga a medida ao trecho da citação pelo chunkId e ignora chunk inventado", () => {
+    const view = buildCopilotRevisionView({
+      version: 4,
+      createdAt: "2026-10-09T12:00:00.000Z",
+      status: "succeeded",
+      summaryJson: {
+        ...summaryJson,
+        medidas: [
+          { oQueFazer: "conferir o horário de obra", avaliacao: "o regimento limita sábado", chunkId: "chunk-1" },
+          { oQueFazer: "pedir o andar", avaliacao: "não há trecho", chunkId: "inventado" },
+        ],
+      },
+      citations: [
+        {
+          chunkId: "chunk-1",
+          distance: 0.06,
+          pageNumber: 8,
+          documentTitle: "Regimento interno",
+          storageKey: "docs/regimento.pdf",
+          content: "Obras aos sábados até as 12h.",
+        },
+      ],
+    });
+
+    expect(view.medidas).toHaveLength(2);
+    expect(view.medidas?.[0]?.fonte?.trecho).toBe("Obras aos sábados até as 12h.");
+    expect(view.medidas?.[0]?.fonte?.titulo).toBe("Regimento interno");
+    expect(view.medidas?.[1]?.fonte).toBeNull();
   });
 
   it("revisão interrompida sem contexto não deixa recuperados indefinido", () => {

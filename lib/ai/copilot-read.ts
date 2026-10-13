@@ -100,6 +100,7 @@ async function loadRevisionView(
           citations: {
             orderBy: { rank: "asc" },
             select: {
+              chunkId: true,
               distance: true,
               pageNumber: true,
               documentId: true,
@@ -143,6 +144,7 @@ async function loadRevisionView(
     citations: citations.map((row) => {
       const document = row.documentId ? byId.get(row.documentId) : undefined;
       return {
+        chunkId: row.chunkId,
         distance: row.distance,
         pageNumber: row.pageNumber ?? row.chunk.pageNumber,
         documentTitle: document?.title ?? null,

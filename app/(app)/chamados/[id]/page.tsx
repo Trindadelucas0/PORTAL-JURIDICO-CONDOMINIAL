@@ -506,7 +506,9 @@ export default function ChamadoFichaPage() {
         protocol={t?.protocol}
         condominiumName={t?.condominium.nome}
         draftPath={t?.conversationId ? `/api/tickets/${id}/ai-draft` : ""}
+        regeneratePath={t?.conversationId ? `/api/conversations/${t.conversationId}/ai-regenerate` : undefined}
         canSend={Boolean(user && user.role === "admin")}
+        contactName={t?.contact.nome}
         onShowConversation={() => setTab("comunicacao")}
         onRun={() => runAi.mutate()}
         runPending={runAi.isPending}

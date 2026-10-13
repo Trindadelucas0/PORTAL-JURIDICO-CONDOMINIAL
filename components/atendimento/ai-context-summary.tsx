@@ -2,28 +2,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Sparkles } from "lucide-react";
-import {
-  AnaliseInterna,
-  AnaliseInterrompida,
-  ContextoUtilizado,
-  DocumentosConsultados,
-  EvidenciaUtilizada,
-  Entendimento,
-  ExecucaoAnalise,
-  MemoriaUtilizada,
-  MensagemCliente,
-  ProximaAcao,
-  RespostaSugerida,
-} from "@/components/chamados/ai-summary-body";
+import { Sparkles } from "lucide-react";
+import { AiSummarySheet } from "@/components/chamados/ai-summary-sheet";
+import { RespostaSugerida } from "@/components/chamados/ai-summary-body";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
-import { presentCopilotRevision, type CopilotIndex, type CopilotRevisionView } from "@/lib/ai/copilot-view";
+import { presentCopilotRevision, type CopilotIndex } from "@/lib/ai/copilot-view";
 import { isHumanReviewFallback } from "@/lib/ai/prompts/inbound-v2";
-import { formatWhen } from "@/lib/ui-labels";
-import { cn } from "@/lib/utils";
 
 const MARCAR_E_GERAR =
   "O relato usa as mensagens do cliente que estavam Não aberta ao abrir. Intenção e a resposta usam as bolhas marcadas.";
@@ -37,15 +24,11 @@ export function AiContextSummary({
   canSend?: boolean;
   contactName?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<number | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const summaryPath = `/api/conversations/${conversationId}/ai-summary`;
 
   useEffect(() => {
-    setOpen(false);
-    setPicked(null);
-    setHistoryOpen(false);
+    setSummaryOpen(false);
   }, [conversationId]);
 
   const summary = useQuery({
@@ -60,15 +43,26 @@ export function AiContextSummary({
   const failed = Boolean(summary.data?.data.error) || summary.isError;
   const history = summary.data?.data.history ?? [];
   const currentVersion = summary.data?.data.currentVersion ?? null;
-  const showingHistorical = picked != null && picked !== currentVersion;
-  const historical = useQuery({
-    queryKey: ["ai-summary-version", summaryPath, picked],
-    enabled: showingHistorical,
-    staleTime: 60_000,
-    queryFn: () => api<{ revision: CopilotRevisionView }>(`${summaryPath}?version=${picked}`),
-  });
 
   if (summary.data?.data.enabled === false) return null;
+
+  const sheet = (
+    <AiSummarySheet
+      open={summaryOpen}
+      onOpenChange={setSummaryOpen}
+      loading={summary.isLoading}
+      error={failed}
+      analyzing={analyzing}
+      current={current}
+      history={history}
+      currentVersion={currentVersion}
+      summaryPath={summaryPath}
+      draftPath={`/api/conversations/${conversationId}/ai-draft`}
+      regeneratePath={`/api/conversations/${conversationId}/ai-regenerate`}
+      canSend={canSend}
+      contactName={contactName}
+    />
+  );
 
   if (!current && (summary.isLoading || analyzing)) {
     return (
@@ -78,6 +72,7 @@ export function AiContextSummary({
           <Skeleton className="h-4 w-4/5" />
           <Skeleton className="h-4 w-2/3" />
         </div>
+        {sheet}
       </ResumoShell>
     );
   }
@@ -87,6 +82,8 @@ export function AiContextSummary({
       <ResumoShell>
         <p className="mt-2 text-sm text-[var(--muted)]">Não foi possível gerar o resumo.</p>
         <p className="mt-1 text-sm text-[var(--muted)]">{MARCAR_E_GERAR}</p>
+        <OpenMedidas onOpen={() => setSummaryOpen(true)} />
+        {sheet}
       </ResumoShell>
     );
   }
@@ -96,122 +93,47 @@ export function AiContextSummary({
       <ResumoShell>
         <p className="mt-2 text-sm text-[var(--muted)]">Análise ainda não realizada.</p>
         <p className="mt-1 text-sm text-[var(--muted)]">{MARCAR_E_GERAR}</p>
+        <OpenMedidas onOpen={() => setSummaryOpen(true)} />
+        {sheet}
       </ResumoShell>
     );
   }
 
-  const live = presentCopilotRevision(current);
-  const revision = showingHistorical
-    ? historical.data?.data.revision
-      ? presentCopilotRevision(historical.data.data.revision)
-      : null
-    : live;
-  const viewingVersion = picked ?? revision?.version ?? currentVersion;
-  const viewingDate =
-    revision?.createdAt ?? history.find((item) => item.version === viewingVersion)?.createdAt ?? null;
-  const textoAtual = revision?.resposta.texto?.trim() ?? "";
+  const revision = presentCopilotRevision(current);
+  const textoAtual = revision.resposta.texto?.trim() ?? "";
   const hideEntrega = Boolean(textoAtual && isHumanReviewFallback(textoAtual));
 
   return (
     <ResumoShell>
-      {showingHistorical && historical.isLoading ? (
-        <Skeleton className="mt-2 h-10 w-full" />
-      ) : showingHistorical && historical.isError ? (
-        <div className="mt-2 space-y-3">
-          <p className="text-sm text-muted-foreground">Não foi possível abrir esta versão.</p>
-          <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => setPicked(null)}>
-            Voltar à atual
-          </Button>
-        </div>
-      ) : revision ? (
-        <>
-          {showingHistorical && viewingDate && viewingVersion != null ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Versão de {formatWhen(viewingDate)} · v{viewingVersion}
-            </p>
-          ) : null}
-          {failed && current && !analyzing && !showingHistorical ? (
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              A nova análise não foi gerada. O texto abaixo é da versão anterior.
-            </p>
-          ) : null}
-          <Sintese revision={revision} />
-          {showingHistorical ? (
-            <EntregaHistorica revision={revision} hideEntrega={hideEntrega} onBack={() => setPicked(null)} />
-          ) : hideEntrega ? null : (
-            <RespostaSugerida
-              revision={revision}
-              draftPath={`/api/conversations/${conversationId}/ai-draft`}
-              regeneratePath={`/api/conversations/${conversationId}/ai-regenerate`}
-              canSend={canSend}
-              contactName={contactName}
-              entrega="aprovar"
-              pending={analyzing}
-            />
-          )}
-          {analyzing && !showingHistorical ? <p className="mt-2 text-xs text-[var(--muted)]">Em análise</p> : null}
-        </>
+      {failed && current && !analyzing ? (
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          A nova análise não foi gerada. O texto abaixo é da versão anterior.
+        </p>
       ) : null}
-      <button
-        type="button"
-        className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[8px] py-2.5 text-left text-sm text-[var(--brand)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]"
-        aria-expanded={open}
-        aria-controls="resumo-ia-detalhes"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span>{open ? "Ocultar detalhes" : "Ver mais"}</span>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform duration-[var(--motion-fast)]",
-            open && "rotate-180",
-          )}
-          aria-hidden
+      <Sintese revision={revision} />
+      {hideEntrega ? null : (
+        <RespostaSugerida
+          revision={revision}
+          draftPath={`/api/conversations/${conversationId}/ai-draft`}
+          regeneratePath={`/api/conversations/${conversationId}/ai-regenerate`}
+          canSend={canSend}
+          contactName={contactName}
+          entrega="aprovar"
+          pending={analyzing}
         />
-      </button>
-      {open && revision ? (
-        <div id="resumo-ia-detalhes" className="min-w-0 overflow-x-hidden [&_blockquote]:break-words [&_dd]:break-words [&_h4]:break-words [&_p]:break-words">
-          <Detalhes revision={revision} />
-        </div>
-      ) : null}
-      {history.length > 0 ? (
-        <div className="border-t border-border py-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="min-h-11"
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((value) => !value)}
-          >
-            Ver histórico
-          </Button>
-          {historyOpen ? (
-            <ul className="mt-2 max-h-48 overflow-y-auto border-t border-border">
-              {history.map((item) => {
-                const selected = item.version === (picked ?? currentVersion);
-                return (
-                  <li key={item.version} className="flex min-h-11 items-center justify-between gap-2">
-                    <p className="min-w-0 text-sm break-words">
-                      {`v${item.version}${item.version === currentVersion ? " · Atual" : ""} · ${formatWhen(item.createdAt)}`}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="min-h-11 shrink-0"
-                      aria-pressed={selected}
-                      onClick={() => setPicked(item.version === currentVersion ? null : item.version)}
-                    >
-                      Ver
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
+      )}
+      {analyzing ? <p className="mt-2 text-xs text-[var(--muted)]">Em análise</p> : null}
+      <OpenMedidas onOpen={() => setSummaryOpen(true)} />
+      {sheet}
     </ResumoShell>
+  );
+}
+
+function OpenMedidas({ onOpen }: { onOpen: () => void }) {
+  return (
+    <Button type="button" size="sm" variant="secondary" className="mt-2 min-h-11" onClick={onOpen}>
+      Ver resumo e medidas
+    </Button>
   );
 }
 
@@ -234,60 +156,12 @@ function ResumoShell({ children }: { children: ReactNode }) {
   );
 }
 
-function Sintese({ revision }: { revision: CopilotRevisionView }) {
+function Sintese({ revision }: { revision: { contexto: string; problema: string } }) {
   return (
     <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
       {revision.contexto.trim() ||
         revision.problema ||
         "Não foi possível determinar o problema com as informações disponíveis."}
     </p>
-  );
-}
-
-function EntregaHistorica({
-  revision,
-  hideEntrega,
-  onBack,
-}: {
-  revision: CopilotRevisionView;
-  hideEntrega: boolean;
-  onBack: () => void;
-}) {
-  const texto = revision.resposta.texto?.trim() ?? "";
-  return (
-    <div className="mt-3">
-      {hideEntrega ? null : (
-        <>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground">RESPOSTA SUGERIDA</p>
-          {texto ? (
-            <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">Nenhum rascunho foi gravado nesta versão.</p>
-          )}
-        </>
-      )}
-      <Button type="button" size="sm" variant="secondary" className="mt-3 min-h-11" onClick={onBack}>
-        Voltar à atual
-      </Button>
-    </div>
-  );
-}
-
-function Detalhes({ revision }: { revision: CopilotRevisionView }) {
-  const evidenciaInsuficiente = revision.status === "abstained" || revision.tecnica.confianca === "insuficiente";
-  return (
-    <>
-      {evidenciaInsuficiente ? <AnaliseInterrompida revision={revision} /> : null}
-      <Entendimento revision={revision} />
-      <ContextoUtilizado revision={revision} recorte="contagens" />
-      <EvidenciaUtilizada revision={revision} />
-      <ProximaAcao revision={revision} />
-      <MensagemCliente revision={revision} />
-      <AnaliseInterna revision={revision} />
-      <DocumentosConsultados revision={revision} />
-      <ExecucaoAnalise revision={revision} />
-      <ContextoUtilizado revision={revision} recorte="tecnico" />
-      <MemoriaUtilizada revision={revision} />
-    </>
   );
 }

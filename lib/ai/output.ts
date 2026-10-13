@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+export const medidaSchema = z.object({
+  oQueFazer: z.string().max(500),
+  avaliacao: z.string().max(800),
+  chunkId: z.string().min(1).max(80).nullable(),
+});
+
 export const summarySchema = z.object({
   contexto: z.string().max(2000),
   problema: z.string().max(2000),
@@ -7,6 +13,7 @@ export const summarySchema = z.object({
   analise: z.string().max(4000),
   pendencias: z.string().max(2000),
   proximaAcao: z.string().max(2000),
+  medidas: z.array(medidaSchema).max(6).optional(),
 });
 
 export const modelOutputSchema = z.object({
@@ -40,6 +47,7 @@ export const EMPTY_SUMMARY: SummaryJson = {
   analise: "",
   pendencias: "",
   proximaAcao: "",
+  medidas: [],
 };
 
 export type SummaryTurn<A> = { summary: SummaryJson; analysis: A; clientDraft: string | null };

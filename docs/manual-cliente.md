@@ -307,7 +307,7 @@ em cima (rola) e conversa bege embaixo.
 ```
 +-- Fila --+-- Chat (igual Atendimento) --+-- Identidade ----------+
 | conversas | mensagens                    | passos 1·2·3          |
-|           |                              | [ Vincular ao fluxo ] |
+| [lixeira] |                              | [ Vincular ao fluxo ] |
 +-----------+------------------------------+-----------------------+
 
 Drawer "Vincular ao fluxo":
@@ -324,6 +324,7 @@ Drawer "Vincular ao fluxo":
 | # | Controle | O que acontece |
 |---|----------|----------------|
 | 1 | Conversa na fila | Mostra nome/foto do WhatsApp quando já vieram. |
+| 1b | Lixeira (**Excluir do sistema**) | Pede confirmação **Excluir conversa do sistema**. Apaga só no Juricon; WhatsApp no celular permanece. Próxima mensagem daquele número volta a esta fila. |
 | 2 | **Vincular ao fluxo** (painel) | Abre o formulário. |
 | 3 | **Já cadastrado no condomínio** | Escolhe contato existente; **não troca** o celular real dele pelo identificador interno do WhatsApp. |
 | 4 | **Nome** / **Condomínio** | Obrigatórios. **Não pede telefone** — a conversa já identifica a pessoa. Outros condomínios só em **Editar contato**. |

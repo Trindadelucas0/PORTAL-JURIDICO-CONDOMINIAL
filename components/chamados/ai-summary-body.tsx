@@ -376,8 +376,8 @@ export function RespostaSugerida({
   /** `aprovar`: card do Atendimento com Aprovar / Não aprovar. */
   entrega?: "aprovar";
   pending?: boolean;
-  /** `bar`: faixa acima do campo de mensagem do Atendimento, sem título de seção. */
-  variant?: "section" | "bar";
+  /** `bar`: faixa acima do campo de mensagem; `dialog`: texto limitado no rodapé do modal. */
+  variant?: "section" | "bar" | "dialog";
 }) {
   const qc = useQueryClient();
   const texto = revision.resposta.texto;
@@ -435,6 +435,7 @@ export function RespostaSugerida({
       ? ((save.error || send.error || regenerate.error) as Error).message
       : null;
   const bar = variant === "bar";
+  const dialog = variant === "dialog";
   if (enviada) return null;
 
   if (entrega === "aprovar") {
@@ -445,7 +446,14 @@ export function RespostaSugerida({
     return (
       <div className="mt-3 min-w-0">
         {contactName ? <p className="text-sm font-medium break-words">{contactName}</p> : null}
-        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
+        <p
+          className={cn(
+            "mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words",
+            dialog && "max-h-28 overflow-y-auto pr-1",
+          )}
+        >
+          {texto}
+        </p>
         {erro ? <p className="mt-2 text-sm text-[var(--danger)]">{erro}</p> : null}
         {canSend && awaitingDraft ? (
           <div className="mt-3 flex flex-wrap gap-2">

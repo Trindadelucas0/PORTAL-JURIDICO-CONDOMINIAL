@@ -51,6 +51,7 @@ function NaoVinculadosInner() {
   const [condominiumId, setCondominiumId] = useState("");
   const [existingContactId, setExistingContactId] = useState("");
   const [confirmEnroll, setConfirmEnroll] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<UnlinkedConversation | null>(null);
 
   useEffect(() => {
     setQ(paramsQ);
@@ -102,6 +103,27 @@ function NaoVinculadosInner() {
       if (res.data.triage?.id) router.push(`/triagem/${res.data.triage.id}`);
     },
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/api/conversations/${id}`, { method: "DELETE" }),
+    onSuccess: (_res, id) => {
+      if (selected === id) {
+        setSelected(null);
+        setMobilePane("list");
+      }
+      if (enrollRow?.id === id) {
+        setEnrollOpen(false);
+        setEnrollRow(null);
+        setConfirmEnroll(false);
+      }
+      toast("Conversa excluída do sistema");
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["messages", id] });
+    },
+    onError: (error) => {
+      toast((error as Error).message || "Não foi possível excluir a conversa");
+    },
+  });
 
   if (list.isError) {
     const status = (list.error as Error & { status?: number }).status;
@@ -151,6 +173,7 @@ function NaoVinculadosInner() {
               setSelected(id);
               setMobilePane("thread");
             }}
+            onRequestDelete={setPendingDelete}
           />
         </WorkspacePane>
         <WorkspacePane className={cn(mobilePane !== "thread" && "hidden lg:flex")}>
@@ -343,6 +366,18 @@ function NaoVinculadosInner() {
           </dl>
         }
         onConfirm={() => enroll.mutate()}
+      />
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        title="Excluir conversa do sistema"
+        message="Tira esta conversa só do Juricon. O WhatsApp no celular permanece. O chamado, se houver, permanece. As mensagens desta conversa saem da ficha do chamado."
+        confirmLabel="Excluir do sistema"
+        danger
+        pending={remove.isPending}
+        onConfirm={() => {
+          if (pendingDelete) remove.mutate(pendingDelete.id);
+        }}
       />
     </div>
   );

@@ -68,4 +68,23 @@ describe("mergePartialSummary", () => {
     const merged = mergePartialSummary({ fromRelato: true, fromMarks: true, next, previous: previous(), emptyAnalysis: EMPTY_ANALYSIS });
     expect(merged).toEqual(next);
   });
+
+  it("relato sem marcas mantém as medidas da revisão anterior", () => {
+    const withMedidas = {
+      ...previous(),
+      summary: {
+        ...previousSummary,
+        medidas: [{ oQueFazer: "ler o artigo", avaliacao: "regimento", chunkId: "c1" }],
+      },
+    };
+    const merged = mergePartialSummary({
+      fromRelato: true,
+      fromMarks: false,
+      next,
+      previous: withMedidas,
+      emptyAnalysis: EMPTY_ANALYSIS,
+    });
+    expect(merged.summary.contexto).toBe("relato novo");
+    expect(merged.summary.medidas).toEqual([{ oQueFazer: "ler o artigo", avaliacao: "regimento", chunkId: "c1" }]);
+  });
 });

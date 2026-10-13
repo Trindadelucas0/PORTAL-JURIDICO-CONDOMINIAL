@@ -6,7 +6,7 @@ import type { PrismaClient, User } from "@prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { evaluateAction } from "@/lib/ai/action-gate";
 import { chunkCondominiumId, sniffDocument } from "@/lib/ai/chunks";
-import { keepCitations } from "@/lib/ai/citations";
+import { keepCitations, keepMedidas } from "@/lib/ai/citations";
 import { decideTurn } from "@/lib/ai/decide-turn";
 import { enqueueInboundJob, inboundIdsMissingJob } from "@/lib/ai/enqueue";
 import { isAiEnabled, isAiWhatsappSendEnabled, isAiCreateTicketEnabled } from "@/lib/ai/flags";
@@ -222,6 +222,27 @@ describe("ia operacional", () => {
   it("drops a citation that was not in the package", () => {
     const kept = keepCitations([{ chunkId: "in" }, { chunkId: "out" }], new Set(["in"]));
     expect(kept).toEqual([{ chunkId: "in" }]);
+  });
+
+  it("keepMedidas corta ação vazia, chunk de fora e o teto de 6", () => {
+    const kept = keepMedidas(
+      [
+        { oQueFazer: "   ", avaliacao: "x", chunkId: "in" },
+        { oQueFazer: "ler o artigo", avaliacao: "regimento", chunkId: "out" },
+        { oQueFazer: "pedir horário", avaliacao: "conversa", chunkId: null },
+        { oQueFazer: "a", avaliacao: "", chunkId: "in" },
+        { oQueFazer: "b", avaliacao: "", chunkId: "in" },
+        { oQueFazer: "c", avaliacao: "", chunkId: "in" },
+        { oQueFazer: "d", avaliacao: "", chunkId: "in" },
+        { oQueFazer: "e", avaliacao: "", chunkId: "in" },
+        { oQueFazer: "f", avaliacao: "", chunkId: "in" },
+      ],
+      new Set(["in"]),
+    );
+    expect(kept).toHaveLength(6);
+    expect(kept[0]).toEqual({ oQueFazer: "ler o artigo", avaliacao: "regimento", chunkId: null });
+    expect(kept[1]?.chunkId).toBeNull();
+    expect(kept[5]?.oQueFazer).toBe("d");
   });
 
   it("gate refuses SEND_WHATSAPP", () => {
@@ -934,6 +955,8 @@ describe("inbound prompt v2", () => {
         !line.startsWith("Responda somente JSON válido com clientDraft"),
     );
     for (const line of kept) expect(INBOUND_V3_SYSTEM).toContain(line);
+    expect(INBOUND_V3_SYSTEM).toContain("summary.medidas sempre contém de 1 a 6 itens");
+    expect(INBOUND_V3_SYSTEM).toContain("Sem evidência documental, ainda escreva uma medida operacional");
     expect(INBOUND_V3_SYSTEM).toContain("não manda o morador conversar, falar ou resolver com o vizinho");
     expect(INBOUND_V3_SYSTEM).toContain("summary.analise usa o trecho de DOCUMENT_DATA");
     expect(PUBLIC_REPLY_REWRITE).toContain("Não mande o morador falar com o vizinho");
