@@ -59,6 +59,11 @@ services:
 
   # Notebook: o Postgres Windows em 5432 não tem a extensão vector.
   # Next/worker no host usam JURICON_POSTGRES_HOST_PORT (padrão 5433).
+  # POSTGRES_PASSWORD / DB_PASSWORD só valem na primeira criação do volume
+  # juricon-pg-dev; mudar o .env depois não troca a senha do cluster — use
+  # ALTER USER no container (peer auth) ou alinhe DATABASE_URL à senha já gravada.
+  # Se outro container já publicou 5433, este serviço sobe sem porta no host e o
+  # next dev autenticará no banco errado (P1000). Pare o outro ou mude a porta.
   # VPS não sobe este serviço (nome diferente de juricon-postgres no prod).
   juricon-postgres-dev:
     image: pgvector/pgvector:pg18

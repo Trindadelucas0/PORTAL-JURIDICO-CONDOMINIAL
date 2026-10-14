@@ -85,7 +85,7 @@ O cliente no WhatsApp não vê esse resumo.
 
 No modal **Resumo e medidas**, a resposta e os botões **Aprovar** / **Não aprovar** ficam no rodapé; se a resposta for longa, role somente o texto da faixa. Uma análise nova traz pelo menos uma medida operacional para a advogada. Se não houver documento citado, a medida aparece sem trecho e não deve afirmar regra, horário, multa ou procedimento. Revisões antigas que mostram “Nenhuma medida nesta análise.” precisam ser geradas novamente.
 
-No notebook o banco da IA (tabelas `AiJob` etc.) fica no Postgres Docker da porta **5433** (`pnpm db:pgvector-up`). O 5432 do Windows continua sem a extensão `vector`.
+No notebook o banco da IA (tabelas `AiJob` etc.) fica no Postgres Docker da porta **5433** (`pnpm db:pgvector-up`). O 5432 do Windows continua sem a extensão `vector`. Se o `next dev` repetir no terminal `Authentication failed` / `[ai] tick errorCode=ERROR`, a senha do `.env` (`DB_PASSWORD` / `DATABASE_URL`) não é a do container **juricon-postgres-dev**, ou outro Postgres tomou a porta 5433 — confira `docker compose ps juricon-postgres-dev` (deve mostrar `0.0.0.0:5433→5432`) e alinhe a senha ao volume, não ao Postgres Windows da 5432.
 
 ## Mensagens automáticas
 
