@@ -186,7 +186,7 @@ export default function DashboardPage() {
               <ul className="md:hidden">
                 {tickets.map((t) => (
                   <li key={t.id} className="border-b border-border last:border-b-0">
-                    <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-slate-50 transition-colors">
+                    <Link href={`/chamados/${t.id}`} className="block px-4 py-3 text-sm hover:bg-muted transition-colors">
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-mono font-semibold tabular">#{t.protocol}</span>
                         <StatusBadge status={t.status} />
@@ -214,7 +214,7 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {tickets.map((t) => (
-                      <tr key={t.id} className="transition-colors hover:bg-slate-50/50">
+                      <tr key={t.id} className="transition-colors hover:bg-muted/60">
                         <Td>
                           <Link href={`/chamados/${t.id}`} className="font-mono font-semibold text-foreground tabular hover:text-primary transition-colors">
                             #{t.protocol}
@@ -236,7 +236,7 @@ export default function DashboardPage() {
               </div>
             </>
           )}
-          <div className="flex items-center justify-between border-t border-border bg-slate-50 px-4 py-2 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between border-t border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
             <span>
               {tickets.length} chamado{tickets.length === 1 ? "" : "s"} em aberto nesta lista
               {typeof data?.meusChamados === "number" ? ` · ${data.meusChamados} sob sua responsabilidade` : ""}
@@ -358,7 +358,7 @@ export default function DashboardPage() {
                     verb="Analisar"
                     icon={ListChecks}
                     chip="Classificação"
-                    chipClassName="bg-slate-100 text-slate-600"
+                    chipClassName="bg-secondary text-secondary-foreground"
                     href={employee ? undefined : "/triagem"}
                   />
                   <MetricCard
@@ -410,7 +410,7 @@ export default function DashboardPage() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {data.recent.map((row) => (
-                        <li key={row.id} className="transition-colors hover:bg-slate-50/50">
+                        <li key={row.id} className="transition-colors hover:bg-muted/60">
                           <ActivityRow
                             variant="log"
                             href="/atendimento"

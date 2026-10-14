@@ -21,6 +21,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ThemeSectionTitle, ThemeSwatchGrid } from "@/components/theme-switcher";
 import { cn } from "@/lib/utils";
 
 export type MoreSheetItem = {
@@ -140,6 +141,10 @@ export function MoreSheet({
               </Link>
             );
           })}
+          <div className="mt-2 space-y-2 border-t border-border px-4 pt-3 pb-1">
+            <ThemeSectionTitle />
+            <ThemeSwatchGrid />
+          </div>
           <button
             type="button"
             className="mt-2 flex min-h-11 w-full items-center gap-3 border-t border-border px-4 py-2.5 text-sm"

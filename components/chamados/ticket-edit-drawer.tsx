@@ -68,11 +68,11 @@ export function TicketEditDrawer({
   }, [open, ticket]);
 
   return (
-    <Dialog open={open} onClose={onClose} title="Editar chamado" className="sm:max-w-[28rem]">
+    <Dialog open={open} onClose={onClose} title="Editar chamado" className="sm:max-w-lg">
       {!ticket ? null : (
         <form
           id="ticket-edit-form"
-          className="space-y-5"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!title.trim()) return;
@@ -155,12 +155,12 @@ export function TicketEditDrawer({
             </div>
           ) : null}
           {errorMessage ? <p className="text-sm text-[var(--danger)]">{errorMessage}</p> : null}
-          <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+                    <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={pending || !title.trim()}>
-              {pending ? "Salvando…" : "Salvar"}
+            <Button type="submit" loading={pending} disabled={!title.trim()}>
+              Salvar alterações
             </Button>
           </div>
         </form>

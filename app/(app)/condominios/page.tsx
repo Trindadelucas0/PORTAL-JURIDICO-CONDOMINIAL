@@ -275,42 +275,76 @@ export default function CondominiosPage() {
               )}
             </section>
           </div>
-      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Novo condomínio">
+      <Drawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Novo condomínio"
+        size="sm"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={createCondo.isPending}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="condo-create-form" loading={createCondo.isPending}>
+              Salvar
+            </Button>
+          </>
+        }
+      >
         <form
-          className="space-y-3"
+          id="condo-create-form"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             createCondo.mutate();
           }}
         >
-          <Label htmlFor="nome">Nome</Label>
-          <Input id="nome" required value={nome} onChange={(e) => setNome(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="nome">Nome</Label>
+            <Input id="nome" required value={nome} onChange={(e) => setNome(e.target.value)} />
+          </div>
           {createCondo.isError ? <p className="text-sm text-[var(--danger)]">{(createCondo.error as Error).message}</p> : null}
-          <Button type="submit" disabled={createCondo.isPending}>
-            Salvar
-          </Button>
         </form>
       </Drawer>
-      <Drawer open={contactOpen} onClose={() => setContactOpen(false)} title="Novo contato">
+      <Drawer
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+        title="Novo contato"
+        size="md"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setContactOpen(false)} disabled={createContact.isPending}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="contact-create-form" loading={createContact.isPending} disabled={!selected}>
+              Salvar contato
+            </Button>
+          </>
+        }
+      >
         <form
-          className="space-y-3"
+          id="contact-create-form"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             createContact.mutate();
           }}
         >
-          <Label htmlFor="cn">Nome</Label>
-          <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="cn">Nome</Label>
+            <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
+          </div>
           <PhoneInput id="ph" label="Telefone" required value={phone} onChange={setPhone} />
-          <Label htmlFor="cg">Cargo</Label>
-          <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
-          <Label htmlFor="em">E-mail</Label>
-          <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <p className="text-xs text-[var(--muted)]">Este número entra no fluxo do condomínio na próxima mensagem.</p>
+          <div className="space-y-1.5">
+            <Label htmlFor="cg">Cargo</Label>
+            <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="em">E-mail</Label>
+            <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <p className="text-xs text-muted-foreground">Este número entra no fluxo do condomínio na próxima mensagem.</p>
           {createContact.isError ? <p className="text-sm text-[var(--danger)]">{(createContact.error as Error).message}</p> : null}
-          <Button type="submit" disabled={createContact.isPending || !selected}>
-            Salvar contato
-          </Button>
         </form>
       </Drawer>
     </div>

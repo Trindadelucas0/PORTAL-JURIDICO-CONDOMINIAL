@@ -40,6 +40,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { MoreSheet } from "@/components/layout/more-sheet";
+import { UserMenu } from "@/components/layout/user-menu";
 import { api } from "@/lib/client/api";
 import { livePollQuery } from "@/lib/client/live-poll";
 import { humanSessionStatus } from "@/components/conexoes/whatsapp-session-card";
@@ -166,9 +167,9 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
 
   function badgeClass(href: string) {
     if (href === "/atendimento") return "rounded-full bg-red-100 text-red-700";
-    if (href === "/triagem") return "rounded-full bg-secondary text-secondary-foreground";
-    if (href === "/nao-vinculados") return "rounded-full bg-secondary text-muted-foreground";
-    if (href === "/chamados") return "rounded-full bg-[var(--status-aberto-bg)] text-[var(--status-aberto)]";
+    if (href === "/triagem") return "rounded-full bg-sidebar-primary text-sidebar-primary-foreground";
+    if (href === "/nao-vinculados") return "rounded-full bg-sidebar-accent text-sidebar-foreground";
+    if (href === "/chamados") return "rounded-full bg-sidebar-primary text-sidebar-primary-foreground";
     return "";
   }
 
@@ -190,12 +191,12 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
         <SidebarHeader className="h-12 justify-center border-b border-sidebar-border px-3 py-0">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-md border-b-2 border-b-[var(--accent)] bg-primary text-primary-foreground">
+              <span className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
                 <Ticket className="size-3.5" />
               </span>
-              <span className="font-wordmark text-base font-semibold text-primary">Juricon</span>
+              <span className="font-wordmark text-base font-semibold text-sidebar-foreground">Juricon</span>
             </Link>
-            <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="rounded bg-sidebar-accent px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/75">
               v{appVersion}
             </span>
           </div>
@@ -206,7 +207,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
             if (items.length === 0) return null;
             return (
               <SidebarGroup key={group.group} className="py-1">
-                <SidebarGroupLabel className="px-2 text-[10px] tracking-[0.14em] uppercase">
+                <SidebarGroupLabel className="px-2 text-[10px] tracking-[0.14em] text-sidebar-foreground/60 uppercase">
                   {group.group}
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
@@ -221,14 +222,14 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                             render={<Link href={item.href} aria-current={active ? "page" : undefined} />}
                             isActive={active}
                             className={cn(
-                              "relative transition-[background-color,color] duration-[var(--motion-fast)]",
+                              "relative text-sidebar-foreground/85 transition-[background-color,color] duration-[var(--motion-fast)] hover:bg-sidebar-accent hover:text-sidebar-foreground",
                               active &&
-                                "bg-[color-mix(in_srgb,var(--brand)_8%,white)] font-medium text-[var(--brand)] data-active:bg-[color-mix(in_srgb,var(--brand)_8%,white)] data-active:text-[var(--brand)]",
+                                "bg-sidebar-accent font-medium text-sidebar-foreground data-active:bg-sidebar-accent data-active:text-sidebar-foreground",
                             )}
                           >
                             {active ? (
                               <span
-                                className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-[var(--brand)]"
+                                className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-sidebar-primary"
                                 aria-hidden
                               />
                             ) : null}
@@ -247,28 +248,28 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
             );
           })}
         </SidebarContent>
-        <SidebarFooter className="gap-2 border-t border-sidebar-border bg-card p-2.5">
+        <SidebarFooter className="gap-2 border-t border-sidebar-border p-2.5">
           {wa ? (
             admin ? (
               <Link
                 href="/conexoes"
-                className="flex items-center gap-2 rounded-md bg-secondary px-2 py-1 text-xs text-foreground"
+                className="flex items-center gap-2 rounded-md bg-sidebar-accent px-2 py-1 text-xs text-sidebar-foreground"
                 aria-label={`WhatsApp ${wa.label}`}
               >
                 <span
                   className={cn(
                     "size-2 shrink-0 rounded-full",
-                    wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
+                    wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-sidebar-foreground/50",
                   )}
                 />
                 <span className="truncate font-semibold">WA · {wa.label}</span>
               </Link>
             ) : (
-              <p className="flex items-center gap-2 rounded-md bg-secondary px-2 py-1 text-xs text-foreground" aria-label={`WhatsApp ${wa.label}`}>
+              <p className="flex items-center gap-2 rounded-md bg-sidebar-accent px-2 py-1 text-xs text-sidebar-foreground" aria-label={`WhatsApp ${wa.label}`}>
                 <span
                   className={cn(
                     "size-2 shrink-0 rounded-full",
-                    wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-muted-foreground",
+                    wa.tone === "ok" ? "bg-[var(--ok)]" : wa.tone === "warn" ? "bg-[var(--warn)]" : "bg-sidebar-foreground/50",
                   )}
                 />
                 <span className="truncate font-semibold">WA · {wa.label}</span>
@@ -278,13 +279,13 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
           <div className="flex items-center justify-between gap-2 pt-1">
             <div className="flex min-w-0 items-center gap-2">
               <Avatar className="size-7">
-                <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
+                <AvatarFallback className="bg-sidebar-primary text-[10px] text-sidebar-primary-foreground">
                   {initials(user.nome || user.email)}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-foreground">{user.nome || user.email}</p>
-                <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+                <p className="truncate text-xs font-semibold text-sidebar-foreground">{user.nome || user.email}</p>
+                <p className="truncate text-[11px] text-sidebar-foreground/65">{user.email}</p>
               </div>
             </div>
             <button
@@ -292,7 +293,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
               onClick={logout}
               title="Sair"
               aria-label="Sair"
-              className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-[var(--danger)]"
+              className="rounded p-1 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             >
               <LogOut className="size-[18px]" />
             </button>
@@ -342,11 +343,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                 <span className="hidden md:inline">Novo Chamado</span>
               </Link>
             ) : null}
-            <Avatar className="size-8">
-              <AvatarFallback className="bg-primary text-[11px] text-primary-foreground">
-                {initials(user.nome || user.email)}
-              </AvatarFallback>
-            </Avatar>
+            <UserMenu user={user} onLogout={logout} />
           </div>
         </header>
         <main

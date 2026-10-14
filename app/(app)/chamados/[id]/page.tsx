@@ -525,7 +525,7 @@ export default function ChamadoFichaPage() {
         onSave={(values) => patch.mutate(values)}
       />
 
-      <Drawer open={openDetalhes} onClose={() => setOpenDetalhes(false)} title="Detalhes">
+      <Drawer open={openDetalhes} onClose={() => setOpenDetalhes(false)} title="Detalhes do chamado" size="lg">
         {contextTicket ? <TicketContextContent ticket={contextTicket} /> : null}
       </Drawer>
     </div>

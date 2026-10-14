@@ -44,7 +44,7 @@ export const STATUS_TONE: Record<string, { bar: string; pill: string; header: st
   },
   aguardando: {
     bar: "bg-[var(--status-aguardando)]",
-    pill: "border border-[#e2e8f0] bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
+    pill: "border border-border bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
     header: "bg-[var(--status-aguardando-bg)] text-[var(--status-aguardando)]",
     count: "bg-[var(--status-aguardando)] text-white",
     column: "bg-[color-mix(in_srgb,var(--status-aguardando)_8%,white)]",
@@ -83,11 +83,11 @@ export const PRIORITY_TONE: Record<string, { bar: string; pill: string }> = {
   },
   media: {
     bar: "bg-[var(--priority-media)]",
-    pill: "border border-slate-200 bg-slate-100 text-[var(--priority-media)]",
+    pill: "border border-border bg-secondary text-[var(--priority-media)]",
   },
   baixa: {
     bar: "bg-[var(--priority-baixa)]",
-    pill: "border border-slate-200 bg-white text-[var(--priority-baixa)]",
+    pill: "border border-border bg-card text-[var(--priority-baixa)]",
   },
 };
 

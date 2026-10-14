@@ -581,7 +581,7 @@ export default function DocumentosPage() {
         />
       </Dialog>
 
-      <Drawer open={Boolean(preview) && isMobile} onClose={() => setPreview(null)} title={preview?.title || "Documento"}>
+      <Drawer open={Boolean(preview) && isMobile} onClose={() => setPreview(null)} title={preview?.title || "Documento"} size="lg">
         {preview ? (
           <div className="space-y-4 text-sm">
             {preview.mime.startsWith("image/") ? (

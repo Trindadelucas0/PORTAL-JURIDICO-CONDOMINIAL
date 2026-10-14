@@ -404,22 +404,53 @@ export default function CondominioFichaPage() {
           ) : null}
         </div>
       )}
-      <Drawer open={contactOpen} onClose={() => setContactOpen(false)} title={editingContact ? "Editar contato" : "Novo contato"}>
+      <Drawer
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+        title={editingContact ? "Editar contato" : "Novo contato"}
+        size="lg"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setContactOpen(false)} disabled={saveContact.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="contact-save-form"
+              loading={saveContact.isPending}
+              disabled={condoIds.length > 0 && !primaryCondoId}
+            >
+              Salvar contato
+            </Button>
+          </>
+        }
+      >
         <form
-          className="space-y-3"
+          id="contact-save-form"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (condoIds.length > 0 && !primaryCondoId) return;
             saveContact.mutate();
           }}
         >
-          <Label htmlFor="cn">Nome</Label>
-          <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
-          <PhoneInput id="ph" label="Telefone" required value={phone} onChange={setPhone} />
-          <Label htmlFor="cg">Cargo</Label>
-          <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
-          <Label htmlFor="em">E-mail</Label>
-          <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="cn">Nome</Label>
+              <Input id="cn" required value={cNome} onChange={(e) => setCNome(e.target.value)} />
+            </div>
+            <div className="sm:col-span-2">
+              <PhoneInput id="ph" label="Telefone" required value={phone} onChange={setPhone} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cg">Cargo</Label>
+              <Input id="cg" value={cargo} onChange={(e) => setCargo(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="em">E-mail</Label>
+              <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+          </div>
           <ContactCondominiumPicker
             options={allCondos.data ?? []}
             loading={allCondos.isLoading}
@@ -432,12 +463,6 @@ export default function CondominioFichaPage() {
           />
           {saveContact.isError ? <p className="text-sm text-[var(--danger)]">{(saveContact.error as Error).message}</p> : null}
           {editingContact ? <AiContactMemory contactId={editingContact.id} /> : null}
-          <Button
-            type="submit"
-            disabled={saveContact.isPending || (condoIds.length > 0 && !primaryCondoId)}
-          >
-            Salvar contato
-          </Button>
         </form>
       </Drawer>
     </div>

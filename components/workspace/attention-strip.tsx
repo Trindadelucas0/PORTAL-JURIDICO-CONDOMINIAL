@@ -16,14 +16,14 @@ const CARD: Record<AttentionTone, string> = {
   danger: "border-l-[var(--danger)] hover:border-red-200",
   warn: "border-l-[var(--warn)] hover:border-amber-200",
   info: "border-l-[var(--status-aberto)] hover:border-blue-200",
-  neutral: "border-l-[var(--status-aguardando)] hover:border-slate-300",
+  neutral: "border-l-[var(--status-aguardando)] hover:border-border-strong",
 };
 
 const BUBBLE: Record<AttentionTone, string> = {
   danger: "border-red-200 bg-red-50 text-[var(--danger)]",
   warn: "border-amber-200 bg-amber-50 text-amber-700",
   info: "border-blue-200 bg-blue-50 text-blue-700",
-  neutral: "border-slate-200 bg-slate-100 text-slate-600",
+  neutral: "border-slate-200 bg-secondary text-secondary-foreground",
 };
 
 export function AttentionStrip({ items }: { items: AttentionItem[] }) {

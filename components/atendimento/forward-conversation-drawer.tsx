@@ -49,14 +49,14 @@ export function ForwardConversationDrawer({
     <Dialog open={open} onClose={onClose} title="Encaminhar conversa">
       <form
         id="conversation-forward-form"
-        className="space-y-3"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (!assignedToId) return;
           onSubmit({ assignedToId, note });
         }}
       >
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="forward-assignee">Para</Label>
           <Select
             id="forward-assignee"
@@ -74,7 +74,7 @@ export function ForwardConversationDrawer({
           </Select>
           {emptyTeam ? <p className="mt-1 text-sm text-muted-foreground">Nenhum outro usuário ativo</p> : null}
         </div>
-        <div>
+        <div className="space-y-1.5">
           <Label htmlFor="forward-note">Observação</Label>
           <Textarea
             id="forward-note"
@@ -85,12 +85,12 @@ export function ForwardConversationDrawer({
           />
         </div>
         {errorMessage ? <p className="text-sm text-[var(--danger)]">{errorMessage}</p> : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+                <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={pending || teamLoading || emptyTeam || !assignedToId}>
-            {pending ? "Encaminhando…" : "Encaminhar"}
+          <Button type="submit" loading={pending} disabled={teamLoading || emptyTeam || !assignedToId}>
+            Encaminhar
           </Button>
         </div>
       </form>

@@ -461,7 +461,7 @@ export default function DocumentosSistemaPage() {
         />
       </Dialog>
 
-      <Drawer open={Boolean(preview) && isMobile} onClose={() => setPreview(null)} title={preview?.title || "Documento"}>
+      <Drawer open={Boolean(preview) && isMobile} onClose={() => setPreview(null)} title={preview?.title || "Documento"} size="lg">
         {preview ? <Ficha doc={preview} /> : null}
       </Drawer>
     </div>

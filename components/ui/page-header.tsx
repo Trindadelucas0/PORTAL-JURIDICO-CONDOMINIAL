@@ -21,18 +21,18 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex flex-wrap items-start justify-between gap-3 border-b border-border/80",
-        dense ? "mb-3 pb-3" : "mb-4 pb-4",
+        "flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b border-border/80",
+        dense ? "mb-4 pb-3" : "mb-6 pb-5",
         className,
       )}
     >
       <div className="min-w-0">
         {back ? <div className="mb-1.5">{back}</div> : null}
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
-        {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl text-foreground">{title}</h1>
+        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         {meta ? <div className="mt-0.5 text-sm text-muted-foreground">{meta}</div> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
     </header>
   );
 }

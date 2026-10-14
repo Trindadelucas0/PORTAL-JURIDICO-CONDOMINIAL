@@ -202,16 +202,21 @@ function NaoVinculadosInner() {
         open={enrollOpen}
         onClose={() => setEnrollOpen(false)}
         title="Vincular ao fluxo"
-        className="bg-[var(--page)] sm:max-w-[28rem]"
+        size="md"
         footer={
-          <Button
-            type="submit"
-            form="enroll-form"
-            className="w-full"
-            disabled={enroll.isPending || !nome.trim() || !condominiumId}
-          >
-            Vincular ao fluxo
-          </Button>
+          <>
+            <Button type="button" variant="outline" onClick={() => setEnrollOpen(false)} disabled={enroll.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="enroll-form"
+              loading={enroll.isPending}
+              disabled={!nome.trim() || !condominiumId}
+            >
+              Vincular ao fluxo
+            </Button>
+          </>
         }
       >
         <form

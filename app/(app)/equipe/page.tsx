@@ -106,9 +106,7 @@ export default function EquipePage() {
         title="Equipe"
         description={`${q.data?.data?.length ?? 0} pessoas · chamados abertos são os atribuídos e não resolvidos`}
         action={
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            Novo usuário
-          </Button>
+          <Button type="button" onClick={() => setCreateOpen(true)}>Novo usuário</Button>
         }
       />
       <Toolbar>
@@ -169,30 +167,42 @@ export default function EquipePage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Novo usuário"
-        fitContent
+        description="A senha provisória será exibida uma única vez."
+        size="md"
         footer={
-          <Button type="submit" disabled={create.isPending || !email} form="team-create-form">
-            Criar
-          </Button>
+          <>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={create.isPending}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="team-create-form" loading={create.isPending} disabled={!email}>
+              Criar usuário
+            </Button>
+          </>
         }
       >
         <form
           id="team-create-form"
-          className="space-y-3"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             create.mutate();
           }}
         >
-          <Label htmlFor="nome">Nome</Label>
-          <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} />
-          <Label htmlFor="email">E-mail</Label>
-          <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Label htmlFor="role">Perfil</Label>
-          <Select id="role" value={role} onChange={(e) => setRole(e.target.value as "admin" | "funcionario")}>
-            <option value="funcionario">Funcionário</option>
-            <option value="admin">Administrador</option>
-          </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="nome">Nome</Label>
+            <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">E-mail</Label>
+            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="role">Perfil</Label>
+            <Select id="role" value={role} onChange={(e) => setRole(e.target.value as "admin" | "funcionario")}>
+              <option value="funcionario">Funcionário</option>
+              <option value="admin">Administrador</option>
+            </Select>
+          </div>
           {role === "funcionario" ? (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={apenasRascunho} onChange={(e) => setApenasRascunho(e.target.checked)} />
@@ -203,31 +213,46 @@ export default function EquipePage() {
         </form>
       </Drawer>
 
-      <Drawer
+            <Drawer
         open={Boolean(editing)}
         onClose={() => setEditing(null)}
-        title="Usuário"
-        fitContent
+        title="Editar usuário"
+        description={editing ? editing.email : undefined}
+        size="md"
         footer={
           editing ? (
-            <div className="flex flex-col gap-2">
-              <Button type="submit" disabled={patch.isPending} form="team-edit-form">
-                {patch.isPending ? "Salvando…" : "Salvar"}
-              </Button>
-              <Button type="button" variant="secondary" disabled={patch.isPending} onClick={() => patch.mutate({ id: editing.id, resetPassword: true })}>
-                Redefinir senha
-              </Button>
-              <Button type="button" variant="destructive" onClick={() => setConfirmOff(editing)}>
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                className="sm:mr-auto"
+                disabled={patch.isPending}
+                onClick={() => setConfirmOff(editing)}
+              >
                 {editing.ativo ? "Desativar" : "Reativar"}
               </Button>
-            </div>
+              <Button type="button" variant="outline" onClick={() => setEditing(null)} disabled={patch.isPending}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={patch.isPending}
+                onClick={() => patch.mutate({ id: editing.id, resetPassword: true })}
+              >
+                Redefinir senha
+              </Button>
+              <Button type="submit" form="team-edit-form" loading={patch.isPending}>
+                Salvar
+              </Button>
+            </>
           ) : null
         }
       >
         {editing ? (
           <form
             id="team-edit-form"
-            className="space-y-3"
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
               patch.mutate({
@@ -240,15 +265,21 @@ export default function EquipePage() {
               });
             }}
           >
-            <Label htmlFor="en">Nome</Label>
-            <Input id="en" value={editing.nome} onChange={(e) => setEditing({ ...editing, nome: e.target.value })} />
-            <Label htmlFor="ee">E-mail</Label>
-            <Input id="ee" type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
-            <Label htmlFor="er">Perfil</Label>
-            <Select id="er" value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}>
-              <option value="funcionario">Funcionário</option>
-              <option value="admin">Administrador</option>
-            </Select>
+            <div className="space-y-1.5">
+              <Label htmlFor="en">Nome</Label>
+              <Input id="en" value={editing.nome} onChange={(e) => setEditing({ ...editing, nome: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ee">E-mail</Label>
+              <Input id="ee" type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="er">Perfil</Label>
+              <Select id="er" value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}>
+                <option value="funcionario">Funcionário</option>
+                <option value="admin">Administrador</option>
+              </Select>
+            </div>
             {editing.role === "funcionario" ? (
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -263,7 +294,7 @@ export default function EquipePage() {
         ) : null}
       </Drawer>
 
-      <Dialog open={Boolean(passwordOnce)} onClose={() => setPasswordOnce(null)} title="Senha provisória">
+<Dialog open={Boolean(passwordOnce)} onClose={() => setPasswordOnce(null)} title="Senha provisória">
         <p className="text-sm text-muted-foreground">Copie agora — não será mostrada de novo.</p>
         <p className="mt-3 break-all font-mono text-sm">{passwordOnce}</p>
         <Button className="mt-4" type="button" variant="secondary" onClick={() => setPasswordOnce(null)}>

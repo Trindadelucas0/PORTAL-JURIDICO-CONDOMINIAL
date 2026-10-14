@@ -57,7 +57,7 @@ export function ActivityRow({
       <Link
         href={href}
         className={cn(
-          "flex items-center gap-3 px-3 py-3 text-xs transition-colors duration-[var(--motion-fast)] hover:bg-slate-50",
+          "flex items-center gap-3 px-3 py-3 text-xs transition-colors duration-[var(--motion-fast)] hover:bg-muted",
           className,
         )}
       >
