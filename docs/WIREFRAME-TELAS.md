@@ -1,5 +1,33 @@
 # Juricon — Wireframe de telas (auditoria UX/UI)
 
+> **Revisão visual de 22/10/2026:** o catálogo abaixo registra o desenho anterior (versão 0.9.8). Para o acabamento visual atual, valem as regras deste adendo; os fluxos e rótulos operacionais devem ser conferidos em `DOCUMENTACAO-SISTEMA.md`.
+
+## Adendo — acabamento visual atual
+
+- **Identidade:** cada tema conserva suas quatro cores-base. Fundo claro, superfícies brancas e cor principal reservada para navegação ativa, ação principal e foco; cores de alerta e situação conservam seu significado.
+- **Bordas e elevação:** divisores e campos têm contraste maior. Cartão informativo permanece estável; só cartões navegáveis e controles acionáveis recebem mudança de borda, fundo ou sombra no hover.
+- **Botões e filtros:** ação principal tem preenchimento sólido; ação secundária tem superfície clara; ação de contorno mostra limite nítido. Filtro selecionado permanece preenchido e anuncia `aria-pressed`. Foco por teclado fica visível.
+- **Tabela e área de trabalho:** cabeçalho de tabela se separa das linhas; linha sob o cursor recebe realce suave. O item selecionado da navegação continua visível depois que o cursor sai.
+- **Login:** marca central, formulário em superfície elevada e botão **Entrar** em largura total. Erros permanecem junto ao formulário.
+- **Movimento e toque:** animações respeitam a preferência por movimento reduzido. Hover apenas reforça ações; não revela função indispensável no celular.
+
+```text
+DESKTOP — visão geral das telas operacionais
+┌ Juricon / navegação ┬ Título e ação principal ─────────────────────┐
+│ seção ativa marcada │ Busca, filtros e estados selecionados        │
+│ contagens nas filas  ├ Lista/quadro ───────┬ Detalhe ou conversa ──┤
+│                     │ linha acionável     │ ações e contexto      │
+└─────────────────────┴────────────────────┴───────────────────────┘
+
+CELULAR — uma área de trabalho por vez
+┌ Título / ação principal ┐
+│ Busca e filtros         │
+│ Lista → item → detalhe  │
+└ Início · Inbox · área · Mais ┘
+```
+
+O adendo cobre o acabamento compartilhado de Login, Visão, Atendimento, Triagem, Não vinculados, Chamados, Documentos, Condomínios, Equipe, Conexões e Mensagens automáticas. A distribuição específica de cada tela continua descrita nas fichas abaixo.
+
 | Item | Valor |
 |------|--------|
 | Versão do sistema | 0.9.8 — Card fila Não vinculados |
@@ -11,7 +39,7 @@
 | Onde olhar shell | [`components/layout/app-shell.tsx`](../components/layout/app-shell.tsx) |
 | Onde olhar botões | [`components/ui/button.tsx`](../components/ui/button.tsx) |
 
-**Como usar este arquivo:** auditar ícones, margens, divisores, hierarquia e CTAs. Cada ficha tem checklist em branco. Correções visuais são outra entrega.
+**Como usar este arquivo:** auditar ícones, margens, divisores, hierarquia e CTAs. Cada ficha descreve a composição da época; o adendo acima registra o acabamento compartilhado implementado em 22/10/2026.
 
 **Fora do escopo:** protótipo da pasta pai (`condominio-advogada/app`), questionário `perguntas/`, rota `/sindico`, rota `/ia`.
 

@@ -24,6 +24,9 @@ import {
   sessionCountsForTurn,
   type DecidirInput,
 } from "@/lib/ai/intake-cycle";
+import type { PrismaClient } from "@prisma/client";
+import { isAiWhatsappSendEnabled } from "@/lib/ai/flags";
+import { runIntakeTimeoutJob } from "@/lib/ai/intake-runtime";
 import { modelOutputSchema } from "@/lib/ai/output";
 import { buildModelPackage } from "@/lib/ai/package";
 import { INBOUND_DEBOUNCE_MS, inboundDebounceMs } from "@/lib/ai/queue";
@@ -220,7 +223,7 @@ describe("coleta decidir", () => {
 });
 
 describe("chamado da segunda UNCLEAR", () => {
-  it("promove uma vez, sobe prioridade baixa ou média e não duplica alta ou urgente", () => {
+  it("nunca cria chamado: sobe prioridade do chamado aberto ou da triagem, e não duplica alta ou urgente", () => {
     expect(
       decidirChamadoUnclear({
         hasAdmin: true,
@@ -228,7 +231,7 @@ describe("chamado da segunda UNCLEAR", () => {
         contactHasCondominium: true,
         openTicket: null,
       }),
-    ).toEqual({ sendPhrase: true, action: "promote" });
+    ).toEqual({ sendPhrase: true, action: "raise_triage" });
 
     expect(
       decidirChamadoUnclear({
@@ -431,12 +434,12 @@ describe("coleta depois do chamado e cumprimento", () => {
     expect(imagemNoMeio({ temImagem: true, houveMensagemAntes: true })).toBe(true);
     expect(imagemNoMeio({ temImagem: true, houveMensagemAntes: false })).toBe(false);
     expect(imagemNoMeio({ temImagem: false, houveMensagemAntes: true })).toBe(false);
-    expect(IMAGE_HANDOFF_TEXT).toBe("Vou repassar o seu chamado para o responsável e dar prioridade.");
+    expect(IMAGE_HANDOFF_TEXT).toBe("Recebi a sua foto e vou repassar para a equipe dar prioridade.");
     expect(prioridadeAposImagem("media")).toBe("raise");
     expect(prioridadeAposImagem("baixa")).toBe("raise");
     expect(prioridadeAposImagem("urgente")).toBe("keep");
     expect(prioridadeAposImagem("alta")).toBe("keep");
-    expect(prioridadeAposImagem(null)).toBe("promote");
+    expect(prioridadeAposImagem(null)).toBe("raise_triage");
   });
 });
 
@@ -448,5 +451,68 @@ describe("chunks de outro condomínio", () => {
       { id: "sys", condominiumId: null, corpus: "system", active: true, content: "regra" },
     ];
     expect(chunksVisibleToConversation(mixed, "A").map((row) => row.id)).toEqual(["a", "sys"]);
+  });
+});
+
+describe("coleta não envia sem aprovação da admin (contrato v14, cláusula 16.1)", () => {
+  function fakeDb(created: Record<string, unknown>[], audited: Record<string, unknown>[]) {
+    return {
+      aiIntakeSession: {
+        findUnique: async () => ({
+          id: "s1",
+          conversationId: "conv1",
+          status: "waiting_client",
+          questionCount: 1,
+          nudgeSent: false,
+          unclearCount: 0,
+          startedAt: new Date("2026-10-20T12:00:00Z"),
+          lastQuestionMessageId: "m0",
+          lastQuestionAt: new Date("2026-10-20T12:00:00Z"),
+          contextJson: null,
+        }),
+        updateMany: async () => ({ count: 1 }),
+        update: async () => ({}),
+      },
+      message: {
+        findFirst: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          created.push(data);
+          return { id: "m1" };
+        },
+        findUnique: async () => ({ sendStatus: "draft" }),
+      },
+      aiAuditEvent: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          audited.push(data);
+          return {};
+        },
+      },
+      aiJob: { updateMany: async () => ({ count: 0 }) },
+    } as unknown as PrismaClient;
+  }
+
+  it("o lembrete da coleta fica como rascunho público, não vai ao WhatsApp", async () => {
+    const created: Record<string, unknown>[] = [];
+    const audited: Record<string, unknown>[] = [];
+    await runIntakeTimeoutJob(fakeDb(created, audited), {
+      id: "job1",
+      payload: { sessionId: "s1", questionCount: 1 },
+      conversationId: "conv1",
+    });
+
+    expect(created).toHaveLength(1);
+    expect(created[0].body).toBe(INTAKE_NUDGE_TEXT);
+    expect(created[0].visibility).toBe("publica");
+    expect(created[0].automated).toBe(true);
+    // "draft" e nao "pending": quem despacha e approvalService.approve, que exige isAdmin.
+    expect(created[0].sendStatus).toBe("draft");
+    expect(audited.map((row) => row.action)).toContain("AI_INTAKE_NUDGE");
+  });
+
+  it("o interruptor de autoenvio continua desligado, e a env não o liga", () => {
+    process.env.AI_WHATSAPP_SEND_ENABLED = "true";
+    expect(isAiWhatsappSendEnabled()).toBe(false);
+    delete process.env.AI_WHATSAPP_SEND_ENABLED;
+    expect(isAiWhatsappSendEnabled()).toBe(false);
   });
 });

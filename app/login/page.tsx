@@ -52,9 +52,10 @@ function LoginForm() {
   const describedBy = useMemo(() => (error ? errorId : undefined), [error]);
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-[var(--radius)] border border-border bg-card px-6 py-8 shadow-[var(--shadow-sm)]">
+    <div className="grid min-h-dvh place-items-center bg-background px-4 py-8">
+      <div className="w-full max-w-sm rounded-xl border border-border-strong/70 bg-card px-6 py-8 shadow-[var(--shadow-md)]">
         <header className="text-center">
+          <span className="mx-auto mb-4 flex size-10 items-center justify-center rounded-lg bg-primary font-wordmark text-xl text-primary-foreground" aria-hidden>J</span>
           <p className="font-wordmark text-3xl text-foreground">Juricon</p>
           <h1 className="mt-2 text-sm font-medium text-foreground">Portal jurídico interno</h1>
           <p className="mt-1 text-xs text-muted-foreground">Acesso restrito ao escritório</p>

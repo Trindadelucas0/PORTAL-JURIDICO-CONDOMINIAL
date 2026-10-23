@@ -103,3 +103,7 @@ Só o administrador vê o menu **Mensagens automáticas**, depois de **Conexões
 10. No chat, a resposta aparece como **Sistema · Automático**. Se falhar, fica **Falha no envio** e dá para **Reenviar**; o sistema não tenta sozinho outra vez.
 11. **Execuções recentes** lista Hoje, 7 dias ou 30 dias, com status Enviada, Falhou ou Não enviada.
 
+## Acabamento visual do portal
+
+Os menus e ações continuam nos mesmos lugares. O item aberto no menu e os filtros selecionados permanecem destacados; passar o cursor por uma linha ou cartão com ação oferece um realce discreto. Pelo teclado, use Tab para percorrer controles e Enter ou Espaço para ativá-los; o foco aparece com contorno. No celular, toque no item para abrir seu detalhe, sem depender de efeitos de hover.
+

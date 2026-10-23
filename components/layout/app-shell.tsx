@@ -222,7 +222,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                             render={<Link href={item.href} aria-current={active ? "page" : undefined} />}
                             isActive={active}
                             className={cn(
-                              "relative text-sidebar-foreground/85 transition-[background-color,color] duration-[var(--motion-fast)] hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                              "relative rounded-md text-sidebar-foreground/85 transition-[background-color,color] duration-[var(--motion-fast)] hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                               active &&
                                 "bg-sidebar-accent font-medium text-sidebar-foreground data-active:bg-sidebar-accent data-active:text-sidebar-foreground",
                             )}
@@ -253,7 +253,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
             admin ? (
               <Link
                 href="/conexoes"
-                className="flex items-center gap-2 rounded-md bg-sidebar-accent px-2 py-1 text-xs text-sidebar-foreground"
+                className="flex items-center gap-2 rounded-md bg-sidebar-accent px-2 py-1 text-xs text-sidebar-foreground transition-colors hover:bg-sidebar-accent/80"
                 aria-label={`WhatsApp ${wa.label}`}
               >
                 <span
@@ -293,7 +293,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
               onClick={logout}
               title="Sair"
               aria-label="Sair"
-              className="rounded p-1 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              className="flex size-8 items-center justify-center rounded-md text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
             >
               <LogOut className="size-[18px]" />
             </button>
@@ -311,7 +311,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
               admin ? (
                 <Link
                   href="/conexoes"
-                  className="hidden items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground sm:inline-flex"
+                  className="hidden items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold text-foreground transition-colors hover:border-border-strong hover:bg-muted sm:inline-flex"
                   aria-label={`WhatsApp ${wa.label}`}
                 >
                   <span

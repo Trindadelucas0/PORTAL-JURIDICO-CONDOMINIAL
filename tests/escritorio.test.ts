@@ -89,7 +89,7 @@ describe("escritorio operacional", () => {
     expect(afterInbound.ticketCreated).toBe(false);
   });
 
-  it("inbound after resolved ticket opens a new ticket", async () => {
+  it("inbound after resolved ticket returns to triage, never opens a ticket", async () => {
     const suffix = `${Date.now()}-resolved`;
     const admin = await db.user.upsert({
       where: { email: `admin-resolved-${suffix}@juricon.local` },
@@ -147,30 +147,27 @@ describe("escritorio operacional", () => {
       body: "Assunto novo",
       connectionType: "dev_mock",
     });
-    expect(again.ticketCreated).toBe(true);
-    expect(await db.ticket.count()).toBe(countBefore + 1);
+    expect(again.ticketCreated).toBe(false);
+    expect(await db.ticket.count()).toBe(countBefore);
 
     const newMsg = await db.message.findFirstOrThrow({ where: { id: again.messageId } });
-    expect(newMsg.ticketId).toBeTruthy();
-    expect(newMsg.ticketId).not.toBe(ticket.id);
-
-    const created = await db.ticket.findFirstOrThrow({ where: { id: newMsg.ticketId! } });
-    expect(created.protocol).not.toBe(ticket.protocol);
-    expect(created.status).toBe("aberto");
-    expect(created.category).toBe("outro");
-    expect(created.priority).toBe("media");
-    expect(created.assignedToId).toBeNull();
-    expect(created.title).toBe("Maria Resolvida — Outro");
-    expect(created.origin).toBe("whatsapp");
-    expect(created.conversationId).toBe(ingest.conversationId);
+    expect(newMsg.ticketId).toBeNull();
 
     const old = await db.ticket.findFirstOrThrow({ where: { id: ticket.id } });
     expect(old.status).toBe("resolvido");
     expect(whileOpenMsg.ticketId).toBe(old.id);
 
+    // Volta para a fila da triagem, como atendimento novo.
     const triage = await db.triageItem.findFirstOrThrow({ where: { conversationId: ingest.conversationId } });
-    expect(triage.status).toBe("promovido");
-    expect(triage.ticketId).toBe(created.id);
+    expect(triage.id).toBe(ingest.triageId);
+    expect(triage.status).toBe("aberto");
+    expect(triage.ticketId).toBeNull();
+
+    // Só a admin cria o chamado novo, e a mensagem nova passa a fazer parte dele.
+    const novo = await tickets.promoteFromTriage(admin, triage.id, { category: "outro", priority: "media" });
+    expect(novo.id).not.toBe(ticket.id);
+    const relinked = await db.message.findFirstOrThrow({ where: { id: again.messageId } });
+    expect(relinked.ticketId).toBe(novo.id);
   });
 
 

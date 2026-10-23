@@ -5,11 +5,11 @@ export const MEDIA_WAIT_ATTEMPT_CAP = 6;
 export const MEDIA_WAIT_MS = 5000;
 export const INTAKE_WAIT_MS_DEFAULT = 180_000;
 
-export const IMAGE_HANDOFF_TEXT = "Vou repassar o seu chamado para o responsável e dar prioridade.";
+export const IMAGE_HANDOFF_TEXT = "Recebi a sua foto e vou repassar para a equipe dar prioridade.";
 export const SAUDACAO_ABERTURA = "Pode me contar o que aconteceu?";
 export const UNCLEAR_REPEAT_TEXT = "Não entendi. Pode repetir?";
 export const UNCLEAR_ESCALATE_TEXT =
-  "Não consegui entender o pedido. Abri um chamado e dei prioridade para a equipe te responder.";
+  "Não consegui entender o pedido. Vou repassar para a equipe dar prioridade e te responder.";
 export const INTAKE_NUDGE_TEXT =
   "Quando puder, responda a pergunta anterior para eu encaminhar seu atendimento.";
 
@@ -78,7 +78,8 @@ export type DecidirInput = {
   humanPublicAfterBatchStart: boolean;
 };
 
-export type UnclearTicketAction = "promote" | "raise" | "keep" | "none";
+/** raise_triage: sem chamado aberto, só sobe a prioridade da triagem. Nunca cria chamado. */
+export type UnclearTicketAction = "raise_triage" | "raise" | "keep" | "none";
 
 export const INTAKE_TRIAGE_CATEGORIES = ["cobranca", "assembleia", "obras", "vizinhanca", "administrativo", "outro"] as const;
 export const INTAKE_TRIAGE_PRIORITIES = ["baixa", "media", "alta", "urgente"] as const;
@@ -312,11 +313,14 @@ export function imagemNoMeio(input: { temImagem: boolean; houveMensagemAntes: bo
   return input.temImagem && input.houveMensagemAntes;
 }
 
-/** Foto no meio: sobe baixa/média para alta. Alta e urgente permanecem. Sem chamado, promove. */
+/**
+ * Foto no meio: sobe baixa/média para alta. Alta e urgente permanecem.
+ * Sem chamado, raise_triage: sobe a prioridade da triagem, sem criar chamado.
+ */
 export function prioridadeAposImagem(
   priority: "baixa" | "media" | "alta" | "urgente" | null,
-): "raise" | "keep" | "promote" {
-  if (!priority) return "promote";
+): "raise" | "keep" | "raise_triage" {
+  if (!priority) return "raise_triage";
   if (priority === "baixa" || priority === "media") return "raise";
   return "keep";
 }
@@ -384,8 +388,8 @@ export function decidirTimeout(input: {
 }
 
 /**
- * Segunda UNCLEAR. Não cria chamado se já existe um em aberto.
- * Sem admin, a frase não sai.
+ * Segunda UNCLEAR. Nunca cria chamado: com chamado aberto sobe a prioridade dele;
+ * sem chamado, sobe a prioridade da triagem. Sem admin, a frase não sai.
  */
 export function decidirChamadoUnclear(input: {
   hasAdmin: boolean;
@@ -401,7 +405,7 @@ export function decidirChamadoUnclear(input: {
     return { sendPhrase: true, action: "keep" };
   }
   if (input.triageOpen && input.contactHasCondominium) {
-    return { sendPhrase: true, action: "promote" };
+    return { sendPhrase: true, action: "raise_triage" };
   }
   return { sendPhrase: false, action: "none" };
 }

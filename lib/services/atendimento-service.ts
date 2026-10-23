@@ -28,7 +28,6 @@ import { messageWindow } from "@/lib/api/pagination";
 import { enqueueInboundJob, enqueueMediaDownloadJob } from "@/lib/ai/enqueue";
 import { SELECTED_MESSAGE_LIMIT } from "@/lib/ai/package";
 import { processInbound } from "@/lib/services/automation-service";
-import { createTicketService } from "@/lib/services/ticket-service";
 
 export type InboundPayload = {
   waMessageId: string;
@@ -207,7 +206,6 @@ async function withLiveBaileysStatus<T extends { type: string; status: string } 
 }
 
 export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
-  const tickets = createTicketService(db);
   return {
     async ingestInbound(payload: InboundPayload): Promise<IngestResult> {
       const existing = await db.message.findUnique({
@@ -321,28 +319,14 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         });
       }
 
-      let ticketCreated = false;
-      let linkedTicketId: string | null = null;
+      // Mensagem bruta nunca cria chamado (Anexo I). Sem chamado aberto, ela fica sem chamado
+      // e a triagem cuida dela.
       const openTicket = await db.ticket.findFirst({
         where: { conversationId: conversation.id, status: { not: "resolvido" } },
         orderBy: { updatedAt: "desc" },
         select: { id: true },
       });
-      if (openTicket) {
-        linkedTicketId = openTicket.id;
-      } else if (isInOperationalFlow(contact)) {
-        const resolved = await db.ticket.findFirst({
-          where: { conversationId: conversation.id, status: "resolvido" },
-          select: { id: true },
-        });
-        if (resolved) {
-          const opened = await tickets.openAfterResolved(conversation.id);
-          if (opened) {
-            linkedTicketId = opened.id;
-            ticketCreated = opened.created;
-          }
-        }
-      }
+      const linkedTicketId: string | null = openTicket?.id ?? null;
 
       let message;
       try {
@@ -396,6 +380,13 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
             where: { id: triage.id },
             data: { status: "aberto" },
           });
+        } else if (triage.status === "promovido" && !openTicket) {
+          // Cliente voltou depois de um chamado resolvido: volta para a fila da triagem.
+          // O chamado antigo fica resolvido, só como histórico.
+          triage = await db.triageItem.update({
+            where: { id: triage.id },
+            data: { status: "aberto", ticketId: null },
+          });
         }
         triageId = triage.id;
       }
@@ -448,7 +439,7 @@ export function createAtendimentoService(db: PrismaClient = defaultPrisma) {
         messageId: message.id,
         unidentified: conversation.unidentified,
         triageId,
-        ticketCreated,
+        ticketCreated: false,
       };
     },
 

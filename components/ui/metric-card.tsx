@@ -22,7 +22,7 @@ export function MetricCard({
   chipClassName?: string;
 }) {
   const className =
-    "group flex min-h-[132px] flex-col justify-between rounded-[var(--radius)] border border-border bg-card p-4 text-left transition-colors duration-[var(--motion-fast)] hover:border-[var(--border-strong)]";
+    "group flex min-h-[132px] flex-col justify-between rounded-[var(--radius)] border border-border bg-card p-4 text-left shadow-[var(--shadow-sm)] transition-[border-color,background-color,box-shadow] duration-[var(--motion-fast)]";
   const body = (
     <>
       <span className="flex items-start justify-between gap-2">
@@ -45,13 +45,13 @@ export function MetricCard({
   );
   if (!href) {
     return (
-      <div className={cn(className, "hover:border-border")} aria-label={`${label}: ${value}`}>
+      <div className={className} aria-label={`${label}: ${value}`}>
         {body}
       </div>
     );
   }
   return (
-    <Link href={href} className={className}>
+    <Link href={href} className={cn(className, "hover:border-primary/35 hover:bg-secondary/30 hover:shadow-[var(--shadow-md)] focus-visible:border-primary")}>
       {body}
     </Link>
   );

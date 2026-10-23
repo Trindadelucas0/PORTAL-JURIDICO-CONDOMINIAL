@@ -15,11 +15,12 @@ export function FilterChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={Boolean(active)}
       className={cn(
-        "rounded-full border px-3 py-1.5 text-sm transition-colors",
+        "min-h-9 rounded-full border px-3 py-1.5 text-sm font-medium transition-[background-color,border-color,color] duration-[var(--motion-fast)]",
         active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-card text-foreground hover:bg-muted",
+          ? "border-primary bg-primary text-primary-foreground shadow-[var(--shadow-sm)]"
+          : "border-border-strong bg-card text-foreground hover:border-primary/40 hover:bg-secondary",
       )}
     >
       {children}

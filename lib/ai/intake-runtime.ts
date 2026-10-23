@@ -27,6 +27,7 @@ import {
   type IntakePlan,
 } from "@/lib/ai/intake-cycle";
 import { succeedIntakeTimeouts, writeIntakeAudit } from "@/lib/ai/intake-close";
+import { isAiWhatsappSendEnabled } from "@/lib/ai/flags";
 import { avaliarRespostaPublica } from "@/lib/ai/public-reply-guard";
 import { deliverStoredPublicMessage } from "@/lib/services/whatsapp-dispatch";
 import { businessMinutes } from "@/lib/time/business-clock";
@@ -34,6 +35,9 @@ import { localDiskStorage } from "@/lib/storage/local-disk";
 import { ticketService } from "@/lib/services/ticket-service";
 
 const OPEN = ["collecting", "waiting_client", "processing"] as const;
+
+/** Desfecho de uma frase da coleta: enviada, guardada como rascunho para aprovacao, ou falha. */
+type AutomatedOutcome = "sent" | "draft" | "failed";
 
 export type PreparedIntake = {
   plan: IntakePlan;
@@ -101,10 +105,17 @@ async function openOrCreate(db: PrismaClient, conversationId: string): Promise<S
   }
 }
 
+/**
+ * Contrato v14, clausula 16.1 e Anexo I item 3: a frase da coleta so vai ao WhatsApp
+ * depois da aprovacao da admin. Com `isAiWhatsappSendEnabled()` falso (sempre, hoje)
+ * a mensagem publica fica `draft` e quem despacha e `approvalService.approve`,
+ * que exige `isAdmin`. Nada sai sozinho.
+ */
 async function sendAutomated(
   db: PrismaClient,
   input: { conversationId: string; ticketId: string | null; body: string },
-): Promise<{ id: string; sent: boolean }> {
+): Promise<{ id: string; outcome: AutomatedOutcome }> {
+  const autoSend = isAiWhatsappSendEnabled();
   const message = await db.message.create({
     data: {
       conversationId: input.conversationId,
@@ -112,17 +123,18 @@ async function sendAutomated(
       direction: "out",
       visibility: "publica",
       automated: true,
-      sendStatus: "pending",
+      sendStatus: autoSend ? "pending" : "draft",
       body: input.body.slice(0, 800),
     },
   });
+  if (!autoSend) return { id: message.id, outcome: "draft" };
   try {
     await deliverStoredPublicMessage(db, message.id);
   } catch {
-    return { id: message.id, sent: false };
+    return { id: message.id, outcome: "failed" };
   }
   const row = await db.message.findUnique({ where: { id: message.id }, select: { sendStatus: true } });
-  return { id: message.id, sent: row?.sendStatus === "sent" };
+  return { id: message.id, outcome: row?.sendStatus === "sent" ? "sent" : "failed" };
 }
 
 async function saveContext(db: PrismaClient, session: SessionRow, patch: Partial<IntakeContext>, ticketId: string | null) {
@@ -407,7 +419,7 @@ export async function prepareIntakeTurn(
               direction: "out",
               automated: true,
               visibility: "publica",
-              sendStatus: "sent",
+              sendStatus: { in: ["sent", "draft"] },
               createdAt: { gte: since },
             },
             select: { id: true },
@@ -489,7 +501,7 @@ async function sendImageHandoff(db: PrismaClient, session: SessionRow, ticketId:
       conversationId: session.conversationId,
       direction: "out",
       automated: true,
-      sendStatus: "sent",
+      sendStatus: { in: ["sent", "draft"] },
       body: { contains: IMAGE_HANDOFF_TEXT },
     },
     select: { id: true },
@@ -508,7 +520,7 @@ async function sendImageHandoff(db: PrismaClient, session: SessionRow, ticketId:
   });
   if (claimed.count !== 1) return;
   const sent = await sendAutomated(db, { conversationId: session.conversationId, ticketId, body: text });
-  if (!sent.sent) {
+  if (sent.outcome === "failed") {
     await db.aiIntakeSession.update({
       where: { id: session.id },
       data: { status: session.questionCount > 0 ? "waiting_client" : "collecting" },
@@ -539,7 +551,7 @@ async function sendQuestion(db: PrismaClient, session: SessionRow, ticketId: str
       conversationId: session.conversationId,
       direction: "out",
       automated: true,
-      sendStatus: "sent",
+      sendStatus: { in: ["sent", "draft"] },
       body: text,
       ...(session.lastQuestionAt ? { createdAt: { gt: session.lastQuestionAt } } : {}),
     },
@@ -564,7 +576,7 @@ async function sendQuestion(db: PrismaClient, session: SessionRow, ticketId: str
         action: "AI_QUESTION_SENT",
         conversationId: session.conversationId,
         ticketId,
-        result: "sent",
+        result: "already",
       });
     }
     return;
@@ -575,7 +587,7 @@ async function sendQuestion(db: PrismaClient, session: SessionRow, ticketId: str
   });
   if (claimed.count !== 1) return;
   const sent = await sendAutomated(db, { conversationId: session.conversationId, ticketId, body: text });
-  if (!sent.sent) {
+  if (sent.outcome === "failed") {
     await db.aiIntakeSession.update({
       where: { id: session.id },
       data: { status: session.questionCount > 0 ? "waiting_client" : "collecting" },
@@ -598,7 +610,7 @@ async function sendQuestion(db: PrismaClient, session: SessionRow, ticketId: str
     action: "AI_QUESTION_SENT",
     conversationId: session.conversationId,
     ticketId,
-    result: "sent",
+    result: sent.outcome,
   });
 }
 
@@ -608,7 +620,7 @@ async function sendAnswer(db: PrismaClient, session: SessionRow, ticketId: strin
       conversationId: session.conversationId,
       direction: "out",
       automated: true,
-      sendStatus: "sent",
+      sendStatus: { in: ["sent", "draft"] },
       body: text,
       ...(session.lastQuestionAt ? { createdAt: { gt: session.lastQuestionAt } } : {}),
     },
@@ -628,7 +640,7 @@ async function sendAnswer(db: PrismaClient, session: SessionRow, ticketId: strin
   });
   if (claimed.count !== 1) return;
   const sent = await sendAutomated(db, { conversationId: session.conversationId, ticketId, body: text });
-  if (!sent.sent) {
+  if (sent.outcome === "failed") {
     await db.aiIntakeSession.update({
       where: { id: session.id },
       data: { status: session.questionCount > 0 ? "waiting_client" : "collecting" },
@@ -648,7 +660,7 @@ async function sendUnclearRepeat(db: PrismaClient, session: SessionRow, ticketId
   });
   if (claimed.count !== 1) return;
   const sent = await sendAutomated(db, { conversationId: session.conversationId, ticketId, body: text });
-  if (!sent.sent) {
+  if (sent.outcome === "failed") {
     await db.aiIntakeSession.update({
       where: { id: session.id },
       data: { status: session.questionCount > 0 ? "waiting_client" : "collecting" },
@@ -667,7 +679,7 @@ async function sendUnclearEscalate(db: PrismaClient, session: SessionRow, ticket
       where: { id: session.lastQuestionMessageId },
       select: { sendStatus: true, body: true },
     });
-    if (previous?.sendStatus === "sent" && previous.body === UNCLEAR_ESCALATE_TEXT) {
+    if ((previous?.sendStatus === "sent" || previous?.sendStatus === "draft") && previous.body === UNCLEAR_ESCALATE_TEXT) {
       await markStatus(db, session.id, "human_review", session.conversationId, ticketId);
       return;
     }
@@ -683,7 +695,7 @@ async function sendUnclearEscalate(db: PrismaClient, session: SessionRow, ticket
     return;
   }
   const sent = await sendAutomated(db, { conversationId: session.conversationId, ticketId: ticket.ticketId ?? ticketId, body: text });
-  if (!sent.sent) {
+  if (sent.outcome === "failed") {
     await db.aiIntakeSession.update({
       where: { id: session.id },
       data: { status: "waiting_client" },
@@ -704,7 +716,7 @@ async function sendUnclearEscalate(db: PrismaClient, session: SessionRow, ticket
     action: "AI_HUMAN_REVIEW_REQUIRED",
     conversationId: session.conversationId,
     ticketId: ticket.ticketId ?? ticketId,
-    result: "sent",
+    result: sent.outcome,
   });
 }
 
@@ -747,7 +759,7 @@ export async function runIntakeTimeoutJob(
       ticketId: null,
       body: INTAKE_NUDGE_TEXT,
     });
-    if (!sent.sent) {
+    if (sent.outcome === "failed") {
       await db.aiIntakeSession.updateMany({
         where: { id: session.id },
         data: { status: "waiting_client" },

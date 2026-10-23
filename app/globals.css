@@ -112,8 +112,8 @@
   --muted: color-mix(in srgb, var(--t-fg) 62%, var(--t-p));
   --brand: var(--t-p);
   --brand-soft: color-mix(in srgb, var(--t-p) 85%, #fff);
-  --border: color-mix(in srgb, var(--t-p) 15%, #fff);
-  --border-strong: color-mix(in srgb, var(--t-p) 28%, #fff);
+  --border: color-mix(in srgb, var(--t-p) 19%, #fff);
+  --border-strong: color-mix(in srgb, var(--t-p) 34%, #fff);
   --surface-2: color-mix(in srgb, var(--t-p) 6%, #fff);
   --accent: var(--t-a);
   --ok: #059669;
@@ -126,8 +126,8 @@
   --bubble-meta: color-mix(in srgb, var(--t-fg) 70%, var(--t-p));
   --radius: 8px;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 2px 8px -2px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 3px 10px -3px rgba(15, 23, 42, 0.12);
   --shadow-lg: 0 8px 24px -8px rgba(15, 23, 42, 0.1);
   --frame-radius: 8px;
   --content-max: 1440px;
@@ -165,7 +165,7 @@
   --accent-surface: color-mix(in srgb, var(--t-a) 18%, #fff);
   --accent-foreground: var(--t-fg);
   --destructive: #dc2626;
-  --input: color-mix(in srgb, var(--t-p) 22%, #fff);
+  --input: color-mix(in srgb, var(--t-p) 32%, #fff);
   --ring: var(--t-p);
   --chart-1: var(--t-p);
   --chart-2: var(--t-a);
@@ -206,6 +206,12 @@ body {
 *:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+/* Estado ativo permanece legível sem depender do hover. */
+[aria-current="page"]:focus-visible,
+[aria-pressed="true"]:focus-visible {
+  outline-color: var(--ring);
 }
 
 .font-wordmark {
