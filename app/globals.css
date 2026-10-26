@@ -236,6 +236,10 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  .react-joyride__floater {
+    transition: none !important;
+  }
 }
 
 .motion-fade {

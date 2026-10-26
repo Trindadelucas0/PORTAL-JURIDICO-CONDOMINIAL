@@ -3,7 +3,7 @@
 | Item | Valor |
 |------|--------|
 | Sistema | Juricon (Portal jurídico condominial) |
-| Versão de referência | 0.13.0 |
+| Versão de referência | 0.13.1 |
 | Público | Administradora do escritório (com faixas sobre o funcionário) |
 | Regras oficiais | [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) |
 | Guia curto do dia a dia | [`como-usar-o-sistema.md`](como-usar-o-sistema.md) |
@@ -93,7 +93,7 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 ### 2.1 Menu lateral — Operação e Administração
 
 ```
-+-- Juricon v0.13.0 ----------+     +-- Barra superior ------------------+
++-- Juricon v0.13.1 ----------+     +-- Barra superior ------------------+
 | OPERAÇÃO                     |     | (=)  [ Buscar…          ]          |
 |  Visão                       |     |        WhatsApp …   [Novo Chamado] |
 |  Atendimento            (3)  |     +------------------------------------+

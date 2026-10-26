@@ -51,17 +51,18 @@ export default function AjudaPage() {
   const admin = userRole === "admin";
 
   return (
-    <div className="pb-8">
+    <div className="mx-auto w-full max-w-5xl pb-10">
       <PageHeader
         title="Como usar o Juricon"
         description="Um guia direto, sem termos técnicos, para entender o sistema e trabalhar com segurança."
+        className="rounded-xl border border-border-strong bg-card p-5 shadow-[var(--shadow-sm)] sm:p-7"
         action={
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={reiniciarTour}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button type="button" className="w-full sm:w-auto" onClick={reiniciarTour}>
               Conhecer o sistema
             </Button>
             {tourDaTela ? (
-              <Button type="button" onClick={() => iniciarTour(tourDaTela)}>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => iniciarTour(tourDaTela)}>
                 Guia desta tela
               </Button>
             ) : null}
@@ -69,9 +70,9 @@ export default function AjudaPage() {
         }
       />
 
-      <div className="space-y-8">
+      <div className="space-y-10 sm:space-y-12">
         <section aria-labelledby="o-que-e">
-          <Card className="border-l-4 border-l-primary">
+          <Card className="border-l-4 border-l-primary p-5 sm:p-6">
             <h2 id="o-que-e" className="text-lg font-semibold">O que é o Juricon?</h2>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               O Juricon organiza as mensagens recebidas pelo escritório, ajuda a identificar o pedido do cliente e permite acompanhar cada caso até a conclusão. Ele é usado pela administradora e pela equipe do escritório; o síndico não entra neste sistema.
@@ -95,7 +96,7 @@ export default function AjudaPage() {
 
         <section aria-labelledby="areas-juricon">
           <h2 id="areas-juricon" className="text-lg font-semibold">Para que serve cada área</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {AREAS.filter((area) => admin || !area.admin).map((area) => {
               const Icon = area.icon;
               return (
@@ -118,7 +119,7 @@ export default function AjudaPage() {
 
         <section aria-labelledby="tarefas-comuns">
           <h2 id="tarefas-comuns" className="text-lg font-semibold">Tarefas comuns</h2>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid gap-4">
             <Card id="atender" className="scroll-mt-20">
               <h3 className="font-semibold">Atender uma mensagem</h3>
               <Steps>
@@ -127,7 +128,7 @@ export default function AjudaPage() {
                 <Step>Escreva a resposta no campo inferior e revise o texto.</Step>
                 <Step>Clique em <strong>Enviar</strong>. Essa ação envia a mensagem pelo WhatsApp.</Step>
               </Steps>
-              <Button className="mt-4" variant="outline" render={<Link href="/atendimento" />}>Abrir Atendimento</Button>
+              <Button className="mt-4 w-full sm:w-auto" variant="outline" render={<Link href="/atendimento" />}>Abrir Atendimento</Button>
             </Card>
 
             {admin ? <Card id="identificar" className="scroll-mt-20">
@@ -138,7 +139,7 @@ export default function AjudaPage() {
                 <Step>Informe o nome e escolha o condomínio correto.</Step>
                 <Step>Confirme o vínculo. A conversa vai para a Triagem; isso ainda não cria chamado.</Step>
               </Steps>
-              <Button className="mt-4" variant="outline" render={<Link href="/nao-vinculados" />}>Abrir Não vinculados</Button>
+              <Button className="mt-4 w-full sm:w-auto" variant="outline" render={<Link href="/nao-vinculados" />}>Abrir Não vinculados</Button>
             </Card> : null}
 
             <Card id="chamados" className="scroll-mt-20">
@@ -148,7 +149,7 @@ export default function AjudaPage() {
                 <Step>Depois, abra <strong>Chamados</strong> e selecione o cartão para acompanhar o caso.</Step>
                 <Step>Use <strong>Meus</strong> para ver os chamados que estão sob sua responsabilidade.</Step>
               </Steps>
-              <Button className="mt-4" variant="outline" render={<Link href="/chamados" />}>Abrir Chamados</Button>
+              <Button className="mt-4 w-full sm:w-auto" variant="outline" render={<Link href="/chamados" />}>Abrir Chamados</Button>
             </Card>
 
             <Card id="documentos" className="scroll-mt-20">
@@ -159,7 +160,7 @@ export default function AjudaPage() {
                 <Step>Informe o nome, para que serve e escolha o arquivo.</Step>
                 <Step>Clique em <strong>Salvar documento</strong>. Marque envio ao cliente somente quando o arquivo puder ser enviado pelo WhatsApp.</Step>
               </Steps>
-              <Button className="mt-4" variant="outline" render={<Link href="/documentos" />}>Abrir Documentos</Button>
+              <Button className="mt-4 w-full sm:w-auto" variant="outline" render={<Link href="/documentos" />}>Abrir Documentos</Button>
             </Card>
           </div>
         </section>

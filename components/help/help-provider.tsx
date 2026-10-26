@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ACTIONS, EVENTS, Joyride, type EventData } from "react-joyride";
-import { BookOpen, CircleHelp, Map, MessageSquare, Ticket, UserRoundCheck } from "lucide-react";
+import { ArrowRight, BookOpen, CircleHelp, Map, MessageSquare, Sparkles, Ticket, UserRoundCheck } from "lucide-react";
 import type { PublicUser } from "@/lib/auth/session";
 import {
   guideStorageKey,
@@ -21,6 +21,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { TourTooltip } from "@/components/help/tour-tooltip";
 
 type HelpContextValue = {
   abrirAjuda: () => void;
@@ -131,6 +132,7 @@ export function HelpProvider({ user, children }: { user: PublicUser; children: R
         scrollToFirstStep
         steps={definition.steps}
         onEvent={onTourEvent}
+        tooltipComponent={TourTooltip}
         locale={{
           back: "Voltar",
           close: "Fechar",
@@ -153,77 +155,77 @@ export function HelpProvider({ user, children }: { user: PublicUser; children: R
           arrowColor: "var(--popover)",
           showProgress: true,
           skipBeacon: true,
-          spotlightPadding: 6,
-          spotlightRadius: 8,
+          offset: compact ? 12 : 16,
+          scrollDuration: 180,
+          scrollOffset: compact ? 88 : 72,
+          spotlightPadding: compact ? 4 : 6,
+          spotlightRadius: 10,
           targetWaitTimeout: 2500,
-          width: "min(23rem, calc(100vw - 2rem))",
-          zIndex: 80,
+          width: "min(25rem, calc(100vw - 1.5rem))",
+          zIndex: 90,
         }}
         styles={{
-          tooltip: { borderRadius: "var(--radius)", boxShadow: "var(--shadow-lg)" },
-          tooltipTitle: { fontSize: "1rem", fontWeight: 650, lineHeight: 1.35 },
-          tooltipContent: { fontSize: "0.875rem", lineHeight: 1.55 },
-          buttonPrimary: { borderRadius: "0.5rem", padding: "0.55rem 0.8rem" },
-          buttonBack: { color: "var(--muted-foreground)" },
-          buttonSkip: { color: "var(--muted-foreground)" },
+          floater: { filter: "none", maxWidth: "calc(100vw - 1rem)" },
+          tooltip: { backgroundColor: "transparent", padding: 0 },
         }}
       />
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
-        <SheetContent className="w-[min(100vw,26rem)] overflow-y-auto sm:max-w-md">
-          <SheetHeader className="border-b border-border pr-12">
-            <SheetTitle>Ajuda do Juricon</SheetTitle>
-            <SheetDescription>Escolha uma explicação rápida ou consulte o manual completo.</SheetDescription>
+        <SheetContent
+          side={compact ? "bottom" : "right"}
+          className={compact
+            ? "max-h-[92dvh] w-full gap-0 overflow-y-auto rounded-t-2xl border-t border-border p-0"
+            : "w-[26rem] gap-0 overflow-y-auto p-0 sm:max-w-[26rem]"}
+        >
+          <SheetHeader className="border-b border-border bg-secondary/55 px-5 py-5 pr-14">
+            <div className="mb-2 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <Sparkles className="size-5" aria-hidden />
+            </div>
+            <SheetTitle className="text-lg font-semibold">Como podemos ajudar?</SheetTitle>
+            <SheetDescription className="leading-relaxed">Aprenda no seu ritmo. Nenhuma opção abaixo altera informações do sistema.</SheetDescription>
           </SheetHeader>
-          <div className="space-y-5 px-4 pb-5">
-            <div className="grid gap-2">
-              <Button type="button" className="justify-start" onClick={reiniciarTour}>
-                <Map />
-                Conhecer o sistema
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-start"
-                disabled={!tourDaTela}
-                onClick={() => tourDaTela && iniciarTour(tourDaTela)}
-              >
-                <CircleHelp />
-                Guia desta tela
-              </Button>
-              <Button
-                variant="ghost"
-                className="justify-start"
-                render={<Link href="/ajuda" onClick={() => setHelpOpen(false)} />}
-              >
-                <BookOpen />
-                Abrir manual completo
-              </Button>
+          <div className="space-y-6 px-4 py-5 sm:px-5">
+            <div className="grid gap-3">
+              <button type="button" className="group flex min-h-20 w-full items-center gap-4 rounded-xl bg-primary p-4 text-left text-primary-foreground shadow-sm transition-colors hover:bg-[var(--brand-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={reiniciarTour}>
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/15"><Map className="size-5" aria-hidden /></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-semibold">Conhecer o sistema</strong><span className="mt-0.5 block text-xs leading-5 text-primary-foreground/80">Passeio completo pelas áreas principais.</span></span>
+                <ArrowRight className="size-4 shrink-0 opacity-75 transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </button>
+              <button type="button" className="group flex min-h-20 w-full items-center gap-4 rounded-xl border border-border-strong bg-card p-4 text-left text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50" disabled={!tourDaTela} onClick={() => tourDaTela && iniciarTour(tourDaTela)}>
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary"><CircleHelp className="size-5" aria-hidden /></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-semibold">Guia desta tela</strong><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Entenda apenas a página que está aberta.</span></span>
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </button>
+              <Link href="/ajuda" onClick={() => setHelpOpen(false)} className="group flex min-h-20 w-full items-center gap-4 rounded-xl border border-border bg-card p-4 text-left text-foreground transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary"><BookOpen className="size-5" aria-hidden /></span>
+                <span className="min-w-0 flex-1"><strong className="block text-sm font-semibold">Manual completo</strong><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Consulte tarefas e cuidados quando quiser.</span></span>
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </Link>
             </div>
 
             <section aria-labelledby="tarefas-comuns-ajuda">
-              <h2 id="tarefas-comuns-ajuda" className="text-sm font-semibold text-foreground">
+              <h2 id="tarefas-comuns-ajuda" className="text-xs font-semibold tracking-[0.1em] text-muted-foreground uppercase">
                 Tarefas comuns
               </h2>
-              <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-card">
+              <ul className="mt-3 divide-y divide-border border-y border-border">
                 <li>
-                  <Link href="/ajuda#atender" onClick={() => setHelpOpen(false)} className="flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted">
+                  <Link href="/ajuda#atender" onClick={() => setHelpOpen(false)} className="flex min-h-12 items-center gap-3 px-1 py-3 text-sm hover:text-primary">
                     <MessageSquare className="size-4 text-primary" /> Atender uma mensagem
                   </Link>
                 </li>
                 {user.role === "admin" ? (
                   <li>
-                    <Link href="/ajuda#identificar" onClick={() => setHelpOpen(false)} className="flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted">
+                    <Link href="/ajuda#identificar" onClick={() => setHelpOpen(false)} className="flex min-h-12 items-center gap-3 px-1 py-3 text-sm hover:text-primary">
                       <UserRoundCheck className="size-4 text-primary" /> Identificar um novo contato
                     </Link>
                   </li>
                 ) : null}
                 <li>
-                  <Link href="/ajuda#chamados" onClick={() => setHelpOpen(false)} className="flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted">
+                  <Link href="/ajuda#chamados" onClick={() => setHelpOpen(false)} className="flex min-h-12 items-center gap-3 px-1 py-3 text-sm hover:text-primary">
                     <Ticket className="size-4 text-primary" /> {user.role === "admin" ? "Criar e acompanhar um chamado" : "Acompanhar um chamado"}
                   </Link>
                 </li>
                 <li>
-                  <Link href="/ajuda#documentos" onClick={() => setHelpOpen(false)} className="flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted">
+                  <Link href="/ajuda#documentos" onClick={() => setHelpOpen(false)} className="flex min-h-12 items-center gap-3 px-1 py-3 text-sm hover:text-primary">
                     <BookOpen className="size-4 text-primary" /> Cadastrar um documento
                   </Link>
                 </li>
