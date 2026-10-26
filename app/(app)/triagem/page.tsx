@@ -67,7 +67,7 @@ export default function TriagemPage() {
   const currentId = selected || items[0]?.id;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card" data-tour="triagem">
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3">
         <div>
           <h1 className="text-base font-semibold tracking-tight">Triagem</h1>
@@ -84,6 +84,7 @@ export default function TriagemPage() {
           aria-label="Buscar triagem"
         />
       </div>
+      <div className="flex min-h-0 flex-1 flex-col" data-tour="triagem-classificacao">
       {list.isLoading ? (
         <div className="space-y-2 p-3">
           <Skeleton className="h-16" />
@@ -93,7 +94,7 @@ export default function TriagemPage() {
         <EmptyState title="Tudo limpo" hint="Nada na triagem." />
       ) : (
         <WorkspaceShell cols="triage">
-          <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
+          <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")} data-tour="triagem-lista">
             <ul className="escalonar min-h-0 flex-1 space-y-2 overflow-y-auto bg-background p-2">
               {items.map((item, index) => (
                 <li key={item.id} style={{ "--stagger-i": index } as React.CSSProperties}>
@@ -160,6 +161,7 @@ export default function TriagemPage() {
           </WorkspacePane>
         </WorkspaceShell>
       )}
+      </div>
     </div>
   );
 }

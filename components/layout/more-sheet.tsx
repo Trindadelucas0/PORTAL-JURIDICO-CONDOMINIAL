@@ -75,6 +75,7 @@ export function MoreSheet({
           "flex min-h-11 flex-col items-center justify-center gap-0.5 py-2 text-[11px] text-muted-foreground",
         )}
         aria-label="Mais"
+        data-tour="mobile-more"
       >
         <Plus size={18} />
         Mais

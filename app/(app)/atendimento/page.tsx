@@ -192,7 +192,7 @@ function InboxInner() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card" data-tour="atendimento">
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3">
         <div>
           <h1 className="text-base font-semibold tracking-tight">Atendimento</h1>
@@ -211,7 +211,7 @@ function InboxInner() {
         </FilterBar>
       </div>
       <WorkspaceShell cols="inbox" contextOpen contextWide={contextWide}>
-        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
+        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")} data-tour="atendimento-lista">
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             <p className="mb-2 px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Conversas</p>
             <Input
@@ -320,7 +320,7 @@ function InboxInner() {
             )}
           </div>
         </WorkspacePane>
-        <WorkspacePane className={cn("min-w-0", mobilePane !== "thread" && "hidden lg:flex")}>
+        <WorkspacePane className={cn("min-w-0", mobilePane !== "thread" && "hidden lg:flex")} data-tour="atendimento-conversa" data-tour-response="atendimento-resposta">
           <ThreadPanel
             conversation={current}
             hidden={mobilePane !== "thread"}
@@ -343,7 +343,7 @@ function InboxInner() {
             showAiActions
           />
         </WorkspacePane>
-        <WorkspacePane>
+        <WorkspacePane data-tour="atendimento-contexto">
           <ContextPane
             conversation={current}
             admin={Boolean(admin)}

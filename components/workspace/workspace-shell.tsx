@@ -48,15 +48,16 @@ export function WorkspacePane({
   children,
   className,
   hidden,
-}: {
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
   children: React.ReactNode;
-  className?: string;
   hidden?: boolean;
 }) {
   return (
     <div
       data-slot="workspace-pane"
       className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden", hidden && "hidden lg:flex", className)}
+      {...props}
     >
       {children}
     </div>

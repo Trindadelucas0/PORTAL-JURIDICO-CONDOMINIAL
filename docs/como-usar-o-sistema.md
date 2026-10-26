@@ -2,6 +2,15 @@
 
 As regras oficiais estão em [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) (§8). Este arquivo só descreve o dia a dia. Não guarda senha nem chave.
 
+## Ajuda dentro do sistema
+
+1. No primeiro acesso à **Visão**, o Juricon apresenta as áreas principais sem executar nenhuma ação.
+2. Use **Voltar**, **Próximo**, **Pular guia** ou **Concluir**. O passeio não envia mensagens, não cria chamados e não altera registros.
+3. Para rever, clique em **Ajuda** na barra superior e escolha **Conhecer o sistema**.
+4. Em Atendimento, Triagem, Não vinculados ou Chamados, use **Ajuda** → **Guia desta tela**.
+5. **Abrir manual completo** leva a `/ajuda`, com explicações simples, tarefas comuns, alertas e dúvidas frequentes.
+6. Administradora e funcionário veem somente as áreas permitidas para o próprio papel. Em outro navegador ou aparelho, a apresentação inicial aparece novamente.
+
 ## Manual visual (cada tela e cada botão)
 
 [`docs/manual-cliente.md`](manual-cliente.md) — wireframes em texto para a administradora ensinar o escritório: Visão, Atendimento, Triagem, Chamados, Documentos, Equipe, Conexões, Mensagens automáticas e demais rotas. A análise da IA fica só no último capítulo.

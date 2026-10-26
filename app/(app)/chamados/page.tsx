@@ -149,7 +149,7 @@ function ChamadosInner() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-tour="chamados">
       <PageHeader
         className="mb-0 shrink-0"
         dense
@@ -160,7 +160,7 @@ function ChamadosInner() {
             : `${total} no quadro${unassignedCount > 0 ? ` · ${unassignedCount} sem responsável` : ""}`
         }
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour="chamados-visualizacao">
             <FilterBar>
               <FilterChip active={view === "quadro"} onClick={() => setView("quadro")}>
                 Quadro
@@ -177,7 +177,7 @@ function ChamadosInner() {
           </div>
         }
       />
-      <FilterBar className="mb-2 shrink-0">
+      <FilterBar className="mb-2 shrink-0" data-tour="chamados-filtros">
         <FilterChip
           active={scope === "all"}
           onClick={() => {
@@ -283,7 +283,7 @@ function ChamadosInner() {
           Exibindo {items.length} de {total} chamados (limite de 50). Refine a busca ou os filtros para ver os demais.
         </p>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden" data-tour="chamados-conteudo">
         {list.isLoading ? (
           <div className="grid h-full gap-2 md:grid-cols-4">
             <Skeleton className="h-full min-h-40" />

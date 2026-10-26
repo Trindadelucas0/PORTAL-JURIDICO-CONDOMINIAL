@@ -4,8 +4,7 @@ import { payloadTooLarge, tooMany } from "@/lib/api/errors";
 import { clientIp, rateLimit } from "@/lib/api/rate-limit";
 import { maybeDumpEvolutionWebhookBody } from "@/lib/channels/evolution-webhook";
 import { whatsappService } from "@/lib/services/whatsapp-service";
-
-export const WEBHOOK_MAX_BYTES = 256 * 1024;
+import { WEBHOOK_MAX_BYTES } from "@/lib/webhooks/limits";
 
 export async function POST(request: Request) {
   try {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { POST, WEBHOOK_MAX_BYTES } from "@/app/api/webhooks/evolution/route";
+import { POST } from "@/app/api/webhooks/evolution/route";
+import { WEBHOOK_MAX_BYTES } from "@/lib/webhooks/limits";
 
 function webhookRequest(opts: { secret?: string; body?: string; ip?: string; contentLength?: string }) {
   const headers = new Headers();

@@ -3,7 +3,7 @@
 | Item | Valor |
 |------|--------|
 | Sistema | Juricon (Portal jurídico condominial) |
-| Versão de referência | 0.11.41 |
+| Versão de referência | 0.13.0 |
 | Público | Administradora do escritório (com faixas sobre o funcionário) |
 | Regras oficiais | [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA.md) |
 | Guia curto do dia a dia | [`como-usar-o-sistema.md`](como-usar-o-sistema.md) |
@@ -41,6 +41,7 @@ Este manual mostra **cada tela**, **o desenho da página** e **o que cada botão
 13. [Conexões (WhatsApp)](#13-conexões-whatsapp)
 14. [Mensagens automáticas](#14-mensagens-automáticas)
 15. [Quando a análise da IA estiver ligada](#15-quando-a-análise-da-ia-estiver-ligada)
+16. [Ajuda e passeio guiado](#16-ajuda-e-passeio-guiado)
 
 ---
 
@@ -92,7 +93,7 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 ### 2.1 Menu lateral — Operação e Administração
 
 ```
-+-- Juricon v0.11.41 ----------+     +-- Barra superior ------------------+
++-- Juricon v0.13.0 ----------+     +-- Barra superior ------------------+
 | OPERAÇÃO                     |     | (=)  [ Buscar…          ]          |
 |  Visão                       |     |        WhatsApp …   [Novo Chamado] |
 |  Atendimento            (3)  |     +------------------------------------+
@@ -107,7 +108,7 @@ Depois do login, quase toda tela tem **menu à esquerda** (computador) ou **barr
 |  Equipe                      |       Início | Inbox | Chamados | Mais
 |  Documentos do sistema       |
 |  Conexões                    |     "Mais" → folha **Ir para**
-|  Mensagens automáticas       |
+|  Mensagens automáticas       |     |        [? Ajuda] [Novo Chamado]   |
 |                              |
 |  WA · Conectado (link)       |
 |  Nome · e-mail        [Sair] |
@@ -731,6 +732,21 @@ Login → Visão
 ```
 
 Para treino com **prints numerados** de cinco fluxos clássicos, use [`guia-cliente/guia-juricon.html`](guia-cliente/guia-juricon.html).
+
+---
+
+## 16. Ajuda e passeio guiado
+
+**Para quê:** ensinar o sistema na própria tela, sem executar ações reais.
+
+1. No primeiro acesso à **Visão**, a apresentação abre automaticamente.
+2. Clique em **Próximo** para continuar, **Voltar** para rever ou **Pular guia** para encerrar.
+3. O passeio só aponta e explica. Ele não envia mensagem, não cria chamado e não exclui conversa.
+4. Para ver novamente, use **Ajuda** na barra superior → **Conhecer o sistema**.
+5. Em Atendimento, Triagem, Não vinculados ou Chamados, use **Ajuda** → **Guia desta tela**.
+6. **Abrir manual completo** abre `/ajuda`, com explicação das áreas, tarefas comuns, cuidados e dúvidas frequentes.
+7. Funcionário não vê explicações de áreas exclusivas da administradora.
+8. Em outro navegador ou aparelho, a apresentação inicial aparece novamente.
 
 ---
 

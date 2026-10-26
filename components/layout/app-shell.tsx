@@ -46,7 +46,10 @@ import { livePollQuery } from "@/lib/client/live-poll";
 import { humanSessionStatus } from "@/components/conexoes/whatsapp-session-card";
 import { initials } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
-import { version as appVersion } from "../../package.json";
+import packageMetadata from "../../package.json";
+import { HelpButton, HelpProvider } from "@/components/help/help-provider";
+
+const appVersion = packageMetadata.version;
 
 const NAV = [
   {
@@ -83,6 +86,16 @@ function navItemActive(href: string, pathname: string) {
   if (href === "/") return pathname === "/";
   if (href === "/documentos") return pathname === "/documentos" || pathname.startsWith("/documentos/");
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function navTourId(href: string) {
+  if (href === "/") return "nav-overview";
+  if (href === "/atendimento") return "nav-atendimento";
+  if (href === "/triagem") return "nav-triagem";
+  if (href === "/nao-vinculados") return "nav-nao-vinculados";
+  if (href === "/chamados") return "nav-chamados";
+  if (href === "/documentos") return "nav-documentos";
+  return undefined;
 }
 
 function searchTarget(pathname: string) {
@@ -186,6 +199,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
       ];
 
   return (
+    <HelpProvider user={user}>
     <SidebarProvider className="h-dvh overflow-hidden bg-background">
       <Sidebar collapsible="offcanvas">
         <SidebarHeader className="h-12 justify-center border-b border-sidebar-border px-3 py-0">
@@ -221,6 +235,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                           <SidebarMenuButton
                             render={<Link href={item.href} aria-current={active ? "page" : undefined} />}
                             isActive={active}
+                            data-tour={navTourId(item.href)}
                             className={cn(
                               "relative rounded-md text-sidebar-foreground/85 transition-[background-color,color] duration-[var(--motion-fast)] hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                               active &&
@@ -337,6 +352,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
                 </span>
               )
             ) : null}
+            <HelpButton />
             {admin ? (
               <Link href="/chamados?novo=1" className={cn(buttonVariants(), "bg-primary text-primary-foreground hover:bg-[var(--brand-soft)]")}>
                 <Plus className="size-4" />
@@ -365,6 +381,7 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
         <nav
           className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
           aria-label="Navegação principal"
+          data-tour="mobile-navigation"
         >
           {bottomItems.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -388,5 +405,6 @@ export function AppShell({ user, children }: { user: PublicUser; children: React
         </nav>
       </SidebarInset>
     </SidebarProvider>
+    </HelpProvider>
   );
 }

@@ -152,7 +152,7 @@ function NaoVinculadosInner() {
     : "";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-[var(--shadow-sm)]" data-tour="nao-vinculados">
       <div className="shrink-0 border-b border-border px-3 py-2">
         <h1 className="text-sm font-semibold">Não vinculados</h1>
         <p className="text-xs text-muted-foreground">
@@ -162,7 +162,7 @@ function NaoVinculadosInner() {
         </p>
       </div>
       <WorkspaceShell cols="unlinked" contextOpen>
-        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")}>
+        <WorkspacePane className={cn(mobilePane !== "list" && "hidden lg:flex")} data-tour="nao-vinculados-lista">
           <UnlinkedQueue
             items={items}
             loading={list.isLoading}
@@ -191,7 +191,7 @@ function NaoVinculadosInner() {
             extraInvalidateKeys={[["conversations", "unlinked"]]}
           />
         </WorkspacePane>
-        <WorkspacePane>
+        <WorkspacePane data-tour="nao-vinculados-identidade">
           <UnlinkedIdentityPanel
             conversation={current}
             onEnroll={() => current && openEnroll(current)}

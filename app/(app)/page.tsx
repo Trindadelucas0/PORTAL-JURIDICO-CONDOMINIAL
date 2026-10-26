@@ -251,7 +251,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background" data-tour="overview">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-6 py-4">
         <div className="min-w-0">
           <h1 className="text-xl font-bold tracking-tight text-foreground">Visão geral</h1>
@@ -313,7 +313,7 @@ export default function DashboardPage() {
         </div>
       ) : (
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
-            <nav aria-label="Ações rápidas" className="-mx-1 flex gap-2 overflow-x-auto px-1">
+            <nav aria-label="Ações rápidas" className="-mx-1 flex gap-2 overflow-x-auto px-1" data-tour="overview-actions">
               {!employee ? (
                 <Link href="/chamados?novo=1" className={cn(buttonVariants({ size: "sm" }), "shrink-0")}>
                   <Plus className="size-3.5" />
@@ -336,7 +336,7 @@ export default function DashboardPage() {
             </nav>
 
             <AnimarNoScroll animacao="surgir-de-baixo">
-              <section aria-label="Fila de ação">
+              <section aria-label="Fila de ação" data-tour="overview-queue">
                 <div className="mb-2.5">
                   <SectionLabel dot="rounded-sm bg-primary">Agora · Fila operacional</SectionLabel>
                 </div>
