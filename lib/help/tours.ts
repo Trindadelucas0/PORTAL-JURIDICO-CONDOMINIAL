@@ -34,9 +34,10 @@ function overviewTour(role: UserRole, compact: boolean): TourDefinition {
       title: "Conhecer o sistema",
       steps: [
         step(
-          '[data-tour="overview"]',
+          "body",
           "Bem-vindo ao Juricon",
           "O Juricon reúne as mensagens do escritório, organiza cada pedido e ajuda a acompanhar os casos até a conclusão.",
+          "center",
         ),
         step(
           '[data-tour="overview-actions"]',
@@ -76,9 +77,10 @@ function overviewTour(role: UserRole, compact: boolean): TourDefinition {
 
   const steps: Step[] = [
     step(
-      '[data-tour="overview"]',
+      "body",
       "Bem-vindo ao Juricon",
       "O Juricon reúne as mensagens do escritório, organiza cada pedido e ajuda a acompanhar os casos até a conclusão.",
+      "center",
     ),
     step('[data-tour="nav-overview"]', "Visão", "Aqui você encontra as pendências e o que precisa de atenção agora.", "right"),
     step(
@@ -135,7 +137,7 @@ const PAGE_TOURS: Record<Exclude<TourId, "visao-admin" | "visao-funcionario">, T
     id: "atendimento",
     title: "Guia do Atendimento",
     steps: [
-      step('[data-tour="atendimento"]', "Atendimento", "Esta é a fila das conversas recebidas pelo escritório."),
+      step("body", "Atendimento", "Esta é a fila das conversas recebidas pelo escritório.", "center"),
       step(
         '[data-tour="atendimento-lista"]',
         "Escolha uma conversa",
@@ -165,7 +167,7 @@ const PAGE_TOURS: Record<Exclude<TourId, "visao-admin" | "visao-funcionario">, T
     id: "triagem",
     title: "Guia da Triagem",
     steps: [
-      step('[data-tour="triagem"]', "Triagem", "Aqui ficam as solicitações que ainda precisam ser organizadas."),
+      step("body", "Triagem", "Aqui ficam as solicitações que ainda precisam ser organizadas.", "center"),
       step(
         '[data-tour="triagem-classificacao"]',
         "Escolha uma solicitação",
@@ -185,9 +187,10 @@ const PAGE_TOURS: Record<Exclude<TourId, "visao-admin" | "visao-funcionario">, T
     title: "Guia de Não vinculados",
     steps: [
       step(
-        '[data-tour="nao-vinculados"]',
+        "body",
         "Números ainda não identificados",
         "Esta fila recebe mensagens de pessoas que ainda não estão ligadas a um condomínio.",
+        "center",
       ),
       step(
         '[data-tour="nao-vinculados-lista"]',
@@ -208,9 +211,10 @@ const PAGE_TOURS: Record<Exclude<TourId, "visao-admin" | "visao-funcionario">, T
     title: "Guia de Chamados",
     steps: [
       step(
-        '[data-tour="chamados"]',
+        "body",
         "Chamados",
         "Cada chamado representa um caso que precisa ser acompanhado pelo escritório.",
+        "center",
       ),
       step(
         '[data-tour="chamados-visualizacao"]',
@@ -244,9 +248,10 @@ export function tourFor(id: TourId, role: UserRole, compact: boolean): TourDefin
         definition.steps[0],
         definition.steps[1],
         step(
-          '[data-tour="atendimento"]',
+          "body",
           "Conversa, contexto e resposta",
           "Toque em uma pessoa para abrir as mensagens. Depois, use Contexto para entender o caso e escreva no campo inferior. Enviar manda a resposta pelo WhatsApp.",
+          "center",
         ),
       ],
     };
@@ -258,9 +263,10 @@ export function tourFor(id: TourId, role: UserRole, compact: boolean): TourDefin
       steps: [
         definition.steps[0],
         step(
-          '[data-tour="triagem-classificacao"]',
+          "body",
           "Escolha e classifique",
           "Toque em uma solicitação. Na tela seguinte, confira a conversa, escolha categoria, prioridade e responsável e use Criar chamado.",
+          "center",
         ),
       ],
     };
@@ -273,9 +279,10 @@ export function tourFor(id: TourId, role: UserRole, compact: boolean): TourDefin
         definition.steps[0],
         definition.steps[1],
         step(
-          '[data-tour="nao-vinculados"]',
+          "body",
           "Identifique a pessoa",
           "Depois de escolher a mensagem, toque em Vincular ao fluxo, informe o nome e o condomínio. Isso abre uma triagem, mas ainda não cria chamado.",
+          "center",
         ),
       ],
     };

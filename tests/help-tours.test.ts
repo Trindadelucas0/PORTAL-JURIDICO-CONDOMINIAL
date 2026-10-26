@@ -20,4 +20,16 @@ describe("guias do Juricon", () => {
     expect(guideStorageKey("usuario-1")).toBe("juricon:guide:usuario-1:v1");
     expect(guideStorageKey("usuario-1")).not.toBe(guideStorageKey("usuario-2"));
   });
+
+  it("centraliza introduções sem usar um painel grande como âncora", () => {
+    const ids = ["visao-admin", "visao-funcionario", "atendimento", "triagem", "nao-vinculados", "chamados"] as const;
+
+    for (const id of ids) {
+      const role = id === "visao-funcionario" ? "funcionario" : "admin";
+      const firstStep = tourFor(id, role, false).steps[0];
+
+      expect(firstStep.target).toBe("body");
+      expect(firstStep.placement).toBe("center");
+    }
+  });
 });

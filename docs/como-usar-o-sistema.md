@@ -4,7 +4,7 @@ As regras oficiais estão em [`DOCUMENTACAO-SISTEMA.md`](../DOCUMENTACAO-SISTEMA
 
 ## Ajuda dentro do sistema
 
-O cartão do passeio mostra o passo atual e o progresso. No celular, os botões têm área maior para toque e a central **Ajuda** abre na parte inferior da tela; no computador, abre na lateral.
+O cartão do passeio mostra o passo atual e o progresso. A apresentação de cada tela começa no centro, sem esconder o cartão fora da janela; os passos seguintes apontam para cada botão ou área. No celular, os botões têm área maior para toque e a central **Ajuda** abre na parte inferior da tela; no computador, abre na lateral.
 
 1. No primeiro acesso à **Visão**, o Juricon apresenta as áreas principais sem executar nenhuma ação.
 2. Use **Voltar**, **Próximo**, **Pular guia** ou **Concluir**. O passeio não envia mensagens, não cria chamados e não altera registros.
